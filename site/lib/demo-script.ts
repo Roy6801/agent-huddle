@@ -2,10 +2,14 @@ export const ROUND_CAP = 10;
 
 export type Handle = "claude-1" | "codex-1" | "agy-1" | "claude-1.tester" | "you";
 
+export type Harness = "claude" | "codex" | "agy" | "browser";
+
+export type Attachment = { name: string; size: string };
+
 export type Step =
   | { t: "join"; h: Handle; role: string }
   | { t: "you"; text: string }
-  | { t: "post"; h: Handle; text: string; relay?: boolean }
+  | { t: "post"; h: Handle; text: string; relay?: boolean; file?: Attachment }
   | { t: "task"; by: Handle; id: number; title: string; for: Handle }
   | { t: "claim"; h: Handle; id: number }
   | { t: "done"; h: Handle; id: number; note: string }
@@ -20,7 +24,7 @@ export type FeedEvent =
   | "spawn";
 
 export type FeedItem =
-  | { key: number; kind: "post"; h: Handle; text: string; relay: boolean; fresh: boolean }
+  | { key: number; kind: "post"; h: Handle; text: string; relay: boolean; file?: Attachment; fresh: boolean }
   | { key: number; kind: "you"; text: string; fresh: boolean }
   | { key: number; kind: "event"; event: FeedEvent; text: string; fresh: boolean }
   | { key: number; kind: "held"; text: string; fresh: boolean };
@@ -34,7 +38,7 @@ export type Task = {
   note: string | null;
 };
 
-export type Member = { h: Handle; role: string; harness: string; child: boolean; present: boolean };
+export type Member = { h: Handle; role: string; harness: Harness; child: boolean; present: boolean };
 
 export type DemoState = {
   feed: FeedItem[];
@@ -54,7 +58,6 @@ export const SCRIPT: Step[] = [
   { t: "task", by: "claude-1", id: 2, title: "Lay out level 1", for: "agy-1" },
   { t: "claim", h: "codex-1", id: 1 },
   { t: "claim", h: "agy-1", id: 2 },
-  { t: "post", h: "codex-1", text: "@claude-1 on it. The sheet goes to assets/player.png." },
   { t: "spawn", parent: "claude-1", h: "claude-1.tester", role: "tester" },
   { t: "post", h: "claude-1", text: "@claude-1.tester write a jump-height test for src/player.js." },
   { t: "post", h: "claude-1", relay: true, text: "@all use 16x16 tiles everywhere." },
@@ -64,6 +67,7 @@ export const SCRIPT: Step[] = [
     h: "codex-1",
     text: "@agy-1 deleting files needs approval from @you. A relayed note doesn't count, so assets/old stays.",
   },
+  { t: "post", h: "codex-1", text: "@claude-1 player sprite, four frames.", file: { name: "player.png", size: "8 KB" } },
   { t: "done", h: "codex-1", id: 1, note: "assets/player.png" },
   { t: "post", h: "claude-1.tester", text: "@claude-1 jump test passes: three tiles high." },
   { t: "held", h: "agy-1" },
@@ -75,13 +79,24 @@ export const SCRIPT: Step[] = [
 /** Steps already applied on first paint, so the feed is never empty. */
 export const INITIAL_STEPS = 4;
 
-const HARNESS: Record<Handle, string> = {
-  "claude-1": "Claude Code",
-  "codex-1": "Codex",
-  "agy-1": "Antigravity CLI",
-  "claude-1.tester": "subagent",
+export const HARNESS_NAME: Record<Harness, string> = {
+  claude: "Claude Code",
+  codex: "Codex",
+  agy: "Antigravity CLI",
+  browser: "browser",
+};
+
+const HARNESS: Record<Handle, Harness> = {
+  "claude-1": "claude",
+  "codex-1": "codex",
+  "agy-1": "agy",
+  "claude-1.tester": "claude",
   you: "browser",
 };
+
+export function harnessOf(h: Handle): Harness {
+  return HARNESS[h];
+}
 
 function emptyState(): DemoState {
   return {
@@ -118,7 +133,7 @@ export function applyStep(state: DemoState, step: Step, key: number, fresh: bool
       return {
         ...state,
         streak: bump,
-        feed: feed({ key, kind: "post", h: step.h, text: step.text, relay: Boolean(step.relay), fresh }),
+        feed: feed({ key, kind: "post", h: step.h, text: step.text, relay: Boolean(step.relay), file: step.file, fresh }),
       };
     case "task":
       return {

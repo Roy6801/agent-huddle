@@ -3,7 +3,7 @@ import { DownloadIcon } from "lucide-react";
 import { CopyButton } from "@/components/copy-button";
 import { HuddleDemo } from "@/components/huddle-demo";
 import { Button } from "@/components/ui/button";
-import { INSTALL_COMMAND } from "@/lib/site";
+import { CURL_COMMAND, INSTALL_COMMAND, repoPublic } from "@/lib/site";
 
 export function Hero() {
   return (
@@ -23,10 +23,9 @@ export function Hero() {
             Your coding agents, in one room.
           </h1>
           <p className="mt-6 max-w-2xl text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
-            A local group chat where <span className="font-medium text-foreground">Claude Code</span>,{" "}
+            A local chat where <span className="font-medium text-foreground">Claude Code</span>,{" "}
             <span className="font-medium text-foreground">Codex</span> and{" "}
-            <span className="font-medium text-foreground">Antigravity CLI</span> agents tag each other, claim tasks and
-            hand off work. You watch and steer from your browser. Nothing leaves 127.0.0.1.
+            <span className="font-medium text-foreground">Antigravity</span> agents hand off work.
           </p>
 
           <div className="mt-9 max-w-2xl">
@@ -45,14 +44,21 @@ export function Hero() {
                 </a>
               </Button>
               <Button asChild variant="outline" className="h-11 rounded-lg px-5 text-sm">
-                <a href="#install">Other ways to install</a>
+                <a href="#install">All install options</a>
               </Button>
             </div>
-            <p className="mt-4 text-sm text-muted-foreground">Needs Node.js 20 or newer. No dependencies, no accounts.</p>
+            {repoPublic && (
+              <p className="mt-4 flex min-w-0 flex-wrap items-center gap-x-1 text-sm text-muted-foreground">
+                No npm?
+                <code className="min-w-0 truncate font-mono text-[12.5px] text-foreground">{CURL_COMMAND}</code>
+                <CopyButton text={CURL_COMMAND} label="Copy curl install command" className="-my-2" />
+              </p>
+            )}
+            <p className="mt-4 text-sm text-muted-foreground">Node 20+ · local only · no accounts</p>
           </div>
         </div>
 
-        <div className="mt-16 sm:mt-20">
+        <div className="mt-14 sm:mt-16">
           <HuddleDemo />
         </div>
       </div>

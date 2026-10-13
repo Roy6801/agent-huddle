@@ -1,69 +1,56 @@
-import { ArrowUpRightIcon, DownloadIcon, FileIcon, PackageIcon } from "lucide-react";
+import { ArrowUpRightIcon, DownloadIcon } from "lucide-react";
 
-import { CodeBlock, Prompt } from "@/components/code-block";
+import { CodeBlock, Out, Prompt } from "@/components/code-block";
+import { CopyButton } from "@/components/copy-button";
 import { InlineCode, Section } from "@/components/sections/section";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DOWNLOADS, INSTALL_COMMAND, SITE_URL } from "@/lib/site";
+import { CURL_COMMAND, DOWNLOADS, REPO, SITE_URL, SKILLS, SKILLS_COMMAND, repoPublic } from "@/lib/site";
 
-const AGENT_PROMPT = `Install the agent-huddle skill by running \`${INSTALL_COMMAND}\`, then start a huddle called "my project" and give me the page and join URLs.`;
+const SKILLS_ALL = `${SKILLS_COMMAND} --skill '*' -g -a claude-code -a codex -a gemini-cli -a antigravity-cli -a opencode -y`;
+const PLUGIN = `/plugin marketplace add ${REPO}\n/plugin install agent-huddle@agent-huddle`;
+const GEMINI = `gemini skills install https://github.com/${REPO}.git --path skills --consent`;
 const ZIP_COMMAND = "unzip agent-huddle.zip && cd agent-huddle && ./install.sh";
 
-const MANUAL_AGENTS = `D="$HOME/.agents/skills/agent-huddle"
-mkdir -p "$D" && curl -fsSL ${SITE_URL}/SKILL.md -o "$D/SKILL.md" \\
-  && curl -fsSL ${SITE_URL}/huddle.mjs -o "$D/huddle.mjs" \\
-  && curl -fsSL ${SITE_URL}/page.html -o "$D/page.html"`;
-
-const MANUAL_CLAUDE = `mkdir -p "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills" \\
-  && ln -sfn "$HOME/.agents/skills/agent-huddle" "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/agent-huddle"`;
-
-const MANUAL_AGY = `mkdir -p "$HOME/.gemini/skills" \\
-  && ln -sfn "$HOME/.agents/skills/agent-huddle" "$HOME/.gemini/skills/agent-huddle"`;
+const MANUAL = `# Skills live in ~/.agents/skills (Codex, Gemini CLI and opencode read it)
+S="$HOME/.agents/skills"; B="${SITE_URL}/skills"
+for f in SKILL.md huddle.mjs page.html; do
+  curl -fsSL --create-dirs "$B/agent-huddle/$f" -o "$S/agent-huddle/$f"
+done
+for v in ${SKILLS.slice(1).join(" ")}; do
+  curl -fsSL --create-dirs "$B/$v/SKILL.md" -o "$S/$v/SKILL.md"
+done
+chmod +x "$S/agent-huddle/huddle.mjs"
+# Link them for Claude Code and Antigravity CLI
+for d in "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills" "$HOME/.gemini/skills"; do
+  mkdir -p "$d" && for s in ${SKILLS.join(" ")}; do ln -sfn "$S/$s" "$d/$s"; done
+done`;
 
 const CODEX_TOML = `[sandbox_workspace_write]
 network_access = true`;
 
 const TABS = [
-  { value: "oneliner", label: "One-liner" },
-  { value: "agent", label: "Ask your agent" },
+  { value: "skills", label: "skills CLI" },
+  { value: "plugin", label: "Claude plugin" },
+  { value: "gemini", label: "Gemini CLI" },
+  { value: "curl", label: "No npm" },
   { value: "zip", label: "Zip" },
   { value: "manual", label: "Manual" },
   { value: "files", label: "Files" },
 ];
 
-function PanelText({ children }: { children: React.ReactNode }) {
-  return <p className="max-w-2xl leading-relaxed text-muted-foreground">{children}</p>;
+function Note({ children }: { children: React.ReactNode }) {
+  return <p className="text-sm text-muted-foreground">{children}</p>;
 }
 
-function ManualStep({ n, title, path, children }: { n: number; title: string; path: string; children: React.ReactNode }) {
-  return (
-    <li className="grid grid-cols-1 gap-3">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h4 className="text-sm font-medium">
-          <span className="mr-2 font-mono text-muted-foreground">{n}.</span>
-          {title}
-        </h4>
-        <span className="font-mono text-xs text-muted-foreground wrap-anywhere">{path}</span>
-      </div>
-      {children}
-    </li>
-  );
+function Pending() {
+  return <Note>Available once the GitHub repo is public.</Note>;
 }
 
 export function Install() {
   return (
-    <Section
-      id="install"
-      title="Install"
-      intro={
-        <>
-          Pick whichever fits. They all end with the same three files in your skills folder:{" "}
-          <InlineCode>SKILL.md</InlineCode>, <InlineCode>huddle.mjs</InlineCode> and <InlineCode>page.html</InlineCode>.
-        </>
-      }
-    >
-      <Tabs defaultValue="oneliner" className="gap-6">
+    <Section id="install" title="Install" intro="Every option installs the same five skills.">
+      <Tabs defaultValue={repoPublic ? "skills" : "curl"} className="gap-5">
         <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <TabsList className="h-12! w-max p-1">
             {TABS.map((tab) => (
@@ -74,132 +61,120 @@ export function Install() {
           </TabsList>
         </div>
 
-        <div className="rounded-2xl border bg-card p-5 shadow-xs sm:p-8">
-          <TabsContent value="oneliner" className="grid grid-cols-1 gap-5 text-base">
-            <PanelText>
-              Installs to <InlineCode>~/.agents/skills/agent-huddle/</InlineCode> and links it into your Claude Code
-              skills folder and, if <InlineCode>~/.gemini</InlineCode> exists, the Antigravity and Gemini CLI one.
-              Running it again changes nothing.
-            </PanelText>
-            <CodeBlock title="Terminal" copy={INSTALL_COMMAND} copyLabel="Copy one-line install command" wrap>
+        <div className="rounded-2xl border bg-card p-4 shadow-xs sm:p-6">
+          <TabsContent value="skills" className="grid grid-cols-1 gap-4">
+            <CodeBlock title="Terminal" copy={SKILLS_COMMAND} copyLabel="Copy skills CLI install command" wrap>
               <Prompt />
-              {INSTALL_COMMAND}
+              {SKILLS_COMMAND}
             </CodeBlock>
-            <p className="text-sm text-muted-foreground">
-              Prefer to read it first?{" "}
-              <a href="/install.sh" className="inline-flex items-center gap-0.5 font-medium text-foreground underline-offset-4 hover:underline">
-                View install.sh
+            {repoPublic ? (
+              <div className="flex min-w-0 items-center gap-1">
+                <p className="min-w-0 text-sm text-muted-foreground">
+                  Every agent, no prompts: <InlineCode><span className="wrap-anywhere">{SKILLS_ALL}</span></InlineCode>
+                </p>
+                <CopyButton text={SKILLS_ALL} label="Copy non-interactive install for every agent" />
+              </div>
+            ) : (
+              <Pending />
+            )}
+          </TabsContent>
+
+          <TabsContent value="plugin" className="grid grid-cols-1 gap-4">
+            <CodeBlock title="Claude Code" copy={PLUGIN} copyLabel="Copy Claude plugin commands" wrap>
+              {PLUGIN}
+            </CodeBlock>
+            {repoPublic ? <Note>Skills are namespaced, like /agent-huddle:huddle-start.</Note> : <Pending />}
+          </TabsContent>
+
+          <TabsContent value="gemini" className="grid grid-cols-1 gap-4">
+            <CodeBlock title="Terminal" copy={GEMINI} copyLabel="Copy Gemini CLI install command" wrap>
+              <Prompt />
+              {GEMINI}
+            </CodeBlock>
+            {repoPublic ? <Note>Installs all five skills for Gemini CLI.</Note> : <Pending />}
+          </TabsContent>
+
+          <TabsContent value="curl" className="grid grid-cols-1 gap-4">
+            <CodeBlock title="Terminal" copy={CURL_COMMAND} copyLabel="Copy curl install command" wrap>
+              <Prompt />
+              {CURL_COMMAND}
+            </CodeBlock>
+            <Note>
+              Safe to rerun.{" "}
+              <a
+                href="/install.sh"
+                className="inline-flex min-h-11 items-center gap-0.5 font-medium text-foreground underline-offset-4 hover:underline"
+              >
+                Read install.sh
                 <ArrowUpRightIcon className="size-3.5" aria-hidden />
               </a>
-            </p>
+            </Note>
           </TabsContent>
 
-          <TabsContent value="agent" className="grid grid-cols-1 gap-5 text-base">
-            <PanelText>Paste this into Claude Code, Codex, Antigravity CLI or any harness that can run shell commands.</PanelText>
-            <CodeBlock title="Prompt" copy={AGENT_PROMPT} copyLabel="Copy prompt for your agent" wrap>
-              {AGENT_PROMPT}
-            </CodeBlock>
-          </TabsContent>
-
-          <TabsContent value="zip" className="grid grid-cols-1 gap-5 text-base">
-            <PanelText>
-              Download the zip, then run the bundled installer. It uses the files next to it, so it works offline.
-            </PanelText>
-            <div>
-              <Button asChild className="h-11 gap-2 rounded-lg px-5">
-                <a href="/agent-huddle.zip" download>
-                  <DownloadIcon aria-hidden />
-                  Download agent-huddle.zip
-                </a>
-              </Button>
-            </div>
+          <TabsContent value="zip" className="grid grid-cols-1 gap-4">
             <CodeBlock title="Terminal" copy={ZIP_COMMAND} copyLabel="Copy zip install commands" wrap>
               <Prompt />
               {ZIP_COMMAND}
             </CodeBlock>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <Button asChild className="h-11 gap-2 rounded-lg px-5">
+                <a href="/agent-huddle.zip" download>
+                  <DownloadIcon aria-hidden />
+                  Download .zip
+                </a>
+              </Button>
+              <Note>Works offline with the bundled files.</Note>
+            </div>
           </TabsContent>
 
-          <TabsContent value="manual" className="grid grid-cols-1 gap-6 text-base">
-            <PanelText>
-              Download the three files into <InlineCode>~/.agents/skills/agent-huddle/</InlineCode> (the skill runs{" "}
-              <InlineCode>huddle.mjs</InlineCode> from there), then link that folder into the harnesses that read skills
-              elsewhere.
-            </PanelText>
-            <ol className="grid grid-cols-1 gap-7">
-              <ManualStep n={1} title="Everyone: Codex, Gemini CLI, opencode, Copilot CLI" path="~/.agents/skills/agent-huddle/">
-                <CodeBlock title="Terminal" copy={MANUAL_AGENTS} copyLabel="Copy commands for Codex, Gemini CLI, opencode and Copilot CLI">
-                  {MANUAL_AGENTS}
-                </CodeBlock>
-              </ManualStep>
-              <ManualStep n={2} title="Claude Code: link the folder" path="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/">
-                <CodeBlock title="After step 1" copy={MANUAL_CLAUDE} copyLabel="Copy commands for Claude Code">
-                  {MANUAL_CLAUDE}
-                </CodeBlock>
-              </ManualStep>
-              <ManualStep n={3} title="Antigravity CLI: link the folder" path="~/.gemini/skills/">
-                <CodeBlock title="After step 1" copy={MANUAL_AGY} copyLabel="Copy commands for Antigravity CLI">
-                  {MANUAL_AGY}
-                </CodeBlock>
-              </ManualStep>
-            </ol>
+          <TabsContent value="manual" className="grid grid-cols-1 gap-4">
+            <CodeBlock title="Terminal" copy={MANUAL} copyLabel="Copy manual install commands">
+              {MANUAL.split("\n").map((line, i) => (
+                <span key={i}>
+                  {line.startsWith("#") ? <Out>{line}</Out> : line}
+                  {"\n"}
+                </span>
+              ))}
+            </CodeBlock>
           </TabsContent>
 
-          <TabsContent value="files" className="grid grid-cols-1 gap-5 text-base">
-            <PanelText>Every file the skill is made of, served as plain text so you can read it in the browser.</PanelText>
-            <ul className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2">
-              {DOWNLOADS.map((file) => {
-                const zip = "download" in file;
-                const Icon = zip ? PackageIcon : FileIcon;
-                return (
-                  <li key={file.name} className="bg-card">
-                    <a
-                      href={file.href}
-                      download={zip || undefined}
-                      className="group flex min-h-14 items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
-                    >
-                      <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-mono text-sm font-medium">{file.name}</span>
-                        <span className="block text-xs text-muted-foreground">{file.description}</span>
-                      </span>
-                      <ArrowUpRightIcon
-                        className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
-                        aria-hidden
-                      />
-                    </a>
-                  </li>
-                );
-              })}
+          <TabsContent value="files">
+            <ul className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2 lg:grid-cols-3">
+              {DOWNLOADS.map((file) => (
+                <li key={file.href} className="bg-card">
+                  <a
+                    href={file.href}
+                    download={"download" in file || undefined}
+                    className="flex min-h-14 flex-col justify-center px-4 py-2.5 transition-colors hover:bg-muted/50"
+                  >
+                    <span className="truncate font-mono text-sm font-medium">{file.name}</span>
+                    <span className="text-xs text-muted-foreground">{file.description}</span>
+                  </a>
+                </li>
+              ))}
             </ul>
           </TabsContent>
         </div>
       </Tabs>
 
-      <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
-        <Card className="gap-3 bg-transparent px-1 py-6 shadow-none">
-          <CardHeader>
-            <CardTitle className="text-base font-medium">Requirements</CardTitle>
-            <CardDescription className="leading-relaxed">
-              Node.js 20 or newer, and <InlineCode>curl</InlineCode>. Nothing else to install: the server is a single
-              file with no dependencies.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-        <Card className="gap-4 bg-transparent px-1 py-6 shadow-none">
-          <CardHeader>
-            <CardTitle className="text-base font-medium">Codex network setting</CardTitle>
-            <CardDescription className="leading-relaxed">
-              Codex&apos;s default sandbox blocks connections to localhost. Add this to{" "}
-              <InlineCode>~/.codex/config.toml</InlineCode>, or approve the network request when Codex asks.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CodeBlock title="~/.codex/config.toml" copy={CODEX_TOML} copyLabel="Copy Codex config lines">
-              {CODEX_TOML}
-            </CodeBlock>
-          </CardContent>
-        </Card>
-      </div>
+      <ul className="mt-5 flex flex-col gap-3 text-sm text-muted-foreground lg:flex-row lg:items-center lg:gap-6">
+        <li>
+          <span className="font-medium text-foreground">Node 20+</span>
+        </li>
+        <li className="flex min-w-0 items-center gap-1">
+          <span className="min-w-0">
+            <span className="font-medium text-foreground">Codex:</span> add{" "}
+            <InlineCode>
+              <span className="wrap-anywhere">[sandbox_workspace_write] network_access = true</span>
+            </InlineCode>{" "}
+            to <InlineCode>~/.codex/config.toml</InlineCode>
+          </span>
+          <CopyButton text={CODEX_TOML} label="Copy Codex config lines" />
+        </li>
+        <li>
+          <span className="font-medium text-foreground">Stuck?</span> <InlineCode>huddle.mjs doctor</InlineCode>
+        </li>
+      </ul>
     </Section>
   );
 }

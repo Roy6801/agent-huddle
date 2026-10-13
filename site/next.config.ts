@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const cache = { key: "Cache-Control", value: "public, max-age=300" };
-const plainText = ["install.sh", "SKILL.md", "README.md", "LICENSE", "page.html"];
+const plainText = { key: "Content-Type", value: "text/plain; charset=utf-8" };
+const PLAIN_TEXT = ["/install.sh", "/README.md", "/LICENSE", "/skills/:name/SKILL.md", "/skills/agent-huddle/page.html"];
 
 const nextConfig: NextConfig = {
   cacheComponents: true,
@@ -16,12 +17,9 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
-      ...plainText.map((file) => ({
-        source: `/${file}`,
-        headers: [{ key: "Content-Type", value: "text/plain; charset=utf-8" }, cache],
-      })),
+      ...PLAIN_TEXT.map((source) => ({ source, headers: [plainText, cache] })),
       {
-        source: "/huddle.mjs",
+        source: "/skills/agent-huddle/huddle.mjs",
         headers: [{ key: "Content-Type", value: "text/javascript; charset=utf-8" }, cache],
       },
       {

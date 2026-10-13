@@ -1,10 +1,12 @@
 import { LogoMark } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { REPO_URL, repoPublic } from "@/lib/site";
 
 const NAV = [
   { href: "#how", label: "How it works", always: false },
-  { href: "#inside", label: "What's inside", always: false },
+  { href: "#run", label: "Run", always: false },
   { href: "#install", label: "Install", always: true },
+  { href: "#support", label: "Harnesses", always: false },
   { href: "#faq", label: "FAQ", always: false },
 ];
 
@@ -32,6 +34,14 @@ export function SiteHeader() {
               </li>
             ))}
           </ul>
+          {repoPublic && (
+            <a
+              href={REPO_URL}
+              className="flex h-11 items-center rounded-lg px-3 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              GitHub
+            </a>
+          )}
           <ThemeToggle />
         </nav>
       </div>

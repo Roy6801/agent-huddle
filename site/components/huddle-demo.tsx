@@ -14,18 +14,24 @@ import {
 } from "lucide-react";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
+import { Jazzicon } from "@/components/jazzicon";
+import { PixelSprite } from "@/components/pixel-sprite";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  HARNESS_NAME,
   INITIAL_STEPS,
   ROUND_CAP,
   SCRIPT,
   applyStep,
+  harnessOf,
   speakerOf,
   stateAt,
+  type Attachment,
   type DemoState,
   type FeedItem,
   type Handle,
+  type Harness,
   type Member,
   type Task,
 } from "@/lib/demo-script";
@@ -128,8 +134,8 @@ export function HuddleDemo() {
       <p className="sr-only">
         In this demo, claude-1 asks codex-1 to draw the player sprite and agy-1 to lay out level 1, both tasks get
         claimed, claude-1 spawns claude-1.tester, a relayed note appears as claude-1 (for @you), codex-1 refuses to
-        delete files without your approval, the server pauses agents after 10 posts in a row, and your reply
-        approves the deletion and resumes the room.
+        delete files without your approval, then shares player.png as an attachment, the server pauses agents after
+        10 posts in a row, and your reply approves the deletion and resumes the room.
       </p>
 
       <div className="flex h-12 items-center gap-3 border-b bg-muted/30 pl-4 pr-1.5">
@@ -188,29 +194,63 @@ function Roster({ members, typing }: { members: Member[]; typing: Handle | null 
             )}
           >
             {m.child && <CornerDownRightIcon className="hidden size-3.5 text-muted-foreground lg:block" />}
-            <span className="relative flex size-2 shrink-0">
-              {m.present && typing === m.h && (
-                <span className="absolute inset-0 rounded-full bg-presence opacity-60 motion-safe:animate-ping" />
-              )}
-              <span
-                className={cn(
-                  "relative size-2 rounded-full transition-colors duration-500",
-                  m.present ? (m.h === "you" ? "bg-signal" : "bg-presence") : "border border-muted-foreground/50",
+            <span className="relative shrink-0">
+              <Jazzicon handle={m.h} size={22} />
+              <span className="absolute -bottom-0.5 -right-0.5 flex size-2.5">
+                {m.present && typing === m.h && (
+                  <span className="absolute inset-0 rounded-full bg-presence opacity-60 motion-safe:animate-ping" />
                 )}
-              />
+                <span
+                  className={cn(
+                    "relative size-2.5 rounded-full ring-2 ring-card transition-colors duration-500",
+                    m.present ? "bg-presence" : "bg-muted-foreground/40",
+                  )}
+                />
+              </span>
             </span>
             <span className="flex min-w-0 flex-col leading-tight">
               <span className={cn("font-mono text-xs font-medium", m.h === "you" && "text-signal")}>
                 {m.h === "you" ? "@you" : m.h}
               </span>
-              <span className="hidden text-[11px] text-muted-foreground lg:block">
-                {m.role}, {m.harness}
+              <span className="hidden items-center gap-1.5 text-[11px] text-muted-foreground lg:flex">
+                {m.role}
+                {m.harness !== "browser" && (
+                  <>
+                    <HarnessDot harness={m.harness} />
+                    {HARNESS_NAME[m.harness]}
+                  </>
+                )}
               </span>
             </span>
           </li>
         ))}
       </ul>
     </div>
+  );
+}
+
+const HARNESS_DOT: Record<Exclude<Harness, "browser">, string> = {
+  claude: "bg-harness-claude",
+  codex: "bg-harness-codex",
+  agy: "bg-harness-agy",
+};
+
+function HarnessDot({ harness }: { harness: Harness }) {
+  if (harness === "browser") return null;
+  return <span className={cn("size-1.5 shrink-0 rounded-full", HARNESS_DOT[harness])} />;
+}
+
+function FileChip({ file }: { file: Attachment }) {
+  return (
+    <span className="mt-1.5 inline-flex items-center gap-2.5 rounded-lg border bg-background/60 p-1 pr-3">
+      <span className="grid size-10 place-items-center rounded-md bg-muted">
+        <PixelSprite className="size-7" />
+      </span>
+      <span className="flex flex-col leading-tight">
+        <span className="font-mono text-xs font-medium">{file.name}</span>
+        <span className="text-[11px] text-muted-foreground">{file.size}</span>
+      </span>
+    </span>
   );
 }
 
@@ -275,22 +315,28 @@ function FeedLine({ item }: { item: FeedItem }) {
   }
 
   const you = item.kind === "you";
+  const handle: Handle = you ? "you" : item.h;
   return (
-    <li className={cn("py-1", you && "border-l-2 border-signal pl-3", enter)}>
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className={cn("font-mono text-xs font-semibold", you && "text-signal")}>
-          {you ? "@you" : item.h}
-          {!you && item.relay && <span className="font-normal text-muted-foreground"> (for @you)</span>}
-        </span>
-        {!you && item.relay && (
-          <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-normal text-muted-foreground">
-            relayed
-          </Badge>
-        )}
+    <li className={cn("flex items-start gap-2.5 py-1", you && "-ml-3 border-l-2 border-signal pl-2.5", enter)}>
+      <Jazzicon handle={handle} size={24} className="mt-0.5" />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className={cn("font-mono text-xs font-semibold", you && "text-signal")}>
+            {you ? "@you" : item.h}
+            {!you && item.relay && <span className="font-normal text-muted-foreground"> (for @you)</span>}
+          </span>
+          <HarnessDot harness={harnessOf(handle)} />
+          {!you && item.relay && (
+            <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-normal text-muted-foreground">
+              relayed
+            </Badge>
+          )}
+        </div>
+        <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85">
+          <RichText text={item.text} />
+        </p>
+        {!you && item.file && <FileChip file={item.file} />}
       </div>
-      <p className="mt-0.5 text-[13px] leading-relaxed text-foreground/85">
-        <RichText text={item.text} />
-      </p>
     </li>
   );
 }
@@ -388,12 +434,15 @@ function Board({ tasks, streak, held }: { tasks: Task[]; streak: number; held: b
                     <p className="text-[13px] font-medium leading-snug">
                       <span className="font-mono text-muted-foreground">#{task.id}</span> {task.title}
                     </p>
-                    <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
-                      {task.status === "done"
-                        ? `${task.owner}: ${task.note}`
-                        : task.status === "claimed"
-                          ? `claimed by ${task.owner}`
-                          : `for @${task.for}`}
+                    <p className="mt-1 flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+                      <Jazzicon handle={task.owner ?? task.for} size={14} />
+                      <span className="truncate">
+                        {task.status === "done"
+                          ? `${task.owner}: ${task.note}`
+                          : task.status === "claimed"
+                            ? `claimed by ${task.owner}`
+                            : `for @${task.for}`}
+                      </span>
                     </p>
                   </div>
                   <span className={cn("font-mono text-[10.5px]", status.className)}>{status.label}</span>
