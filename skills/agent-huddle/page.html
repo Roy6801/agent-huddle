@@ -211,6 +211,8 @@ button { cursor: pointer; }
 body.is-ended .field { background: var(--surface-2); box-shadow: none; border-color: var(--border); }
 body.is-ended .hint, body.is-ended .newtask { display: none; }
 body.is-ended .meter { opacity: .5; }
+body.is-ended .msg-files a, body.is-ended .flist a { pointer-events: none; }
+body.is-ended .fchip, body.is-ended .thumb, body.is-ended .flist { opacity: .6; }
 
 /* ---- tabs (narrow) ---- */
 .tabs { display: none; gap: 4px; padding: 6px 12px; background: var(--surface); border-bottom: 1px solid var(--border); }
@@ -324,6 +326,28 @@ code.chip {
 }
 .newpill:hover { background: var(--surface-2); }
 
+/* ---- files in messages ---- */
+.msg-files { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 2px; }
+.thumb {
+  display: block; max-width: 100%; border-radius: var(--radius); overflow: hidden;
+  border: 1px solid var(--border); background: var(--surface-2); line-height: 0;
+}
+.thumb:hover { border-color: var(--border-strong); }
+.thumb img { display: block; max-width: min(320px, 100%); max-height: 240px; width: auto; height: auto; }
+.fchip {
+  display: inline-flex; align-items: center; gap: 10px; max-width: 100%; min-height: 48px; padding: 7px 12px 7px 7px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+  color: var(--text); text-decoration: none;
+}
+a.fchip:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.fchip .fic { width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 7px; background: var(--surface-2); color: var(--muted); }
+.fchip .fname { display: block; min-width: 0; max-width: 260px; font-size: 13px; font-weight: 500; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fchip .fsize { display: block; font-size: 12px; line-height: 16px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fchip .ftext { min-width: 0; }
+.fchip .fdl { margin-left: 4px; color: var(--subtle); }
+a.fchip:hover .fdl { color: var(--text); }
+.fchip.gone { color: var(--muted); }
+
 /* ---- avatars ---- */
 .av { display: inline-grid; place-items: center; flex: none; border-radius: 50%; overflow: hidden; }
 .av svg.jz { display: block; width: 100%; height: 100%; }
@@ -350,7 +374,7 @@ code.chip {
 .err .x:hover { background: var(--surface); }
 .fieldwrap { position: relative; }
 .field {
-  display: flex; align-items: flex-end; gap: 8px; padding: 5px 5px 5px 14px;
+  display: flex; align-items: flex-end; gap: 4px; padding: 5px;
   border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface);
   box-shadow: var(--shadow-sm); transition: border-color .15s, box-shadow .15s;
 }
@@ -360,6 +384,39 @@ code.chip {
   border: 0; outline: 0; background: transparent; resize: none; line-height: 22px; overflow-y: auto;
 }
 #text::placeholder { color: var(--subtle); }
+.attach {
+  width: 40px; height: 40px; flex: none; display: grid; place-items: center;
+  border: 0; border-radius: 9px; background: transparent; color: var(--muted); transition: background-color .15s, color .15s;
+}
+.attach:hover { background: var(--surface-2); color: var(--text); }
+.attach:disabled { opacity: .35; cursor: default; background: transparent; }
+.attach .i { width: 18px; height: 18px; }
+
+.tray { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; padding: 0; list-style: none; }
+.att {
+  position: relative; display: inline-flex; align-items: center; gap: 8px; max-width: 100%; height: 40px; padding: 0 2px 0 4px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); overflow: hidden;
+}
+.att .prev { width: 30px; height: 30px; flex: none; border-radius: 6px; object-fit: cover; background: var(--surface-3); }
+.att .fic { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border-radius: 6px; background: var(--surface); color: var(--muted); }
+.att .aname { min-width: 0; max-width: 180px; font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.att .asize { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.att .ax { width: 32px; height: 32px; flex: none; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--muted); }
+.att .ax:hover { background: var(--surface-3); color: var(--text); }
+.att .bar { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: var(--accent); transition: width .15s; }
+.att.up .asize { color: var(--accent-text); }
+.att.done .bar { opacity: 0; transition: opacity .3s; }
+
+.drop {
+  position: absolute; inset: 8px; z-index: 20; display: grid; place-items: center; pointer-events: none;
+  border: 1.5px dashed var(--accent); border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--accent-soft) 88%, transparent);
+  color: var(--accent-text); font-weight: 500; animation: fade .12s ease-out both;
+}
+.drop .drop-in { display: grid; justify-items: center; gap: 8px; text-align: center; }
+.drop .drop-in .i { width: 24px; height: 24px; }
+.drop small { color: var(--muted); font-weight: 400; font-size: 12.5px; }
+@keyframes fade { from { opacity: 0; } }
 .send {
   width: 40px; height: 40px; flex: none; display: grid; place-items: center;
   border: 0; border-radius: 9px; background: var(--accent); color: var(--on-accent); transition: background-color .15s, opacity .15s;
@@ -436,6 +493,18 @@ code.chip {
 .task.done .task-top, .task.done .task-meta, .task.done .task-note { opacity: .6; }
 .task.done .ttl { text-decoration: line-through; text-decoration-color: var(--subtle); }
 
+.flist { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 2px; }
+.flist a {
+  display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 8px; margin: 0 -8px;
+  border-radius: 8px; color: var(--text); text-decoration: none;
+}
+.flist a:hover { background: var(--surface-2); }
+.flist .fic { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 7px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); }
+.flist .ftext { min-width: 0; display: grid; }
+.flist .fname { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.flist .fmeta { display: flex; gap: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.flist .fmeta .mono { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; }
+
 .newtask { width: 100%; margin-top: 12px; border-style: dashed; color: var(--muted); }
 .newtask:hover { color: var(--text); }
 .taskform {
@@ -461,11 +530,13 @@ code.chip {
   body[data-tab="chat"] .side { display: none; }
   body:not([data-tab="chat"]) .chat { display: none; }
   body[data-tab="roster"] #tasks-sec { display: none; }
-  body[data-tab="tasks"] #roster-sec { display: none; }
+  body[data-tab="tasks"] #roster-sec, body[data-tab="tasks"] #files-sec { display: none; }
   .side section + section { border-top: 0; }
   .col { padding: 0 16px; }
   .top { padding: 10px 16px; gap: 8px; }
   .tools { flex: 1 1 100%; }
+  .att .aname { max-width: 120px; }
+  .fchip .fname { max-width: 180px; }
   .tools .copy-btn { margin-left: auto; }
   .conn.live .ctext { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .composer { padding-bottom: 12px; }
@@ -504,6 +575,13 @@ code.chip {
   <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></symbol>
   <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
   <symbol id="i-ended" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><rect x="9" y="9" width="6" height="6" rx="1"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></symbol>
+  <symbol id="i-file-text" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></symbol>
+  <symbol id="i-file-code" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m10 13-2 2 2 2"/><path d="m14 17 2-2-2-2"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 8v4.5"/><path d="M12 16h.01"/></symbol>
 </svg>
 
@@ -554,25 +632,29 @@ code.chip {
           <div id="feed" role="log" aria-live="polite" aria-label="Messages" tabindex="0"></div>
         </div>
       </div>
+      <div class="drop" id="drop" hidden><div class="drop-in"><svg class="i" aria-hidden="true"><use href="#i-clip"/></svg>Drop files to attach<small>They upload now and send with your next message.</small></div></div>
       <button class="newpill" id="pill" type="button" hidden><svg class="i i-sm" aria-hidden="true"><use href="#i-down"/></svg><span id="pill-text">New messages</span></button>
     </div>
     <form class="composer" id="composer" autocomplete="off">
       <div class="col">
         <div class="err" id="posterr" role="alert" hidden></div>
+        <ul class="tray" id="tray" aria-label="Attached files" hidden></ul>
         <div class="fieldwrap">
           <ul class="ac" id="ac" role="listbox" aria-label="Mention suggestions" hidden></ul>
           <div class="field">
+            <button class="attach" id="attach" type="button" aria-label="Attach files" title="Attach files"><svg class="i" aria-hidden="true"><use href="#i-clip"/></svg></button>
+            <input class="sr-only" id="picker" type="file" multiple tabindex="-1" aria-hidden="true">
             <label class="sr-only" for="text">Message</label>
             <textarea id="text" rows="1" placeholder="Message the room. Type @ to mention." aria-autocomplete="list" aria-controls="ac" aria-describedby="hint"></textarea>
             <button class="send" id="send" type="submit" aria-label="Send" disabled><svg class="i" aria-hidden="true"><use href="#i-send"/></svg></button>
           </div>
         </div>
-        <div class="hint" id="hint">Enter to send · Shift+Enter for a new line · no mention = everyone</div>
+        <div class="hint" id="hint">Enter to send · Shift+Enter for a new line · no mention = everyone · drop or paste files to attach</div>
       </div>
     </form>
   </main>
 
-  <aside class="side" aria-label="Room and tasks">
+  <aside class="side" aria-label="Room, tasks and files">
     <section id="roster-sec" aria-labelledby="roster-h">
       <div class="sec-h"><h2 id="roster-h">Room</h2><span class="count" id="roster-count"></span></div>
       <div id="roster"></div>
@@ -591,6 +673,10 @@ code.chip {
           <button class="btn btn-solid" type="submit">Add task</button>
         </div>
       </form>
+    </section>
+    <section id="files-sec" aria-labelledby="files-h" hidden>
+      <div class="sec-h"><h2 id="files-h">Files</h2><span class="count" id="files-count"></span></div>
+      <ul class="flist" id="files"></ul>
     </section>
   </aside>
 </div>
@@ -775,6 +861,107 @@ code.chip {
     return frag;
   }
 
+  // ---- files: metadata comes from the server, so names only ever go through textContent
+  const INLINE = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+  const fileUrl = (id) => base + '/api/files/' + encodeURIComponent(id);
+  function fmtSize(n) {
+    n = Number(n) || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB';
+    return (n / 1048576).toFixed(1) + ' MB';
+  }
+  function fileIcon(type, name) {
+    const t = String(type || ''), ext = String(name || '').split('.').pop().toLowerCase();
+    if (t.startsWith('image/')) return 'image';
+    if (/zip|tar|gzip|compress|rar|7z/.test(t) || /^(zip|tar|gz|tgz|bz2|xz|7z|rar)$/.test(ext)) return 'archive';
+    if (/json|javascript|typescript|xml|html|css|x-sh|x-python/.test(t) ||
+      /^(js|mjs|cjs|ts|tsx|jsx|json|html|css|py|rb|go|rs|sh|sql|yml|yaml|toml|xml|svg|c|h|cpp|java|kt|swift)$/.test(ext)) return 'file-code';
+    if (t.startsWith('text/') || t === 'application/pdf' || /^(txt|md|csv|log|pdf)$/.test(ext)) return 'file-text';
+    return 'file';
+  }
+  function fileIconBox(f, cls) {
+    const b = el('span', cls || 'fic');
+    b.appendChild(icon(fileIcon(f.type, f.name)));
+    return b;
+  }
+  function fileChip(f) {
+    const a = el('a', 'fchip');
+    a.href = fileUrl(f.id);
+    a.setAttribute('download', f.name || 'file');
+    a.title = 'Download ' + (f.name || 'file');
+    a.appendChild(fileIconBox(f));
+    const t = el('span', 'ftext');
+    t.appendChild(el('span', 'fname', f.name || 'file'));
+    t.appendChild(el('span', 'fsize', fmtSize(f.size)));
+    a.appendChild(t);
+    a.appendChild(icon('download', 'fdl i-sm'));
+    return a;
+  }
+  function goneChip(f) {
+    const d = el('span', 'fchip gone');
+    d.appendChild(fileIconBox(f));
+    const t = el('span', 'ftext');
+    t.appendChild(el('span', 'fname', f.name || 'file'));
+    t.appendChild(el('span', 'fsize', 'No longer available'));
+    d.appendChild(t);
+    return d;
+  }
+  function thumb(f) {
+    const a = el('a', 'thumb');
+    a.href = fileUrl(f.id);
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.title = (f.name || 'image') + ' (' + fmtSize(f.size) + ')';
+    const img = el('img');
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.alt = f.name || 'image';
+    img.src = fileUrl(f.id);
+    // Images grow the feed after it scrolled; keep the reader pinned if they were at the bottom.
+    img.addEventListener('load', () => {
+      if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < img.offsetHeight + 48) scrollBottom();
+    });
+    img.addEventListener('error', () => a.replaceWith(goneChip(f)));
+    a.appendChild(img);
+    return a;
+  }
+  function renderFiles(files) {
+    const box = el('div', 'msg-files');
+    files.forEach((f) => box.appendChild(INLINE.has(f.type) ? thumb(f) : fileChip(f)));
+    return box;
+  }
+
+  const shared = new Map();
+  function noteFiles(m) {
+    (m.files || []).forEach((f) => { if (!shared.has(f.id)) shared.set(f.id, { ...f, from: m.from, at: m.at }); });
+  }
+  let filesSig = 0;
+  function renderSharedFiles() {
+    if (shared.size === filesSig) return;
+    filesSig = shared.size;
+    const box = $('files');
+    box.textContent = '';
+    $('files-sec').hidden = shared.size === 0;
+    $('files-count').textContent = shared.size ? String(shared.size) : '';
+    [...shared.values()].reverse().forEach((f) => {
+      const li = el('li');
+      const a = el('a');
+      a.href = fileUrl(f.id);
+      if (INLINE.has(f.type)) { a.target = '_blank'; a.rel = 'noopener'; } else a.setAttribute('download', f.name || 'file');
+      a.appendChild(fileIconBox(f));
+      const t = el('span', 'ftext');
+      t.appendChild(el('span', 'fname', f.name || 'file'));
+      const meta = el('span', 'fmeta');
+      meta.appendChild(el('span', null, fmtSize(f.size)));
+      meta.appendChild(el('span', 'mono', f.from === 'you' ? 'You' : f.from));
+      t.appendChild(meta);
+      a.appendChild(t);
+      a.title = (f.name || 'file') + ', shared by ' + (f.from === 'you' ? 'you' : f.from) + ' at ' + fmtTime(f.at);
+      li.appendChild(a);
+      box.appendChild(li);
+    });
+  }
+
   // ---- feed
   const SYS_TYPES = [
     [/^(\S+) rejoined\b/, 'join'],
@@ -850,9 +1037,12 @@ code.chip {
       meta.appendChild(timeEl(m.at));
       main.appendChild(meta);
     }
-    const body = el('div', 'body');
-    body.appendChild(renderText(m.text || ''));
-    main.appendChild(body);
+    if (m.text) {
+      const body = el('div', 'body');
+      body.appendChild(renderText(m.text));
+      main.appendChild(body);
+    }
+    if (m.files && m.files.length) main.appendChild(renderFiles(m.files));
     d.appendChild(gut);
     d.appendChild(main);
     return d;
@@ -877,6 +1067,7 @@ code.chip {
       const key = m.from + (m.for === 'you' && m.from !== 'you' ? '|relay' : '');
       const cont = key === lastKey && ts >= lastAt && ts - lastAt <= 180000;
       node = renderChat(m, cont);
+      noteFiles(m);
       lastKey = key; lastAt = ts;
     }
     if (animate) node.classList.add('enter');
@@ -1085,6 +1276,9 @@ code.chip {
     closeAc();
     text.disabled = true;
     text.placeholder = 'This huddle has ended.';
+    $('attach').disabled = true;
+    $('drop').hidden = true;
+    clearAtts();
     $('posterr').hidden = true;
     syncSend();
     $('copy').disabled = true;
@@ -1119,6 +1313,7 @@ code.chip {
         addMessages(s.messages || []);
         renderRoster();
         renderTasks();
+        renderSharedFiles();
         loaded = true;
         updateInvite();
       }
@@ -1185,7 +1380,7 @@ code.chip {
     text.style.height = Math.min(text.scrollHeight, MAX_TEXT_H) + 'px';
   }
   let sending = false;
-  const syncSend = () => { sendBtn.disabled = ended || sending || !text.value.trim(); };
+  const syncSend = () => { sendBtn.disabled = ended || sending || (!text.value.trim() && !atts.length); };
 
   let acItems = [], acIndex = 0, acRange = null;
   function candidates() {
@@ -1261,6 +1456,164 @@ code.chip {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('composer').requestSubmit(); }
   });
 
+  // ---- attachments: each file uploads as soon as it is attached; sending waits for all of them
+  const MAX_ATTACH = 10;
+  const tray = $('tray'), picker = $('picker');
+  let atts = [];
+  function renderTray() {
+    tray.hidden = atts.length === 0;
+    syncSend();
+  }
+  function attNode(att) {
+    const li = el('li', 'att up');
+    if (att.preview) {
+      const img = el('img', 'prev');
+      img.src = att.preview;
+      img.alt = '';
+      li.appendChild(img);
+    } else {
+      li.appendChild(fileIconBox({ type: att.file.type, name: att.name }));
+    }
+    li.appendChild(el('span', 'aname', att.name));
+    att.sizeEl = el('span', 'asize', 'Uploading');
+    li.appendChild(att.sizeEl);
+    const x = el('button', 'ax');
+    x.type = 'button';
+    x.setAttribute('aria-label', 'Remove ' + att.name);
+    x.appendChild(icon('x', 'i-sm'));
+    x.addEventListener('click', () => { removeAtt(att); text.focus(); });
+    li.appendChild(x);
+    att.bar = el('span', 'bar');
+    li.appendChild(att.bar);
+    li.title = att.name + ' (' + fmtSize(att.file.size) + ')';
+    return li;
+  }
+  function dropAtt(att) {
+    atts = atts.filter((a) => a !== att);
+    if (att.preview) URL.revokeObjectURL(att.preview);
+    att.node.remove();
+    renderTray();
+  }
+  function removeAtt(att) {
+    att.removed = true;
+    if (att.xhr && att.state === 'uploading') att.xhr.abort();
+    dropAtt(att);
+  }
+  function clearAtts() { atts.slice().forEach(removeAtt); }
+
+  function uploadError(att, status, data) {
+    if (status === 413) {
+      const limit = data && data.limit ? fmtSize(data.limit) : '';
+      return data && /full/.test(data.error || '')
+        ? 'This huddle has no room left for ' + att.name + (limit ? ' (' + limit + ' in total).' : '.')
+        : att.name + ' is larger than the ' + (limit || 'upload') + ' limit.';
+    }
+    if (status === 401 || status === 404) return 'This link is wrong or the session is gone.';
+    return 'Could not upload ' + att.name + ': ' + ((data && data.error) || 'HTTP ' + status) + '.';
+  }
+  function upload(att) {
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      att.xhr = xhr;
+      const fail = (msg) => {
+        att.state = 'error';
+        if (!att.removed) { dropAtt(att); showErr($('posterr'), msg, null, '', true); }
+        resolve();
+      };
+      xhr.upload.addEventListener('progress', (e) => {
+        if (!e.lengthComputable) return;
+        const pct = Math.round((e.loaded / e.total) * 100);
+        att.bar.style.width = pct + '%';
+        att.sizeEl.textContent = pct + '%';
+      });
+      xhr.addEventListener('load', () => {
+        let data = null;
+        try { data = JSON.parse(xhr.responseText); } catch (e) { /* no body */ }
+        if (xhr.status === 201 && data && data.id) {
+          att.state = 'done';
+          att.id = data.id;
+          att.node.className = 'att done';
+          att.bar.style.width = '100%';
+          att.sizeEl.textContent = fmtSize(data.size);
+          return resolve();
+        }
+        if (xhr.status === 410) { att.state = 'error'; endHuddle(); return resolve(); }
+        fail(uploadError(att, xhr.status, data));
+      });
+      xhr.addEventListener('error', () => fail('Could not reach the server to upload ' + att.name + '.'));
+      xhr.addEventListener('abort', () => { att.state = 'error'; resolve(); });
+      xhr.open('POST', base + '/api/files?name=' + encodeURIComponent(att.name));
+      xhr.setRequestHeader('content-type', att.file.type || 'application/octet-stream');
+      xhr.send(att.file);
+    });
+  }
+  // Clipboard screenshots arrive as image.png; give them a name that says where they came from.
+  function nameFor(file, pasted) {
+    if (!pasted || !file.type.startsWith('image/') || (file.name && !/^image\.\w+$/i.test(file.name))) return file.name || 'file';
+    const d = new Date(), p = (n) => String(n).padStart(2, '0');
+    const ext = (file.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/[^a-z0-9]/g, '');
+    return 'pasted-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '.' + ext;
+  }
+  function addFiles(list, pasted) {
+    if (ended) return;
+    const files = [...list];
+    if (!files.length) return;
+    const room = MAX_ATTACH - atts.length;
+    if (files.length > room) {
+      showErr($('posterr'), 'Attach up to ' + MAX_ATTACH + ' files per message.', null, '', true);
+      files.splice(Math.max(0, room));
+      if (!files.length) return;
+    }
+    files.forEach((file) => {
+      const att = { file, name: nameFor(file, pasted), state: 'uploading' };
+      if (INLINE.has(file.type)) att.preview = URL.createObjectURL(file);
+      att.node = attNode(att);
+      tray.appendChild(att.node);
+      atts.push(att);
+      att.promise = upload(att);
+    });
+    renderTray();
+    $('announce').textContent = files.length === 1 ? 'Attached ' + atts[atts.length - 1].name : 'Attached ' + files.length + ' files';
+  }
+
+  $('attach').addEventListener('click', () => picker.click());
+  picker.addEventListener('change', () => { addFiles(picker.files, false); picker.value = ''; text.focus(); });
+  text.addEventListener('paste', (e) => {
+    const cd = e.clipboardData;
+    if (!cd || !cd.files || !cd.files.length || cd.getData('text/plain')) return;
+    e.preventDefault();
+    addFiles(cd.files, true);
+  });
+
+  const chat = document.querySelector('.chat'), drop = $('drop');
+  const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+  let dragDepth = 0;
+  chat.addEventListener('dragenter', (e) => {
+    if (!hasFiles(e) || ended) return;
+    e.preventDefault();
+    dragDepth++;
+    drop.hidden = false;
+  });
+  chat.addEventListener('dragover', (e) => {
+    if (!hasFiles(e) || ended) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  chat.addEventListener('dragleave', () => {
+    if (dragDepth && --dragDepth === 0) drop.hidden = true;
+  });
+  chat.addEventListener('drop', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth = 0;
+    drop.hidden = true;
+    addFiles(e.dataTransfer.files, false);
+    text.focus();
+  });
+  // A file dropped anywhere else must not navigate away from the room.
+  window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener('drop', (e) => { if (hasFiles(e)) e.preventDefault(); });
+
   async function postJson(path, body) {
     const r = await fetch(base + path, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
@@ -1300,15 +1653,21 @@ code.chip {
   $('composer').addEventListener('submit', async (e) => {
     e.preventDefault();
     const v = text.value.trim();
-    if (!v || sending || ended) return;
+    if ((!v && !atts.length) || sending || ended) return;
     const err = $('posterr');
     sending = true; syncSend();
     try {
-      const { r, data } = await postJson('/api/post', { text: v });
+      await Promise.all(atts.map((a) => a.promise));
+      const sent = atts.filter((a) => a.state === 'done');
+      if (ended || (!v && !sent.length)) return;
+      const body = { text: v };
+      if (sent.length) body.files = sent.map((a) => a.id);
+      const { r, data } = await postJson('/api/post', body);
       if (r.status === 410) {
         endHuddle();
       } else if (r.ok) {
         text.value = '';
+        sent.forEach(dropAtt);
         err.hidden = true;
         closeAc();
         grow();
