@@ -1,17 +1,14 @@
 #!/usr/bin/env node
-// Builds the static site into site/dist: the page, the downloadable skill files
-// and agent-huddle.zip. Zero dependencies; needs Node 22+ for zlib.crc32.
+// Copies the skill files from the repo root into site/public and writes
+// site/public/agent-huddle.zip. Zero dependencies; needs Node 22+ for zlib.crc32.
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
-const SITE = path.dirname(fileURLToPath(import.meta.url));
+const SITE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const ROOT = path.dirname(SITE);
-const DIST = path.join(SITE, 'dist');
-const SITE_URL = (process.env.SITE_URL || 'https://agent-huddle.vercel.app').replace(/\/+$/, '');
-const SKIP = new Set(['build.mjs', 'dist']);
-const TEXT = new Set(['.html', '.css', '.js', '.txt', '.xml', '.json', '.svg', '.webmanifest']);
+const PUBLIC = path.join(SITE, 'public');
 const FILES = [
   { name: 'install.sh', mode: 0o755 },
   { name: 'huddle.mjs', mode: 0o755 },
@@ -22,29 +19,8 @@ const FILES = [
 ];
 
 if (typeof zlib.crc32 !== 'function') {
-  console.error(`site/build.mjs needs Node 22 or newer (found ${process.version})`);
+  console.error(`prepare-downloads needs Node 22 or newer (found ${process.version})`);
   process.exit(1);
-}
-
-function copySite(from, to) {
-  const written = [];
-  for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
-    if (from === SITE && SKIP.has(entry.name)) continue;
-    if (entry.name.startsWith('.')) continue;
-    const src = path.join(from, entry.name);
-    const dest = path.join(to, entry.name);
-    if (entry.isDirectory()) {
-      fs.mkdirSync(dest, { recursive: true });
-      written.push(...copySite(src, dest));
-    } else if (TEXT.has(path.extname(entry.name))) {
-      fs.writeFileSync(dest, fs.readFileSync(src, 'utf8').replaceAll('__SITE_URL__', SITE_URL));
-      written.push(dest);
-    } else {
-      fs.copyFileSync(src, dest);
-      written.push(dest);
-    }
-  }
-  return written;
 }
 
 function dosDateTime(date) {
@@ -120,29 +96,23 @@ function makeZip(entries, when) {
   return Buffer.concat([...locals, ...centrals, end]);
 }
 
-fs.rmSync(DIST, { recursive: true, force: true });
-fs.mkdirSync(DIST, { recursive: true });
-
-const pages = copySite(SITE, DIST);
-const left = pages.filter((f) => TEXT.has(path.extname(f)) && fs.readFileSync(f, 'utf8').includes('__SITE_URL__'));
-if (left.length) throw new Error(`__SITE_URL__ left in ${left.join(', ')}`);
+fs.mkdirSync(PUBLIC, { recursive: true });
 
 const zipEntries = [{ name: 'agent-huddle/', mode: 0o755 }];
 for (const f of FILES) {
-  const src = path.join(ROOT, f.name);
-  const data = fs.readFileSync(src);
-  fs.writeFileSync(path.join(DIST, f.name), data);
-  fs.chmodSync(path.join(DIST, f.name), f.mode);
+  const data = fs.readFileSync(path.join(ROOT, f.name));
+  const dest = path.join(PUBLIC, f.name);
+  fs.writeFileSync(dest, data);
+  fs.chmodSync(dest, f.mode);
   zipEntries.push({ name: `agent-huddle/${f.name}`, mode: f.mode, data });
 }
 
 const epoch = Number(process.env.SOURCE_DATE_EPOCH);
 const zip = makeZip(zipEntries, Number.isFinite(epoch) && epoch > 0 ? new Date(epoch * 1000) : new Date());
-fs.writeFileSync(path.join(DIST, 'agent-huddle.zip'), zip);
+fs.writeFileSync(path.join(PUBLIC, 'agent-huddle.zip'), zip);
 
 const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
-console.log(`agent-huddle site built for ${SITE_URL}`);
-for (const f of [...pages.map((p) => path.relative(DIST, p)), ...FILES.map((f) => f.name), 'agent-huddle.zip']) {
-  console.log(`  ${f.padEnd(20)} ${kb(fs.statSync(path.join(DIST, f)).size).padStart(9)}`);
+console.log('agent-huddle downloads prepared');
+for (const name of [...FILES.map((f) => f.name), 'agent-huddle.zip']) {
+  console.log(`  ${name.padEnd(20)} ${kb(fs.statSync(path.join(PUBLIC, name)).size).padStart(9)}`);
 }
-console.log(`  -> ${path.relative(process.cwd(), DIST) || DIST}`);

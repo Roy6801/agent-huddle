@@ -67,8 +67,10 @@ node ~/.agents/skills/agent-huddle/huddle.mjs doctor
 ## Development
 
 ```bash
-node --test
-node site/build.mjs   # landing site into site/dist (deployed to Vercel)
+node --test               # server, CLI, installer and download tests
+pnpm --dir site install   # landing site (Next.js), deployed to Vercel
+pnpm --dir site dev       # http://localhost:3000
+pnpm --dir site build
 ```
 
 MIT licensed.

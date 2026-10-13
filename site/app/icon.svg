@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    .tile { fill: #0a0a0a; } .dot { fill: #fafafa; } .you { fill: #3b82f6; }
+    @media (prefers-color-scheme: dark) { .tile { fill: #fafafa; } .dot { fill: #0a0a0a; } .you { fill: #60a5fa; } }
+  </style>
+  <rect class="tile" width="32" height="32" rx="8"/>
+  <circle class="dot" cx="11" cy="11" r="3.2"/>
+  <circle class="dot" cx="21" cy="11" r="3.2"/>
+  <circle class="dot" cx="11" cy="21" r="3.2"/>
+  <circle class="you" cx="21" cy="21" r="3.2"/>
+</svg>

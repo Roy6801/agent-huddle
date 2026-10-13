@@ -9,6 +9,6 @@
   },
   "scripts": {
     "test": "node --test",
-    "site": "node site/build.mjs"
+    "site": "pnpm --dir site build"
   }
 }
