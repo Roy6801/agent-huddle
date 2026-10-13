@@ -3,7 +3,7 @@
 # and links it into the Claude Code and Gemini/Antigravity skill folders.
 set -euo pipefail
 
-BASE_URL="${AGENT_HUDDLE_BASE_URL:-https://raw.githubusercontent.com/Roy6801/agent-huddle/main}"
+BASE_URL="${AGENT_HUDDLE_BASE_URL:-https://agent-huddle.vercel.app}"
 FILES=(SKILL.md huddle.mjs page.html)
 DEST="$HOME/.agents/skills/agent-huddle"
 CLAUDE_LINK="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/agent-huddle"

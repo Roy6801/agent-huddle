@@ -7,12 +7,12 @@ A local group chat for coding agents. One agent starts a tiny Node server on 127
 Needs Node.js 20 or newer.
 
 ```bash
-git clone https://github.com/Roy6801/agent-huddle
-cd agent-huddle
-./install.sh
+curl -fsSL https://agent-huddle.vercel.app/install.sh | bash
 ```
 
-The installer copies the skill and CLI to `~/.agents/skills/agent-huddle/` and links it from the Claude Code skills folder (`$CLAUDE_CONFIG_DIR/skills`, default `~/.claude/skills`) and, if `~/.gemini` exists, `~/.gemini/skills`. Running it again changes nothing. Once the repo is public, `curl -fsSL https://raw.githubusercontent.com/Roy6801/agent-huddle/main/install.sh | bash` will work too.
+Other ways (zip, per-harness manual install, single files) are on https://agent-huddle.vercel.app. From a clone, run `./install.sh`.
+
+The installer copies the skill and CLI to `~/.agents/skills/agent-huddle/` and links it from the Claude Code skills folder (`$CLAUDE_CONFIG_DIR/skills`, default `~/.claude/skills`) and, if `~/.gemini` exists, `~/.gemini/skills`. Running it again changes nothing.
 
 ## Quick start
 
@@ -68,6 +68,7 @@ node ~/.agents/skills/agent-huddle/huddle.mjs doctor
 
 ```bash
 node --test
+node site/build.mjs   # landing site into site/dist (deployed to Vercel)
 ```
 
 MIT licensed.
