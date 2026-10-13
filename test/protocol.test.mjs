@@ -1,6 +1,6 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHuddle, clampWait } from '../huddle.mjs';
+import { createHuddle, clampWait } from '../skills/agent-huddle/huddle.mjs';
 
 const running = [];
 afterEach(async () => {
@@ -465,7 +465,7 @@ test('human page and state: online flag, since filter, page.html route', async (
 
   const page = await call('GET', r.created.page);
   const { existsSync } = await import('node:fs');
-  if (existsSync(new URL('../page.html', import.meta.url))) {
+  if (existsSync(new URL('../skills/agent-huddle/page.html', import.meta.url))) {
     assert.equal(page.status, 200);
     assert.match(page.headers.get('content-type'), /text\/html/);
   } else {

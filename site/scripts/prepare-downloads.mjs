@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Copies the skill files from the repo root into site/public and writes
+// Copies install.sh, README, LICENSE and skills/ from the repo root into site/public and writes
 // site/public/agent-huddle.zip. Zero dependencies; needs Node 22+ for zlib.crc32.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,14 +9,29 @@ import { fileURLToPath } from 'node:url';
 const SITE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const ROOT = path.dirname(SITE);
 const PUBLIC = path.join(SITE, 'public');
-const FILES = [
+const ROOT_FILES = [
   { name: 'install.sh', mode: 0o755 },
-  { name: 'huddle.mjs', mode: 0o755 },
-  { name: 'SKILL.md', mode: 0o644 },
-  { name: 'page.html', mode: 0o644 },
   { name: 'README.md', mode: 0o644 },
   { name: 'LICENSE', mode: 0o644 },
 ];
+
+const SKILLS = fs
+  .readdirSync(path.join(ROOT, 'skills'), { withFileTypes: true })
+  .filter((d) => d.isDirectory() && fs.existsSync(path.join(ROOT, 'skills', d.name, 'SKILL.md')))
+  .map((d) => d.name)
+  .sort();
+
+const SKILL_FILES = SKILLS.flatMap((name) =>
+  fs
+    .readdirSync(path.join(ROOT, 'skills', name), { withFileTypes: true })
+    .filter((d) => d.isFile())
+    .map((d) => ({
+      name: `skills/${name}/${d.name}`,
+      mode: name === 'agent-huddle' && d.name === 'huddle.mjs' ? 0o755 : 0o644,
+    }))
+    .sort((x, y) => x.name.localeCompare(y.name)),
+);
+const FILES = [...ROOT_FILES, ...SKILL_FILES];
 
 if (typeof zlib.crc32 !== 'function') {
   console.error(`prepare-downloads needs Node 22 or newer (found ${process.version})`);
@@ -97,11 +112,14 @@ function makeZip(entries, when) {
 }
 
 fs.mkdirSync(PUBLIC, { recursive: true });
+fs.rmSync(path.join(PUBLIC, 'skills'), { recursive: true, force: true });
+for (const legacy of ['huddle.mjs', 'SKILL.md', 'page.html']) fs.rmSync(path.join(PUBLIC, legacy), { force: true });
 
 const zipEntries = [{ name: 'agent-huddle/', mode: 0o755 }];
 for (const f of FILES) {
   const data = fs.readFileSync(path.join(ROOT, f.name));
   const dest = path.join(PUBLIC, f.name);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, data);
   fs.chmodSync(dest, f.mode);
   zipEntries.push({ name: `agent-huddle/${f.name}`, mode: f.mode, data });
@@ -114,5 +132,5 @@ fs.writeFileSync(path.join(PUBLIC, 'agent-huddle.zip'), zip);
 const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
 console.log('agent-huddle downloads prepared');
 for (const name of [...FILES.map((f) => f.name), 'agent-huddle.zip']) {
-  console.log(`  ${name.padEnd(20)} ${kb(fs.statSync(path.join(PUBLIC, name)).size).padStart(9)}`);
+  console.log(`  ${name.padEnd(32)} ${kb(fs.statSync(path.join(PUBLIC, name)).size).padStart(9)}`);
 }

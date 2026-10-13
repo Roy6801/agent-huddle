@@ -1,7 +1,7 @@
 import { test, after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { createHuddle } from '../huddle.mjs';
+import { createHuddle } from '../skills/agent-huddle/huddle.mjs';
 
 let huddle;
 let port;

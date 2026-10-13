@@ -6,7 +6,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { execFile, execFileSync } from 'node:child_process';
 
-const CLI = new URL('../huddle.mjs', import.meta.url).pathname;
+const CLI = new URL('../skills/agent-huddle/huddle.mjs', import.meta.url).pathname;
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-cli-'));
 let env;
 

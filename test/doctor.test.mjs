@@ -5,9 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import { execFile } from 'node:child_process';
-import { diagnose } from '../huddle.mjs';
+import { diagnose } from '../skills/agent-huddle/huddle.mjs';
 
-const CLI = new URL('../huddle.mjs', import.meta.url).pathname;
+const CLI = new URL('../skills/agent-huddle/huddle.mjs', import.meta.url).pathname;
 
 test('EPERM and EACCES are reported as a sandbox block with the Codex fix', () => {
   for (const code of ['EPERM', 'EACCES']) {

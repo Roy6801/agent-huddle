@@ -14,6 +14,7 @@ const MAX_MESSAGES = 2000;
 const MAX_TEXT = 8000;
 const MAX_TITLE = 200;
 const MAX_DEPTH = 3;
+const TOMBSTONE_MS = 10 * 60 * 1000;
 const ACTIVE_WINDOW_MS = 2 * 60 * 1000;
 const HUMAN_ONLINE_MS = 30 * 1000;
 const RESERVED_ROLES = new Set(['all', 'you', 'system']);
@@ -69,7 +70,7 @@ function cleanRole(value, required) {
 }
 
 export function createHuddle(opts = {}) {
-  const { idleMs = 900000, serverIdleMs = 1800000, roundCap = 10, onIdle } = opts;
+  const { idleMs = 900000, serverIdleMs = 1800000, roundCap = 10, onIdle, adminToken, tombstoneMs = TOMBSTONE_MS } = opts;
   const sessions = new Map();
   let lastRequest = Date.now();
   let idleFired = false;
@@ -126,6 +127,9 @@ export function createHuddle(opts = {}) {
     const s = {
       id: newToken(),
       title,
+      createdAt: new Date().toISOString(),
+      ended: false,
+      tombstone: null,
       humanToken: newToken(),
       agents: new Map(),
       byToken: new Map(),
@@ -138,6 +142,19 @@ export function createHuddle(opts = {}) {
     };
     sessions.set(s.id, s);
     return s;
+  }
+
+  function endSession(s) {
+    s.ended = true;
+    for (const agent of s.agents.values()) {
+      for (const w of agent.waiters) {
+        clearTimeout(w.timer);
+        sendJson(w.res, 410, { error: 'huddle ended' });
+      }
+      agent.waiters.clear();
+    }
+    s.tombstone = setTimeout(() => sessions.delete(s.id), tombstoneMs);
+    s.tombstone.unref();
   }
 
   function addAgent(s, handle, harness, role, parent) {
@@ -454,6 +471,44 @@ Rules:
 `;
   }
 
+  // ---- admin ----
+
+  function isAdmin(req) {
+    if (!adminToken) return false;
+    const digest = (v) => crypto.createHash('sha256').update(v).digest();
+    return crypto.timingSafeEqual(digest(req.headers.authorization ?? ''), digest(`Bearer ${adminToken}`));
+  }
+
+  const liveSessions = () => [...sessions.values()].filter((s) => !s.ended);
+
+  function adminView(s, base) {
+    const agents = [...s.agents.values()];
+    return {
+      id: s.id,
+      title: s.title,
+      createdAt: s.createdAt,
+      agents: { active: agents.filter((a) => agentStatus(a) === 'active').length, total: agents.length },
+      messages: s.messages.length,
+      join: `${base}/s/${s.id}`,
+      page: `${base}/s/${s.id}/h/${s.humanToken}`,
+    };
+  }
+
+  function adminRoute(req, res, method, parts, base) {
+    if (!isAdmin(req)) return sendJson(res, 401, { error: 'unauthorized' });
+    if (method === 'GET' && parts.length === 2 && parts[1] === 'sessions') {
+      const list = liveSessions().reverse().map((s) => adminView(s, base));
+      return sendJson(res, 200, { sessions: list });
+    }
+    if (method === 'POST' && parts.length === 4 && parts[1] === 'sessions' && parts[3] === 'end') {
+      const s = sessions.get(parts[2]);
+      if (!s || s.ended) return sendJson(res, 404, { error: 'unknown session' });
+      endSession(s);
+      return sendJson(res, 200, { id: s.id, title: s.title, ended: true });
+    }
+    return sendJson(res, 404, { error: 'not found' });
+  }
+
   // ---- routing ----
 
   async function handle(req, res) {
@@ -488,6 +543,7 @@ Rules:
         page: `${base}/s/${s.id}/h/${s.humanToken}`,
       });
     }
+    if (parts[0] === 'admin') return adminRoute(req, res, method, parts, base);
     if (parts[0] !== 's' || parts.length < 2) return notFound();
 
     const s = sessions.get(parts[1]);
@@ -496,10 +552,12 @@ Rules:
 
     if (rest.length === 0) {
       if (method !== 'GET') return notFound();
+      if (s.ended) return sendText(res, 410, 'This huddle has ended.');
       return sendText(res, 200, sessionProtocol(s, base));
     }
     if (rest[0] === 'join' && rest.length === 1) {
       if (method !== 'POST') return notFound();
+      if (s.ended) throw new HttpError(410, 'huddle ended');
       const body = await readBody(req);
       return sendJson(res, 200, joinAgent(s, body, base));
     }
@@ -544,6 +602,7 @@ Rules:
   }
 
   async function agentRoute(s, req, res, method, url, base, token, key) {
+    if (s.ended) throw new HttpError(410, 'huddle ended');
     const agent = s.byToken.get(token);
     if (!agent) return sendJson(res, 401, { error: 'unknown token' });
     const body = method === 'POST' ? await readBody(req) : {};
@@ -614,6 +673,7 @@ Rules:
 
   async function humanRoute(s, req, res, method, url, base, token, key) {
     if (token !== s.humanToken) return sendJson(res, 401, { error: 'unknown token' });
+    if (s.ended && !(method === 'GET' && key === '')) throw new HttpError(410, 'huddle ended');
     const body = method === 'POST' ? await readBody(req) : {};
     s.humanSeen = Date.now();
 
@@ -648,7 +708,7 @@ Rules:
   function sweep() {
     const now = Date.now();
     let waiting = false;
-    for (const s of sessions.values()) {
+    for (const s of liveSessions()) {
       for (const agent of s.agents.values()) {
         if (agent.waiters.size) waiting = true;
         else if (agent.status !== 'left' && now - agent.lastSeen > idleMs) leaveAgent(s, agent, 'idle');
@@ -677,6 +737,7 @@ Rules:
   function close() {
     clearInterval(timer);
     for (const s of sessions.values()) {
+      clearTimeout(s.tombstone);
       for (const agent of s.agents.values()) {
         for (const w of agent.waiters) {
           clearTimeout(w.timer);
@@ -732,12 +793,12 @@ export function diagnose(err) {
 function resolveHome() {
   const wanted = process.env.AGENT_HUDDLE_HOME || path.join(os.homedir(), '.agent-huddle');
   try {
-    fs.mkdirSync(wanted, { recursive: true });
+    fs.mkdirSync(wanted, { recursive: true, mode: 0o700 });
     fs.accessSync(wanted, fs.constants.W_OK);
     return wanted;
   } catch {
     const fallback = path.join(os.tmpdir(), 'agent-huddle');
-    fs.mkdirSync(fallback, { recursive: true });
+    fs.mkdirSync(fallback, { recursive: true, mode: 0o700 });
     return fallback;
   }
 }
@@ -766,6 +827,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function serve() {
   const num = (name, fallback) => (process.env[name] ? Number(process.env[name]) : fallback);
+  const adminToken = newToken();
   let huddle;
   let closing = false;
   const shutdown = async () => {
@@ -781,6 +843,7 @@ async function serve() {
     idleMs: num('AGENT_HUDDLE_IDLE_MS', 900000),
     serverIdleMs: num('AGENT_HUDDLE_SERVER_IDLE_MS', 1800000),
     roundCap: num('AGENT_HUDDLE_ROUND_CAP', 10),
+    adminToken,
     onIdle: shutdown,
   });
   let port;
@@ -793,10 +856,9 @@ async function serve() {
     port = await huddle.listen(0);
   }
   try {
-    fs.writeFileSync(
-      stateFile(),
-      JSON.stringify({ port, pid: process.pid, startedAt: new Date().toISOString(), version: VERSION }),
-    );
+    const info = { port, pid: process.pid, startedAt: new Date().toISOString(), version: VERSION, adminToken };
+    fs.writeFileSync(stateFile(), JSON.stringify(info), { mode: 0o600 });
+    fs.chmodSync(stateFile(), 0o600);
   } catch (err) {
     console.error(`could not write server.json: ${err.message}`);
   }
@@ -913,6 +975,115 @@ async function doctor() {
   process.exitCode = failed ? 1 : 0;
 }
 
+// ---- session management ----
+
+async function adminContext(required) {
+  const state = readState();
+  const running = state ? await health(state.port).then(() => true, () => false) : false;
+  if (!running) {
+    console[required ? 'error' : 'log']('No huddle server is running.');
+    process.exit(required ? 1 : 0);
+  }
+  if (!state.adminToken) throw new Error('the running server has no admin token; restart it with: node huddle.mjs down');
+  return { base: `http://127.0.0.1:${state.port}`, token: state.adminToken };
+}
+
+async function admin(ctx, method, route) {
+  const res = await fetch(`${ctx.base}/admin/${route}`, {
+    method,
+    headers: { authorization: `Bearer ${ctx.token}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `request failed (${res.status})`);
+  return data;
+}
+
+const id8 = (s) => s.id.slice(0, 8);
+
+function formatAge(iso) {
+  const sec = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 1000));
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h`;
+  return `${Math.floor(sec / 86400)}d`;
+}
+
+function formatTable(sessions) {
+  const rows = [['TITLE', 'ID', 'AGENTS', 'AGE', 'PAGE']].concat(
+    sessions.map((s) => [s.title, id8(s), `${s.agents.active}/${s.agents.total}`, formatAge(s.createdAt), s.page]),
+  );
+  const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => r[i].length)));
+  const line = (r) => r.map((cell, i) => cell.padEnd(widths[i])).join('  ').trimEnd();
+  const out = [line(rows[0])];
+  sessions.forEach((s, i) => out.push(line(rows[i + 1]), `    join: ${s.join}`));
+  return out.join('\n');
+}
+
+function resolveRoom(sessions, query) {
+  const q = query.toLowerCase();
+  const byId = sessions.filter((s) => s.id === query);
+  const byIdPrefix = query.length >= 4 ? sessions.filter((s) => s.id.startsWith(query)) : [];
+  const byTitle = sessions.filter((s) => s.title.toLowerCase() === q);
+  const byTitlePrefix = sessions.filter((s) => s.title.toLowerCase().startsWith(q));
+  const matches = [byId, byIdPrefix, byTitle, byTitlePrefix].find((m) => m.length) ?? [];
+  if (matches.length === 1) return matches[0];
+  if (matches.length === 0) throw new Error(`No live huddle matches "${query}".`);
+  const list = matches.map((s) => `  ${s.title} (${id8(s)})`).join('\n');
+  throw new Error(`"${query}" matches more than one huddle:\n${list}`);
+}
+
+async function listSessions(args) {
+  const ctx = await adminContext(false);
+  const { sessions } = await admin(ctx, 'GET', 'sessions');
+  if (args.includes('--json')) return console.log(JSON.stringify(sessions, null, 2));
+  if (!sessions.length) return console.log('No live huddles.');
+  console.log(formatTable(sessions));
+}
+
+function openBrowser(url) {
+  const [cmd, args] =
+    process.platform === 'darwin'
+      ? ['open', [url]]
+      : process.platform === 'win32'
+        ? ['cmd', ['/c', 'start', '""', url]]
+        : ['xdg-open', [url]];
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+    child.once('error', () => resolve(false));
+    child.once('spawn', () => {
+      child.unref();
+      resolve(true);
+    });
+  });
+}
+
+async function openRoom(args) {
+  const ctx = await adminContext(true);
+  const { sessions } = await admin(ctx, 'GET', 'sessions');
+  const query = args.filter((a) => a !== '--print').join(' ').trim();
+  if (!sessions.length) throw new Error('No live huddles.');
+  const room = query ? resolveRoom(sessions, query) : sessions[0];
+  console.log(room.page);
+  if (args.includes('--print')) return;
+  if (!(await openBrowser(room.page))) console.log(`Open this URL in your browser: ${room.page}`);
+}
+
+async function endRoom(args) {
+  const ctx = await adminContext(true);
+  const { sessions } = await admin(ctx, 'GET', 'sessions');
+  const query = args.filter((a) => a !== '--all').join(' ').trim();
+  if (!query && !args.includes('--all')) {
+    console.error('Usage: node huddle.mjs end <room> | --all');
+    process.exit(1);
+  }
+  const targets = args.includes('--all') ? sessions : [resolveRoom(sessions, query)];
+  if (!targets.length) return console.log('No live huddles.');
+  for (const s of targets) {
+    await admin(ctx, 'POST', `sessions/${s.id}/end`);
+    console.log(`Ended "${s.title}" (${id8(s)})`);
+  }
+}
+
 function usage() {
   console.log(`agent-huddle ${VERSION}
 
@@ -920,6 +1091,9 @@ Usage: node huddle.mjs <command>
 
   up             start the local server (or reuse the running one), print its URL
   new [title]    ensure the server is up, create a session, print join and page URLs
+  ls [--json]    list live huddles with their join and page URLs
+  open [room]    open a huddle's page in the browser (--print to only print the URL)
+  end <room>     end a huddle for everyone (--all ends every live huddle)
   down           stop the server
   doctor         check Node, the state directory and the server connection
   serve          run the server in the foreground (used by up)
@@ -935,6 +1109,12 @@ async function main(argv) {
       return console.log(await up());
     case 'new':
       return newSession(args);
+    case 'ls':
+      return listSessions(args);
+    case 'open':
+      return openRoom(args);
+    case 'end':
+      return endRoom(args);
     case 'down':
       return down();
     case 'doctor':

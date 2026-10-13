@@ -16,11 +16,20 @@ function tmp() {
   return mkdtempSync(join(tmpdir(), 'huddle-install-'));
 }
 
-// A source dir with install.sh, SKILL.md and huddle.mjs/page.html (real, or stubs).
+const VERBS = ['huddle-start', 'huddle-join', 'huddle-rooms', 'huddle-end'];
+const SKILLS = ['agent-huddle', ...VERBS];
+
+// A source dir with install.sh and skills/<name>/... (real files, or stubs).
 function makeSource() {
   const src = tmp();
-  for (const f of ['install.sh', 'SKILL.md', 'huddle.mjs', 'page.html']) {
+  const files = [
+    'install.sh',
+    ...['SKILL.md', 'huddle.mjs', 'page.html'].map((f) => join('skills', 'agent-huddle', f)),
+    ...VERBS.map((v) => join('skills', v, 'SKILL.md')),
+  ];
+  for (const f of files) {
     const from = join(root, f);
+    mkdirSync(dirname(join(src, f)), { recursive: true });
     if (existsSync(from)) copyFileSync(from, join(src, f));
     else writeFileSync(join(src, f), `stub ${f}\n`);
   }
@@ -34,27 +43,31 @@ function run(src, home, { path, env = {} } = {}) {
 }
 
 function snapshot(home, cfg) {
-  const links = [
-    join(cfg ?? join(home, '.claude'), 'skills', 'agent-huddle'),
-    join(home, '.gemini', 'skills', 'agent-huddle'),
-  ].map((p) => [p, existsSync(p) || lstatSync(p, { throwIfNoEntry: false }) ? readlinkSync(p) : null]);
-  const dest = join(home, '.agents', 'skills', 'agent-huddle');
-  return JSON.stringify({ links, files: readdirSync(dest).sort() });
+  const links = SKILLS.flatMap((n) => [
+    join(cfg ?? join(home, '.claude'), 'skills', n),
+    join(home, '.gemini', 'skills', n),
+  ]).map((p) => [p, lstatSync(p, { throwIfNoEntry: false }) ? readlinkSync(p) : null]);
+  const dirs = SKILLS.map((n) => [n, readdirSync(join(home, '.agents', 'skills', n)).sort()]);
+  return JSON.stringify({ links, dirs });
 }
 
-test('installs files and links for Claude Code and Gemini', () => {
+test('installs all five skills and links them for Claude Code and Gemini', () => {
   const src = makeSource();
   const home = tmp();
   mkdirSync(join(home, '.gemini'));
   const r = run(src, home);
   assert.equal(r.status, 0, r.stderr);
-  const dest = join(home, '.agents', 'skills', 'agent-huddle');
-  assert.deepEqual(readdirSync(dest).sort(), ['SKILL.md', 'huddle.mjs', 'page.html']);
-  assert.ok(lstatSync(dest).isDirectory() && !lstatSync(dest).isSymbolicLink());
-  assert.ok(statSync(join(dest, 'huddle.mjs')).mode & 0o100, 'huddle.mjs is executable');
-  assert.equal(readlinkSync(join(home, '.claude', 'skills', 'agent-huddle')), dest);
-  assert.equal(readlinkSync(join(home, '.gemini', 'skills', 'agent-huddle')), dest);
-  assert.match(r.stdout, /huddle\.mjs new "my huddle"/);
+  const base = join(home, '.agents', 'skills');
+  const core = join(base, 'agent-huddle');
+  assert.deepEqual(readdirSync(core).sort(), ['SKILL.md', 'huddle.mjs', 'page.html']);
+  assert.ok(lstatSync(core).isDirectory() && !lstatSync(core).isSymbolicLink());
+  assert.ok(statSync(join(core, 'huddle.mjs')).mode & 0o100, 'huddle.mjs is executable');
+  for (const v of VERBS) assert.deepEqual(readdirSync(join(base, v)), ['SKILL.md'], v);
+  for (const n of SKILLS) {
+    assert.equal(readlinkSync(join(home, '.claude', 'skills', n)), join(base, n), n);
+    assert.equal(readlinkSync(join(home, '.gemini', 'skills', n)), join(base, n), n);
+  }
+  assert.match(r.stdout, /\/huddle-start \(Claude Code\) or \$huddle-start \(Codex\)/);
   assert.match(r.stdout, /network_access = true/);
 });
 
@@ -64,9 +77,21 @@ test('honours CLAUDE_CONFIG_DIR', () => {
   const cfg = join(home, 'cfg');
   const r = run(src, home, { env: { CLAUDE_CONFIG_DIR: cfg } });
   assert.equal(r.status, 0, r.stderr);
-  const dest = join(home, '.agents', 'skills', 'agent-huddle');
-  assert.equal(readlinkSync(join(cfg, 'skills', 'agent-huddle')), dest);
+  for (const n of SKILLS) {
+    assert.equal(readlinkSync(join(cfg, 'skills', n)), join(home, '.agents', 'skills', n), n);
+  }
   assert.equal(existsSync(join(home, '.claude')), false);
+});
+
+test('links into Gemini and Antigravity CLI folders when they exist', () => {
+  const src = makeSource();
+  const home = tmp();
+  mkdirSync(join(home, '.gemini', 'antigravity-cli'), { recursive: true });
+  const r = run(src, home);
+  assert.equal(r.status, 0, r.stderr);
+  for (const n of SKILLS) {
+    assert.equal(readlinkSync(join(home, '.gemini', 'antigravity-cli', 'skills', n)), join(home, '.agents', 'skills', n), n);
+  }
 });
 
 test('skips the gemini link when ~/.gemini is absent', () => {
@@ -75,7 +100,8 @@ test('skips the gemini link when ~/.gemini is absent', () => {
   const r = run(src, home);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(existsSync(join(home, '.gemini')), false);
-  assert.match(r.stdout, /skipped/);
+  assert.match(r.stdout, /skipped .*\.gemini\/skills/);
+  assert.match(r.stdout, /skipped .*antigravity-cli\/skills/);
 });
 
 test('second run leaves identical state and reports links unchanged', () => {
@@ -87,21 +113,21 @@ test('second run leaves identical state and reports links unchanged', () => {
   const r = run(src, home);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(snapshot(home), before);
-  assert.equal((r.stdout.match(/unchanged/g) ?? []).length, 2);
+  assert.equal((r.stdout.match(/unchanged/g) ?? []).length, 10);
   assert.doesNotMatch(r.stdout, /linked /);
 });
 
 test('moves a real directory out of the way with a warning', () => {
   const src = makeSource();
   const home = tmp();
-  const existing = join(home, '.claude', 'skills', 'agent-huddle');
+  const existing = join(home, '.claude', 'skills', 'huddle-start');
   mkdirSync(existing, { recursive: true });
   writeFileSync(join(existing, 'old.txt'), 'old');
   const r = run(src, home);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stderr, /moved to .*\.bak-/);
-  assert.equal(readlinkSync(existing), join(home, '.agents', 'skills', 'agent-huddle'));
-  const backups = readdirSync(dirname(existing)).filter((n) => n.startsWith('agent-huddle.bak-'));
+  assert.equal(readlinkSync(existing), join(home, '.agents', 'skills', 'huddle-start'));
+  const backups = readdirSync(dirname(existing)).filter((n) => n.startsWith('huddle-start.bak-'));
   assert.equal(backups.length, 1);
 });
 
