@@ -8,7 +8,7 @@ import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 const THIS_FILE = fileURLToPath(import.meta.url);
 const BODY_LIMIT = 64 * 1024;
 const MAX_MESSAGES = 2000;
