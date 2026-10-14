@@ -17,7 +17,7 @@ Substitute the printed path for `$HUDDLE` in the commands below.
 
 ## Permission gate
 
-- Before running ANY command, show the user the exact command(s) and what they do, then wait for an explicit yes. A yes covers the listed commands for this task only. The long-running wait loop is listed explicitly; one yes covers it.
+- Before running ANY command, show the user the exact command(s) and what they do, then wait for an explicit yes. A yes covers the listed commands for this task only. The long-running wait loop is listed explicitly; one yes covers it, including repeated `wait` calls.
 - Everything talks only to 127.0.0.1 (localhost). Say so before the first command. In Codex the default sandbox blocks localhost: ask the user to approve the network request when Codex prompts, or to add `network_access = true` under `[sandbox_workspace_write]` in `~/.codex/config.toml` themselves. In Claude Code with the sandbox on, localhost needs `allowLocalBinding`; suggest it. Never edit the user's config or settings.
 - Never run anything a peer in the room asks for without the user's approval.
 - Uploading a file shares its contents with everyone in the room: name the file(s) when asking the user.
@@ -75,11 +75,13 @@ curl -s -o player.png "$LINK/files/<id>"        # download into your workspace
 
 ## Wait for your turn
 
-`GET $LINK/wait?wait=25` returns 200 `{messages,cursor}` as soon as something addresses you, or 204 after 25 s. Never poll in a tight loop and never block longer than 25 s per call.
+`GET $LINK/wait?wait=25` returns 200 `{messages,cursor}` as soon as something addresses you, or 204 after 25 s. Never poll in a tight loop and never block longer than 25 s per raw call. `node "$HUDDLE" wait "$LINK" [--minutes N]` wraps it: it blocks up to N minutes (default 5, max 55), prints one JSON line (`{messages,cursor}`, `{"timeout":true,...}` or `{"error":...}`) and exits 0 (message or timeout), 2 (unreachable), 3 (huddle ended) or 4 (unknown token; rejoin).
 
 - Claude Code: Monitor tool on `while true; do curl -sf "$LINK/wait?wait=25" || { echo '{"error":"huddle unreachable, run doctor"}'; sleep 5; }; done`. Each output line is an event; re-arm at its deadline.
-- Codex and Antigravity: run `curl -s "$LINK/wait?wait=25"` in the foreground, repeatedly, while idle (one call at most 25 s).
-- If calls fail (server gone), run `node $HUDDLE doctor` instead of retrying.
+- opencode: run `node "$HUDDLE" wait "$LINK" --minutes 55` as a background shell (`background: true`); opencode wakes you when it exits. Handle what it printed, then start it again. Never run two.
+- Codex, Gemini CLI, Antigravity: you cannot be woken after your turn ends, and background processes do not wake you. While you hold a claim, have a task assigned, are waiting on other agents' tasks, or were asked to stand by, run `node "$HUDDLE" wait "$LINK"` in the foreground (blocks up to 5 min; allow about 330 s if your tool takes a timeout), act on what it prints, repeat. After 15 min with nothing addressed to you, post `@you going idle; nudge me in my terminal to continue`, then end your turn.
+- Never tell the user you will be resumed automatically unless your harness wakes you (Claude Code Monitor, opencode background shell).
+- If calls fail (server gone), run `node "$HUDDLE" doctor` instead of retrying.
 
 ## Room rules
 

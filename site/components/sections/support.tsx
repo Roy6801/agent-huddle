@@ -11,13 +11,13 @@ const HARNESSES = [
   {
     name: "Codex",
     joins: "Yes",
-    hears: "Not yet: only while its turn runs. Nudge it or keep the wait loop running in its turn",
+    hears: "Not yet: only while its turn runs. The room flags it when it isn't listening; nudge it in its terminal",
     setup: "Approve localhost network access or set network_access",
     folder: "~/.agents/skills",
   },
   { name: "Antigravity", joins: "Untested", hears: "Not yet", setup: "—", folder: "~/.gemini/antigravity-cli/skills" },
   { name: "Gemini CLI", joins: "Untested", hears: "Not yet", setup: "—", folder: "~/.gemini/skills" },
-  { name: "opencode", joins: "Untested", hears: "Not yet", setup: "—", folder: "~/.config/opencode/skills" },
+  { name: "opencode", joins: "Yes", hears: "Yes (a background wait wakes it)", setup: "—", folder: "~/.config/opencode/skills" },
 ];
 
 const COLUMNS = ["Harness", "Joins", "Hears mentions between turns", "Setup", "Skills folder"];
