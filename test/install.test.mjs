@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   SKILLS, SKILL_FILES, applyDirs, applyPlan, applySaved, buildPlan, customRow, detect, expandPath, loadSaved, newAgentsLine,
-  nextSteps, pathError, planLines, saveTargets, sharedReaders, stageSkills, uninstallPlan,
+  nextSteps, pathError, pathHint, planLines, saveTargets, sharedReaders, stageSkills, uninstallPlan,
 } from '../src/install/core.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -425,6 +425,7 @@ test('buildPlan links, creates, keeps, replaces and backs up, and writes nothing
     `replace ~/.claude/skills/huddle-end (was → ${join(home, 'elsewhere')})`,
     'link 5 skills → ~/.claude-work/skills (create folder)',
     'unchanged ~/.agents/skills (same folder as the shared copy)',
+    'link agent-huddle → ~/.local/bin',
   ]);
   assert.equal(existsSync(shared), false);
   assert.ok(existsSync(join(skills, 'huddle-start', 'old.txt')));
@@ -470,8 +471,64 @@ test('applyPlan, saveTargets and uninstallPlan touch only our files', async () =
   assert.deepEqual(removal.sort(), [
     ...SKILLS.map((n) => join(home, '.claude', 'skills', n)),
     ...SKILLS.map((n) => join(home, '.agents', 'skills', n)),
+    join(home, '.local', 'bin', 'agent-huddle'),
     join(home, '.agent-huddle', 'install.json'),
   ].sort());
+});
+
+test('the agent-huddle command: link, unchanged, replace an older install, skip anything else, uninstall only ours', async () => {
+  const home = tmp();
+  const env = envFor(home);
+  const bin = join(home, '.local', 'bin', 'agent-huddle');
+  const dest = join(home, '.agents', 'skills', 'agent-huddle', 'huddle.mjs');
+  const staged = await stageSkills({ sourceDir: root });
+  const apply = () => {
+    const plan = buildPlan(detect(env), env);
+    applyPlan(plan, staged.dir);
+    return plan;
+  };
+  assert.equal(buildPlan(detect(env), env).command.kind, 'link');
+  assert.ok(planLines(buildPlan(detect(env), env), env).includes('link agent-huddle → ~/.local/bin'));
+  apply();
+  assert.equal(readlinkSync(bin), dest);
+  const again = buildPlan(detect(env), env);
+  assert.equal(again.command.kind, 'unchanged');
+  assert.ok(planLines(again, env).includes('unchanged ~/.local/bin/agent-huddle'));
+  assert.deepEqual(uninstallPlan(env).filter((p) => p === bin), [bin]);
+
+  rmSync(bin);
+  symlinkSync(join(home, 'old', 'huddle.mjs'), bin);
+  const old = buildPlan(detect(env), env);
+  assert.equal(old.command.kind, 'replace');
+  assert.ok(planLines(old, env).includes(`replace ~/.local/bin/agent-huddle (was → ${join(home, 'old', 'huddle.mjs')})`));
+  apply();
+  assert.equal(readlinkSync(bin), dest);
+
+  rmSync(bin);
+  writeFileSync(bin, 'mine');
+  const foreign = apply();
+  assert.equal(foreign.command.kind, 'skip');
+  assert.ok(planLines(foreign, env).includes('skip ~/.local/bin/agent-huddle (something else is there)'));
+  assert.equal(readFileSync(bin, 'utf8'), 'mine');
+  assert.equal(uninstallPlan(env).includes(bin), false);
+
+  rmSync(bin);
+  symlinkSync(join(home, 'elsewhere'), bin);
+  assert.equal(buildPlan(detect(env), env).command.kind, 'skip');
+  assert.equal(uninstallPlan(env).includes(bin), false);
+  rmSync(staged.dir, { recursive: true });
+});
+
+test('pathHint is empty when ~/.local/bin is on PATH, else names the line to add for the shell', () => {
+  const home = tmp();
+  const dir = join(home, '.local', 'bin');
+  assert.deepEqual(pathHint({ HOME: home, PATH: `/usr/bin:${dir}`, SHELL: '/bin/zsh' }), []);
+  const first = '~/.local/bin is not on your PATH, so agent-huddle won\'t run by name yet. Add it:';
+  const hint = (SHELL) => pathHint({ HOME: home, PATH: '/usr/bin', SHELL });
+  assert.deepEqual(hint('/bin/zsh'), [first, `  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc`]);
+  assert.deepEqual(hint('/usr/bin/bash'), [first, `  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc`]);
+  assert.deepEqual(hint('/usr/bin/fish'), [first, '  fish_add_path ~/.local/bin']);
+  assert.deepEqual(hint(undefined), [first, `  export PATH="$HOME/.local/bin:$PATH"   (add to your shell's startup file)`]);
 });
 
 // install.mjs and install.sh end to end
@@ -513,7 +570,13 @@ test('--yes first run installs the shared copy and links every detected agent in
   assert.match(r.stdout, /Codex: \$huddle-start/);
   assert.match(r.stdout, /\[sandbox_workspace_write\]\n\s+network_access = true/);
   assert.match(r.stdout, /opencode: ask "start a huddle"/);
-  assert.match(r.stdout, /No skill in some agent\? Paste the invite that \/huddle-start prints instead\.\n$/);
+  assert.match(r.stdout, /Anytime: agent-huddle doctor, agent-huddle upgrade, agent-huddle ls/);
+  assert.equal(readlinkSync(join(home, '.local', 'bin', 'agent-huddle')), join(core, 'huddle.mjs'));
+  assert.match(r.stdout, /link agent-huddle → ~\/\.local\/bin/);
+  assert.match(r.stdout, /! ~\/\.local\/bin is not on your PATH/);
+  const rerun = run(src, home, { args: ['--yes'], agents: ['codex', 'opencode'] });
+  assert.match(rerun.stdout, /unchanged ~\/\.local\/bin\/agent-huddle/);
+  assert.match(r.stdout, /No skill in some agent\? Copy the invite from the room page \(Add agent → In my terminal\), or run agent-huddle invite\.\n$/);
 
   const j = saved(home);
   assert.deepEqual(Object.keys(j), ['version', 'shared', 'targets', 'installedAt']);
@@ -550,7 +613,7 @@ test('Codex alone gets the shared copy with no links and no hints for missing ag
   assert.equal(r.status, 0, r.stderr);
   assert.ok(existsSync(join(home, '.agents', 'skills', 'agent-huddle', 'huddle.mjs')));
   assert.equal(existsSync(join(home, '.claude')), false);
-  assert.doesNotMatch(r.stdout, /Claude Code: |Codex: |link /);
+  assert.doesNotMatch(r.stdout, /Claude Code: |Codex: |link \d/);
   assert.deepEqual(targets(home), [`codex ${join(home, '.agents', 'skills')} false`]);
 });
 
@@ -612,7 +675,7 @@ test('without a terminal and without --yes it prints the plan and writes nothing
 
   const dry = run(src, home, { args: ['--dry-run', '--dir', 'other=~/x'] });
   assert.equal(dry.status, 0, dry.stderr);
-  assert.match(dry.stdout, /link 5 skills → ~\/x \(create folder\)\n\nDry run; nothing installed\./);
+  assert.match(dry.stdout, /link 5 skills → ~\/x \(create folder\)\n\s+link agent-huddle → ~\/\.local\/bin\n\nDry run; nothing installed\./);
   assert.deepEqual(readdirSync(home), ['.claude']);
 });
 

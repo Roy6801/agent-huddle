@@ -1639,7 +1639,8 @@ function knownAgent(agent) {
 function locations(env = process.env) {
   const home = env.HOME || os.homedir();
   const stateDir = env.AGENT_HUDDLE_HOME || path.join(home, ".agent-huddle");
-  return { home, shared: path.join(home, ".agents", "skills"), stateDir, saved: path.join(stateDir, "install.json") };
+  const bin = path.join(home, ".local", "bin", "agent-huddle");
+  return { home, shared: path.join(home, ".agents", "skills"), stateDir, saved: path.join(stateDir, "install.json"), bin };
 }
 function tilde(p, env = process.env) {
   const { home } = locations(env);
@@ -1963,7 +1964,7 @@ function readLink(p) {
   }
 }
 function buildPlan(rows, env = process.env, stamp = timestamp()) {
-  const { shared } = locations(env);
+  const { shared, bin } = locations(env);
   const actions = SKILLS.map((name) => ({ kind: "copy", target: shared, name, path: path.join(shared, name) }));
   const sharedKey = resolvePath(shared);
   for (const row of rows) {
@@ -1976,15 +1977,21 @@ function buildPlan(rows, env = process.env, stamp = timestamp()) {
     if (!isDir(target)) actions.push({ kind: "create", target });
     for (const name of SKILLS) {
       const link2 = path.join(target, name);
-      const dest = path.join(shared, name);
-      const was = readLink(link2);
-      if (was === dest) actions.push({ kind: "unchanged", target, name, link: link2, dest });
-      else if (was !== null) actions.push({ kind: "replace", target, name, link: link2, dest, was });
-      else if (lexists(link2)) actions.push({ kind: "backup", target, name, link: link2, dest, backup: `${link2}.bak-${stamp}` });
-      else actions.push({ kind: "link", target, name, link: link2, dest });
+      const dest2 = path.join(shared, name);
+      const was2 = readLink(link2);
+      if (was2 === dest2) actions.push({ kind: "unchanged", target, name, link: link2, dest: dest2 });
+      else if (was2 !== null) actions.push({ kind: "replace", target, name, link: link2, dest: dest2, was: was2 });
+      else if (lexists(link2)) actions.push({ kind: "backup", target, name, link: link2, dest: dest2, backup: `${link2}.bak-${stamp}` });
+      else actions.push({ kind: "link", target, name, link: link2, dest: dest2 });
     }
   }
-  return { stamp, shared, actions };
+  const dest = path.join(shared, "agent-huddle", "huddle.mjs");
+  const was = readLink(bin);
+  let kind = "link";
+  if (was === dest) kind = "unchanged";
+  else if (was !== null && path.basename(was) === "huddle.mjs") kind = "replace";
+  else if (lexists(bin)) kind = "skip";
+  return { stamp, shared, actions, command: { kind, link: bin, dest, was } };
 }
 function planLines(plan, env = process.env) {
   const groups = /* @__PURE__ */ new Map();
@@ -2020,6 +2027,12 @@ function planLines(plan, env = process.env) {
       if (a2.kind === "replace") lines.push(`replace ${tilde(a2.link, env)} (was \u2192 ${a2.was})`);
     }
   }
+  const cmd = plan.command;
+  const at = tilde(cmd.link, env);
+  if (cmd.kind === "link") lines.push(`link agent-huddle \u2192 ${tilde(path.dirname(cmd.link), env)}`);
+  if (cmd.kind === "unchanged") lines.push(`unchanged ${at}`);
+  if (cmd.kind === "replace") lines.push(`replace ${at} (was \u2192 ${cmd.was})`);
+  if (cmd.kind === "skip") lines.push(`skip ${at} (something else is there)`);
   return lines;
 }
 function link(dest, at) {
@@ -2042,6 +2055,8 @@ function applyPlan(plan, stagedDir) {
       link(a2.dest, a2.link);
     }
   }
+  const cmd = plan.command;
+  if (cmd.kind === "link" || cmd.kind === "replace") link(cmd.dest, cmd.link);
 }
 function saveTargets(rows, env = process.env, date = /* @__PURE__ */ new Date()) {
   const { stateDir, saved, shared } = locations(env);
@@ -2068,10 +2083,21 @@ function nextSteps(rows) {
   }
   const others = ["agy", "agy-app", "gemini", "opencode", "dsh", "other"].filter(reads).map(labelOf);
   if (others.length) lines.push(`${others.join(", ")}: ask "start a huddle"`);
+  lines.push("Anytime: agent-huddle doctor, agent-huddle upgrade, agent-huddle ls");
   return lines;
 }
+function pathHint(env = process.env) {
+  const dir = path.dirname(locations(env).bin);
+  if ((env.PATH ?? "").split(":").some((d) => d && path.resolve(d) === dir)) return [];
+  const shell = path.basename(env.SHELL ?? "");
+  const rcFile = { zsh: "~/.zshrc", bash: "~/.bashrc" }[shell];
+  let command = `  export PATH="$HOME/.local/bin:$PATH"   (add to your shell's startup file)`;
+  if (rcFile) command = `  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ${rcFile}`;
+  if (shell === "fish") command = "  fish_add_path ~/.local/bin";
+  return [`${tilde(dir, env)} is not on your PATH, so agent-huddle won't run by name yet. Add it:`, command];
+}
 function uninstallPlan(env = process.env) {
-  const { shared, saved } = locations(env);
+  const { shared, saved, bin } = locations(env);
   let targets = [];
   try {
     targets = loadSaved(env) ?? [];
@@ -2090,6 +2116,7 @@ function uninstallPlan(env = process.env) {
     const dir = path.join(shared, name);
     if (isDir(dir) && readLink(dir) === null) paths.push(dir);
   }
+  if (readLink(bin) === path.join(shared, "agent-huddle", "huddle.mjs")) paths.push(bin);
   if (fs.existsSync(saved)) paths.push(saved);
   return paths;
 }
@@ -2126,7 +2153,7 @@ async function download(url) {
 
 // src/install/cli.mjs
 var SCRIPT_DIR = path2.dirname(fileURLToPath(import.meta.url));
-var INVITE_LINE = "No skill in some agent? Paste the invite that /huddle-start prints instead.";
+var INVITE_LINE = "No skill in some agent? Copy the invite from the room page (Add agent \u2192 In my terminal), or run agent-huddle invite.";
 var WIDTH = Math.max(...AGENTS.map((a2) => a2.label.length));
 var USAGE = `Usage: install.sh [--yes] [--dir agent[=path]]... [--dry-run] [--uninstall] [--help]
        node install.mjs [same options]
@@ -2241,6 +2268,9 @@ async function runPlain(opts, env, agent) {
   if (next.length) console.log(`
 Next:
 ${next.map((l2) => `  ${l2}`).join("\n")}`);
+  const hint = pathHint(env);
+  if (hint.length) console.log(`
+! ${hint.join("\n  ")}`);
   console.log(`
 ${INVITE_LINE}`);
 }
@@ -2359,6 +2389,8 @@ async function runInteractive(env) {
   spin.stop(`Installed; saved targets to ${tilde(saved, env)}`);
   const next = nextSteps(rows);
   if (next.length) note(next.join("\n"), "Next");
+  const hint = pathHint(env);
+  if (hint.length) log.warn(hint.join("\n"));
   outro(INVITE_LINE);
 }
 async function runUninstall(opts, env, canPrompt) {

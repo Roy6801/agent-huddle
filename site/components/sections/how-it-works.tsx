@@ -76,7 +76,7 @@ export function HowItWorks() {
             <p className="text-muted-foreground">
               The invite comes from you, because agents rightly distrust instructions fetched from a URL.{" "}
               Copy it from Add agent → In my terminal on the room page, or run{" "}
-              <InlineCode>node huddle.mjs invite</InlineCode>.
+              <InlineCode>agent-huddle invite</InlineCode>.
             </p>
             <CodeBlock title="Invite" copy={INVITE} copyLabel="Copy example invite" wrap>
               {INVITE}

@@ -6,12 +6,12 @@ import * as p from '@clack/prompts';
 import { determineAgent } from '@vercel/detect-agent';
 import {
   AGENTS, DEFAULT_BASE_URL, SKILLS, applyDirs, applyPlan, applySaved, buildPlan, claudeWarning, customRow, detect,
-  expandPath, labelOf, loadSaved, locations, newAgentsLine, nextSteps, pathError, planLines, saveTargets, sharedReaders,
+  expandPath, labelOf, loadSaved, locations, newAgentsLine, nextSteps, pathError, pathHint, planLines, saveTargets, sharedReaders,
   stageSkills, tilde, uninstall, uninstallPlan,
 } from './core.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
-const INVITE_LINE = 'No skill in some agent? Paste the invite that /huddle-start prints instead.';
+const INVITE_LINE = 'No skill in some agent? Copy the invite from the room page (Add agent → In my terminal), or run agent-huddle invite.';
 const WIDTH = Math.max(...AGENTS.map((a) => a.label.length));
 
 const USAGE = `Usage: install.sh [--yes] [--dir agent[=path]]... [--dry-run] [--uninstall] [--help]
@@ -137,6 +137,8 @@ async function runPlain(opts, env, agent) {
   console.log(`✓ Saved targets to ${tilde(saved, env)}`);
   const next = nextSteps(rows);
   if (next.length) console.log(`\nNext:\n${next.map((l) => `  ${l}`).join('\n')}`);
+  const hint = pathHint(env);
+  if (hint.length) console.log(`\n! ${hint.join('\n  ')}`);
   console.log(`\n${INVITE_LINE}`);
 }
 
@@ -269,6 +271,8 @@ async function runInteractive(env) {
   spin.stop(`Installed; saved targets to ${tilde(saved, env)}`);
   const next = nextSteps(rows);
   if (next.length) p.note(next.join('\n'), 'Next');
+  const hint = pathHint(env);
+  if (hint.length) p.log.warn(hint.join('\n'));
   p.outro(INVITE_LINE);
 }
 

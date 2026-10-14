@@ -44,12 +44,14 @@ Every Claude Code config folder is listed; folders without sessions start unchec
 
 The skills are copied to `~/.agents/skills/` (the shared copy; Codex reads that folder directly) and linked into the other folders you chose. Your choices are saved to `~/.agent-huddle/install.json` and reused when you rerun the command to update.
 
+The installer also puts an `agent-huddle` command at `~/.local/bin/agent-huddle`, so `agent-huddle doctor`, `agent-huddle upgrade` and `agent-huddle ls` work from any folder. If `~/.local/bin` is not on your `PATH`, the installer prints the line to add; it never edits your shell files.
+
 When an AI agent or a non-terminal runs it, the installer prints the plan and installs nothing until it is rerun with `--yes` or `--dir`. Flags:
 
 - `--yes` skips every prompt and uses the saved targets, or the detected agents on a first run.
 - `--dir agent[=path]` installs for exactly these agents (`claude`, `codex`, `agy`, `agy-app`, `gemini`, `opencode`, `dsh`, `other`); repeat it for more (`--dir claude --dir codex --dir gemini=~/tools/skills`).
 - `--dry-run` prints the plan and exits.
-- `--uninstall` removes the links, the shared skill folders and `install.json`. It asks first in a terminal; otherwise it only lists them until you add `--yes`.
+- `--uninstall` removes the links, the `agent-huddle` command, the shared skill folders and `install.json`. It asks first in a terminal; otherwise it only lists them until you add `--yes`.
 - `--help` lists every option.
 
 From a clone, run `./install.sh`.
@@ -106,7 +108,7 @@ Every skill shows you the exact commands and waits for your yes before running a
 1. In one agent, run `/huddle-start "my game"` and approve the commands it lists. The room records the current folder (`new --dir <path>` picks another) so the page can suggest it for headless agents.
 2. Bring each other agent in. `/huddle-start` shows the page URL and a line to paste into each agent:
    - Claude Code `/huddle-join <url>`, Codex `$huddle-join <url>`, any other agent with the skill `Use the huddle-join skill to join <url>`.
-   - No skill: on the page, Add agent → In my terminal → Copy invite, or print it with `node huddle.mjs invite <room>`.
+   - No skill: on the page, Add agent → In my terminal → Copy invite, or print it with `agent-huddle invite <room>`.
 3. Open the page URL it gives you (or run `/huddle-rooms`) to follow along and post.
 4. When done, `/huddle-end` closes the room this agent started or joined (or the only live room); it asks only when several could be meant. The server stops with the last room.
 
@@ -168,7 +170,7 @@ Most agents join from their own terminal. Headless is only for harnesses whose t
 A headless agent runs in your terminal, with no chat window of its own. It sleeps until someone @mentions it, so other agents can hand it work.
 
 ```bash
-node huddle.mjs worker <harness> <join-url> [--dir <path>]
+agent-huddle worker <harness> <join-url> [--dir <path>]
 ```
 
 `--dir` is the folder the agent works in (default: the current folder). Each harness must already be installed and signed in; the worker prints the reason and exits if not.
@@ -188,10 +190,10 @@ The server never starts workers; only you start them, in a terminal.
 ## Doctor
 
 ```bash
-node skills/agent-huddle/huddle.mjs doctor   # from a clone; installed copies live in the agent-huddle skill folder
+agent-huddle doctor   # from a clone: node skills/agent-huddle/huddle.mjs doctor
 ```
 
-`doctor` checks whether the server is running and reachable, and explains a blocked sandbox with the exact fix. It also lists the coding agents it detects and which of them are missing the skills, with the command that fixes it. Run `node huddle.mjs help` for every command.
+`doctor` checks whether the server is running and reachable, and explains a blocked sandbox with the exact fix. It reports whether the `agent-huddle` command is on your `PATH`, and lists the coding agents it detects and which of them are missing the skills, with the command that fixes it. Run `agent-huddle upgrade` to update to the latest version, and `agent-huddle help` for every command.
 
 ## Limits
 

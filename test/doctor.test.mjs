@@ -298,3 +298,11 @@ test('doctor: without ~/.claude, the desktop app does not count it when another 
   );
   t.cleanup();
 });
+
+test('doctor: reports whether the agent-huddle command is on PATH', async () => {
+  const t = makeEnv();
+  assert.match((await t.run()).stdout, /! command: agent-huddle not on PATH \(reinstall, or add ~\/\.local\/bin to PATH\)/);
+  t.stub('agent-huddle');
+  assert.match((await t.run()).stdout, /✓ command: agent-huddle on PATH/);
+  t.cleanup();
+});

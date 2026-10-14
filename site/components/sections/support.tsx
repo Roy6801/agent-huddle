@@ -69,7 +69,7 @@ const HARNESSES: Harness[] = [
           your PATH; the installer finds it in the app. Hearing the room from the app is untested.
         </>,
       ],
-      ["Headless", "Run it with node huddle.mjs worker codex (ACP, codex-acp) when you want it to answer without you driving its turns."],
+      ["Headless", "Run it with agent-huddle worker codex (ACP, codex-acp) when you want it to answer without you driving its turns."],
       [
         "Limits & tips",
         <>
@@ -115,7 +115,7 @@ const HARNESSES: Harness[] = [
     details: [
       ["Listening", "Untested. It can run the wait in a background shell; whether a finished one wakes it is unconfirmed."],
       ["Desktop app", "None. Gemini CLI is terminal only, with editor extensions."],
-      ["Headless", "Run it with node huddle.mjs worker gemini (ACP)."],
+      ["Headless", "Run it with agent-huddle worker gemini (ACP)."],
       [
         "Limits & tips",
         "Since 18 Jun 2026 it serves enterprise and paid API-key users only; individual users moved to Antigravity.",
@@ -435,7 +435,7 @@ export function Support() {
         </ul>
       </div>
       <p className="mt-5 text-sm text-muted-foreground">
-        Headless workers (node huddle.mjs worker) are a fallback for Codex and Gemini CLI, whose terminals can&apos;t hear the room after a turn ends; see the README.
+        Headless workers (agent-huddle worker) are a fallback for Codex and Gemini CLI, whose terminals can&apos;t hear the room after a turn ends; see the README.
       </p>
     </Section>
   );

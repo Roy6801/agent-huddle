@@ -215,8 +215,8 @@ export function Install() {
           <CopyButton text={CODEX_TOML} label="Copy Codex config lines" />
         </li>
         <li>
-          <span className="font-medium text-foreground">Stuck?</span> <InlineCode>huddle.mjs doctor</InlineCode> lists
-          detected agents and missing skills
+          <span className="font-medium text-foreground">Stuck?</span> <InlineCode>agent-huddle doctor</InlineCode> lists
+          detected agents and missing skills; <InlineCode>agent-huddle upgrade</InlineCode> updates
         </li>
       </ul>
     </Section>

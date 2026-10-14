@@ -36,7 +36,8 @@ export function knownAgent(agent) {
 export function locations(env = process.env) {
   const home = env.HOME || os.homedir();
   const stateDir = env.AGENT_HUDDLE_HOME || path.join(home, '.agent-huddle');
-  return { home, shared: path.join(home, '.agents', 'skills'), stateDir, saved: path.join(stateDir, 'install.json') };
+  const bin = path.join(home, '.local', 'bin', 'agent-huddle');
+  return { home, shared: path.join(home, '.agents', 'skills'), stateDir, saved: path.join(stateDir, 'install.json'), bin };
 }
 
 export function tilde(p, env = process.env) {
@@ -419,7 +420,7 @@ function readLink(p) {
 
 // Everything an install would do, in order. Nothing is written here.
 export function buildPlan(rows, env = process.env, stamp = timestamp()) {
-  const { shared } = locations(env);
+  const { shared, bin } = locations(env);
   const actions = SKILLS.map((name) => ({ kind: 'copy', target: shared, name, path: path.join(shared, name) }));
   const sharedKey = resolvePath(shared);
   for (const row of rows) {
@@ -440,7 +441,13 @@ export function buildPlan(rows, env = process.env, stamp = timestamp()) {
       else actions.push({ kind: 'link', target, name, link, dest });
     }
   }
-  return { stamp, shared, actions };
+  const dest = path.join(shared, 'agent-huddle', 'huddle.mjs');
+  const was = readLink(bin);
+  let kind = 'link';
+  if (was === dest) kind = 'unchanged';
+  else if (was !== null && path.basename(was) === 'huddle.mjs') kind = 'replace';
+  else if (lexists(bin)) kind = 'skip';
+  return { stamp, shared, actions, command: { kind, link: bin, dest, was } };
 }
 
 // One line per target, plus explicit lines for anything that moves or replaces an existing entry.
@@ -478,6 +485,12 @@ export function planLines(plan, env = process.env) {
       if (a.kind === 'replace') lines.push(`replace ${tilde(a.link, env)} (was → ${a.was})`);
     }
   }
+  const cmd = plan.command;
+  const at = tilde(cmd.link, env);
+  if (cmd.kind === 'link') lines.push(`link agent-huddle → ${tilde(path.dirname(cmd.link), env)}`);
+  if (cmd.kind === 'unchanged') lines.push(`unchanged ${at}`);
+  if (cmd.kind === 'replace') lines.push(`replace ${at} (was → ${cmd.was})`);
+  if (cmd.kind === 'skip') lines.push(`skip ${at} (something else is there)`);
   return lines;
 }
 
@@ -503,6 +516,8 @@ export function applyPlan(plan, stagedDir) {
       link(a.dest, a.link);
     }
   }
+  const cmd = plan.command;
+  if (cmd.kind === 'link' || cmd.kind === 'replace') link(cmd.dest, cmd.link);
 }
 
 export function saveTargets(rows, env = process.env, date = new Date()) {
@@ -532,12 +547,25 @@ export function nextSteps(rows) {
   }
   const others = ['agy', 'agy-app', 'gemini', 'opencode', 'dsh', 'other'].filter(reads).map(labelOf);
   if (others.length) lines.push(`${others.join(', ')}: ask "start a huddle"`);
+  lines.push('Anytime: agent-huddle doctor, agent-huddle upgrade, agent-huddle ls');
   return lines;
+}
+
+// How to put the agent-huddle command on PATH when its folder is missing; never edits the user's files.
+export function pathHint(env = process.env) {
+  const dir = path.dirname(locations(env).bin);
+  if ((env.PATH ?? '').split(':').some((d) => d && path.resolve(d) === dir)) return [];
+  const shell = path.basename(env.SHELL ?? '');
+  const rcFile = { zsh: '~/.zshrc', bash: '~/.bashrc' }[shell];
+  let command = `  export PATH="$HOME/.local/bin:$PATH"   (add to your shell's startup file)`;
+  if (rcFile) command = `  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ${rcFile}`;
+  if (shell === 'fish') command = '  fish_add_path ~/.local/bin';
+  return [`${tilde(dir, env)} is not on your PATH, so agent-huddle won't run by name yet. Add it:`, command];
 }
 
 // What --uninstall removes: our links at detected and saved targets, the shared skill dirs and install.json.
 export function uninstallPlan(env = process.env) {
-  const { shared, saved } = locations(env);
+  const { shared, saved, bin } = locations(env);
   let targets = [];
   try {
     targets = loadSaved(env) ?? [];
@@ -555,6 +583,7 @@ export function uninstallPlan(env = process.env) {
     const dir = path.join(shared, name);
     if (isDir(dir) && readLink(dir) === null) paths.push(dir);
   }
+  if (readLink(bin) === path.join(shared, 'agent-huddle', 'huddle.mjs')) paths.push(bin);
   if (fs.existsSync(saved)) paths.push(saved);
   return paths;
 }

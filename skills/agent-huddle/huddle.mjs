@@ -8,8 +8,12 @@ import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 
-const VERSION = '0.3.1';
+const VERSION = '0.3.2';
 const THIS_FILE = fileURLToPath(import.meta.url);
+// Named agent-huddle when run through the installed command on PATH.
+const ON_PATH = path.basename(process.argv[1] ?? '') === 'agent-huddle';
+const PROG = ON_PATH ? 'agent-huddle' : `node ${THIS_FILE}`;
+const HELP_PROG = ON_PATH ? 'agent-huddle' : 'node huddle.mjs';
 const BODY_LIMIT = 64 * 1024;
 const MAX_MESSAGES = 2000;
 const MAX_TEXT = 8000;
@@ -2221,6 +2225,11 @@ async function doctor() {
     const { message } = diagnose(err);
     line(false, `server at http://127.0.0.1:${port}: ${message}`);
   }
+  console.log(
+    which('agent-huddle')
+      ? '✓ command: agent-huddle on PATH'
+      : '! command: agent-huddle not on PATH (reinstall, or add ~/.local/bin to PATH)',
+  );
   checkAgents();
   console.log('\nVersion');
   console.log(`  ${describeVersion(await latestVersion())}`);
@@ -2260,7 +2269,7 @@ async function latestVersion() {
 function describeVersion(latest) {
   if (!latest) return 'could not check (offline?)';
   if (compareVersions(VERSION, latest) < 0) {
-    return `update available: ${VERSION} → ${latest}. Run: node ${THIS_FILE} upgrade`;
+    return `update available: ${VERSION} → ${latest}. Run: ${PROG} upgrade`;
   }
   return `up to date (${VERSION})`;
 }
@@ -2558,7 +2567,7 @@ const COMMANDS = {
 const HELP_GROUPS = ['Rooms', 'Agents', 'Server', 'Maintenance'];
 
 function usage() {
-  const lines = [`agent-huddle ${VERSION}`, '', 'Usage: node huddle.mjs <command>'];
+  const lines = [`agent-huddle ${VERSION}`, '', `Usage: ${HELP_PROG} <command>`];
   for (const group of HELP_GROUPS) {
     lines.push('', `${group}`);
     for (const [name, c] of Object.entries(COMMANDS)) {
@@ -2569,7 +2578,7 @@ function usage() {
     '',
     'Skills: /huddle-start → new, /huddle-join → join URL, /huddle-rooms → ls/open, /huddle-end → end',
     '',
-    'Run "node huddle.mjs help <command>" for options and an example.',
+    `Run "${HELP_PROG} help <command>" for options and an example.`,
   );
   console.log(lines.join('\n'));
 }
@@ -2582,9 +2591,9 @@ function commandHelp(name) {
     process.exitCode = 1;
     return;
   }
-  const lines = [`node huddle.mjs ${c.usage}`, '', c.summary];
+  const lines = [`${HELP_PROG} ${c.usage}`, '', c.summary];
   if (c.options.length) lines.push('', 'Options', ...c.options.map((o) => `  ${o}`));
-  lines.push('', 'Example', `  ${c.example}`);
+  lines.push('', 'Example', `  ${c.example.replace(/^node huddle\.mjs/, HELP_PROG)}`);
   console.log(lines.join('\n'));
 }
 
