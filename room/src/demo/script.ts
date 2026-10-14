@@ -52,6 +52,7 @@ const EMPTY: RoomState = {
   joinUrl: "http://127.0.0.1:4747/s/moonhop",
   agents: [],
   tasks: [],
+  asks: [],
   messages: [],
   roundCap: ROUND_CAP,
   streak: 0,

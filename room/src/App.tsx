@@ -1,4 +1,4 @@
-import { CircleAlertIcon, CircleStopIcon, TriangleAlertIcon } from "lucide-react";
+import { CircleAlertIcon, CircleStopIcon, ShieldQuestionIcon, TriangleAlertIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { AgentsPanel } from "@/components/agents-panel";
@@ -31,6 +31,7 @@ function SkipLink() {
 
 function Banners() {
   const { state, atCap } = useRoom();
+  const asking = state.asks.filter((a) => a.status === "open").length;
   return (
     <>
       {state.notice && (
@@ -46,6 +47,12 @@ function Banners() {
         <p className="flex shrink-0 items-center gap-2 border-b border-signal/20 bg-signal/5 px-4 py-2 text-[13px] leading-5 font-medium text-signal md:hidden">
           <TriangleAlertIcon aria-hidden className="size-4 shrink-0" />
           Agents are waiting on you. Reply to continue.
+        </p>
+      )}
+      {asking > 0 && !state.ended && (
+        <p className="flex shrink-0 items-center gap-2 border-b border-signal/20 bg-signal/5 px-4 py-2 text-[13px] leading-5 font-medium text-signal">
+          <ShieldQuestionIcon aria-hidden className="size-4 shrink-0" />
+          {asking === 1 ? "1 approval is waiting on you." : `${asking} approvals are waiting on you.`}
         </p>
       )}
       {state.ended && (

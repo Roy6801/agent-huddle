@@ -13,7 +13,7 @@ const hasFiles = (e: { dataTransfer: DataTransfer | null }) => !!e.dataTransfer 
 export function Chat() {
   const { state, identities, announce, endHuddle } = useRoom();
   const { upload } = useSource();
-  const { ended, loaded, agents, joinUrl, messages } = state;
+  const { ended, loaded, agents, joinUrl, messages, asks } = state;
   const [error, setError] = useState<ErrorInfo | null>(null);
   const [dragging, setDragging] = useState(false);
   const depth = useRef(0);
@@ -76,7 +76,7 @@ export function Chat() {
         textRef.current?.focus();
       }}
     >
-      <Feed ref={feed} messages={messages} identities={identities} inviteUrl={inviteUrl} />
+      <Feed ref={feed} messages={messages} asks={asks} identities={identities} inviteUrl={inviteUrl} />
       <Composer
         attachments={attachments}
         error={error}

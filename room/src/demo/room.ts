@@ -124,6 +124,8 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
     const text = roundCap === null ? "you turned the round cap off (agents won't pause for you)" : `you set the round cap to ${roundCap}`;
     setRoom(system({ ...room, roundCap }, now, text));
     data = { roundCap };
+  } else if (path.startsWith("/api/asks/")) {
+    // The demo room never asks; there is nothing to answer.
   } else {
     return { r: new Response(null, { status: 404 }), data: { error: "not part of the demo" } as Posted<T>["data"] };
   }

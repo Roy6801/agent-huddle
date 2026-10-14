@@ -36,6 +36,22 @@ export type Task = {
   note: string | null;
 };
 
+export type AskKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";
+
+export type AskOption = { optionId: string; kind: AskKind; name: string };
+
+export type Ask = {
+  id: number;
+  by: string;
+  title: string;
+  detail: string | null;
+  options: AskOption[];
+  status: "open" | "answered" | "timeout" | "cancelled";
+  answer?: { optionId: string; kind: AskKind };
+  at: string;
+  answeredAt?: string;
+};
+
 export type RoomInfo = { id: string; name: string; join: string };
 
 export type StateResponse = {
@@ -43,6 +59,7 @@ export type StateResponse = {
   messages?: Message[];
   agents?: Agent[];
   tasks?: Task[];
+  asks?: Ask[];
   roundCap?: number | null;
   agentStreak?: number;
 };

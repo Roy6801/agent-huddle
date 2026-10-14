@@ -1,13 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { base, type ApiError, type Posted, type Upload } from "@/lib/api";
-import type { Agent, Conn, Message, SharedFile, StateResponse, Task } from "@/lib/types";
+import type { Agent, Ask, Conn, Message, SharedFile, StateResponse, Task } from "@/lib/types";
 
 export type RoomState = {
   name: string;
   joinUrl: string;
   agents: Agent[];
   tasks: Task[];
+  asks: Ask[];
   messages: Message[];
   /** undefined until the first state arrives; null means no cap. */
   roundCap: number | null | undefined;
@@ -23,6 +24,7 @@ const INITIAL: RoomState = {
   joinUrl: "",
   agents: [],
   tasks: [],
+  asks: [],
   messages: [],
   roundCap: undefined,
   streak: 0,
@@ -42,7 +44,7 @@ export function useRoomState() {
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const polling = useRef(false);
   const ended = useRef(false);
-  const sig = useRef({ agents: "", tasks: "" });
+  const sig = useRef({ agents: "", tasks: "", asks: "" });
 
   const endHuddle = useCallback(() => {
     if (ended.current) return;
@@ -70,11 +72,14 @@ export function useRoomState() {
         for (const m of fresh) lastId.current = Math.max(lastId.current, m.id);
         const agents = data.agents ?? [];
         const tasks = data.tasks ?? [];
+        const asks = data.asks ?? [];
         const agentsSig = JSON.stringify(agents);
         const tasksSig = JSON.stringify(tasks);
+        const asksSig = JSON.stringify(asks);
         const agentsChanged = agentsSig !== sig.current.agents;
         const tasksChanged = tasksSig !== sig.current.tasks;
-        sig.current = { agents: agentsSig, tasks: tasksSig };
+        const asksChanged = asksSig !== sig.current.asks;
+        sig.current = { agents: agentsSig, tasks: tasksSig, asks: asksSig };
         setState((s) => {
           const name = data.room?.name ?? s.name;
           const joinUrl = data.room?.join ?? s.joinUrl;
@@ -85,6 +90,7 @@ export function useRoomState() {
             !fresh.length &&
             !agentsChanged &&
             !tasksChanged &&
+            !asksChanged &&
             s.conn === "live" &&
             !s.notice &&
             name === s.name &&
@@ -100,6 +106,7 @@ export function useRoomState() {
             streak,
             agents: agentsChanged ? agents : s.agents,
             tasks: tasksChanged ? tasks : s.tasks,
+            asks: asksChanged ? asks : s.asks,
             messages: fresh.length ? [...s.messages, ...fresh] : s.messages,
             conn: "live",
             notice: "",

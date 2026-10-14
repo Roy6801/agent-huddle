@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 
+import { AskCard } from "@/components/ask-card";
 import { MessageFiles } from "@/components/files";
 import { HarnessDot, Jazzicon } from "@/components/identity";
 import { Invite } from "@/components/invite";
@@ -21,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Identities } from "@/hooks/use-room";
 import { dayLabel, fmtTime, fullTime, harnessFromHandle, shortTime } from "@/lib/format";
-import type { Message } from "@/lib/types";
+import type { Ask, Message } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const SYS_TYPES: [RegExp, SysType][] = [
@@ -60,26 +61,46 @@ const SYS_ICON_CLASS: Partial<Record<SysType, string>> = {
 
 type Row =
   | { kind: "day"; key: string; label: string }
+  | { kind: "ask"; key: string; ask: Ask }
   | { kind: "sys"; key: string; m: Message }
   | { kind: "chat"; key: string; m: Message; cont: boolean };
 
-function buildRows(messages: Message[]): Row[] {
+type Entry = { m: Message; ask?: undefined } | { ask: Ask; m?: undefined };
+
+/** Asks sit among the messages at the time they were made. */
+function merge(messages: Message[], asks: Ask[]): Entry[] {
+  const pending = [...asks].sort((a, b) => +new Date(a.at) - +new Date(b.at));
+  const out: Entry[] = [];
+  let i = 0;
+  for (const m of messages) {
+    while (i < pending.length && +new Date(pending[i].at) <= +new Date(m.at)) out.push({ ask: pending[i++] });
+    out.push({ m });
+  }
+  while (i < pending.length) out.push({ ask: pending[i++] });
+  return out;
+}
+
+function buildRows(messages: Message[], asks: Ask[]): Row[] {
   const rows: Row[] = [];
   let lastKey: string | null = null;
   let lastAt = 0;
   let lastDay = "";
-  for (const m of messages) {
-    const at = new Date(m.at);
+  for (const e of merge(messages, asks)) {
+    const { m, ask } = e;
+    const at = new Date(m ? m.at : ask.at);
     const ts = +at;
     if (!isNaN(ts)) {
       const day = at.toDateString();
       if (day !== lastDay) {
-        rows.push({ kind: "day", key: `day-${m.id}`, label: dayLabel(at) });
+        rows.push({ kind: "day", key: m ? `day-${m.id}` : `day-ask-${ask.id}`, label: dayLabel(at) });
         lastDay = day;
         lastKey = null;
       }
     }
-    if (m.kind === "system" || m.from === "system") {
+    if (ask) {
+      rows.push({ kind: "ask", key: `ask-${ask.id}`, ask });
+      lastKey = null;
+    } else if (m.kind === "system" || m.from === "system") {
       rows.push({ kind: "sys", key: String(m.id), m });
       lastKey = null;
     } else {
@@ -227,11 +248,13 @@ const atBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.client
 
 export const Feed = memo(function Feed({
   messages,
+  asks,
   identities,
   inviteUrl,
   ref,
 }: {
   messages: Message[];
+  asks: Ask[];
   identities: Identities;
   /** Join URL to show the invite card with, or null once agents are in. */
   inviteUrl: string | null;
@@ -268,7 +291,7 @@ export const Feed = memo(function Feed({
     if (el && el.scrollHeight - el.scrollTop - el.clientHeight < img.offsetHeight + 48) el.scrollTop = el.scrollHeight;
   }, []);
 
-  const rows = useMemo(() => buildRows(messages), [messages]);
+  const rows = useMemo(() => buildRows(messages, asks), [messages, asks]);
   const max = firstMax.current ?? 0;
 
   return (
@@ -293,6 +316,8 @@ export const Feed = memo(function Feed({
                 >
                   {row.label}
                 </h2>
+              ) : row.kind === "ask" ? (
+                <AskCard key={row.key} ask={row.ask} identities={identities} />
               ) : row.kind === "sys" ? (
                 <SystemLine key={row.key} m={row.m} fresh={row.m.id > max} />
               ) : (
