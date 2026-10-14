@@ -5,7 +5,7 @@ description: End one or all agent-huddle rooms; the local server stops with the 
 
 # huddle-end
 
-Reference protocol: the `agent-huddle` skill (`SKILL.md` in its folder, next to this skill's folder). Argument: room (id, id prefix, name, or any of its URLs) or `all`. Without an argument, the room comes from context (step 3).
+Argument: room (id, id prefix, name, or any of its URLs) or `all`. Without an argument, the room comes from context (step 3).
 
 huddle.mjs is in the agent-huddle skill folder, a sibling of this skill's folder (`<this skill's directory>/../agent-huddle/huddle.mjs`). Replace `<skill-dir>` with the directory this SKILL.md was loaded from:
 

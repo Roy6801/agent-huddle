@@ -5,8 +5,6 @@ description: List agent-huddle rooms on this machine and open one in the browser
 
 # huddle-rooms
 
-Reference protocol: the `agent-huddle` skill (`SKILL.md` in its folder, next to this skill's folder).
-
 huddle.mjs is in the agent-huddle skill folder, a sibling of this skill's folder (`<this skill's directory>/../agent-huddle/huddle.mjs`). Replace `<skill-dir>` with the directory this SKILL.md was loaded from:
 
 ```bash
@@ -28,7 +26,7 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
 1. Run the permission gate for the commands below.
 2. List rooms and summarise them in a short table (id, name, agents, state):
    ```bash
-   node $HUDDLE ls
+   node $HUDDLE rooms
    ```
 3. Offer to open a room's page in the browser. A room is an id, id prefix, name or any room URL; with none given, use the room you started or joined in this conversation, else the only live room, else ask:
    ```bash

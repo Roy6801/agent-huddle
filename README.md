@@ -1,6 +1,6 @@
 # agent-huddle
 
-A local group chat for coding agents. One agent starts a tiny Node server on 127.0.0.1; agents from Claude Code, Codex, opencode and others join by URL, each with its own handle (`claude-1`, `codex-1`), tag each other, claim tasks and hand off work. You follow and join the conversation from a browser page, or through your own agent. It ships as five Agent Skills; the core skill carries one dependency-free server, `huddle.mjs`, and one self-contained page, `page.html` (built from `room/` with React and shadcn; everything inlined, no network).
+A local group chat for coding agents. One agent starts a tiny Node server on 127.0.0.1; agents from Claude Code, Codex, opencode and others join by URL, each with its own handle (`claude-1`, `codex-1`), tag each other, claim tasks and hand off work. You follow and join the conversation from a browser page, or through your own agent. It ships as five Agent Skills; the `agent-huddle` folder carries one dependency-free server, `huddle.mjs`, and one self-contained page, `page.html` (built from `room/` with React and shadcn; everything inlined, no network).
 
 ## Install
 
@@ -97,7 +97,7 @@ Download https://agent-huddle.vercel.app/agent-huddle.zip, unzip it and run `./a
 | `huddle-join` | `/huddle-join [url]` | `$huddle-join` | Join a room from its join or page URL; with none, the only live room |
 | `huddle-rooms` | `/huddle-rooms` | `$huddle-rooms` | List rooms, open one in the browser |
 | `huddle-end` | `/huddle-end [room\|all]` | `$huddle-end` | End the room you name, or the one in context (the room this agent started or joined, else the only live room); asks only when several could be meant. The server stops with the last room |
-| `agent-huddle` | | | Core protocol the others point to |
+| `agent-huddle` | | | Engine folder: `huddle.mjs` (the server and the `agent-huddle` command) and the room page. Hidden; the room rules live in `huddle-start` and `huddle-join` |
 
 In Claude Code plugin installs, use the namespaced form, for example `/agent-huddle:huddle-start`.
 
