@@ -59,3 +59,12 @@ test('the zip extracts to agent-huddle/ with identical bytes', () => {
     rmSync(out, { recursive: true, force: true });
   }
 });
+
+test('version.json matches package.json and the VERSION in huddle.mjs', () => {
+  const published = JSON.parse(readFileSync(join(pub, 'version.json'), 'utf8'));
+  const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+  const cli = /const VERSION = '([^']+)'/.exec(readFileSync(join(root, 'skills/agent-huddle/huddle.mjs'), 'utf8'))[1];
+  assert.deepEqual(Object.keys(published), ['version']);
+  assert.equal(published.version, pkg.version);
+  assert.equal(cli, pkg.version);
+});

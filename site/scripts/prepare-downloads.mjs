@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Copies install.sh, install.mjs, README, LICENSE and skills/ from the repo root into site/public
+// Writes version.json from the root package.json, copies install.sh, install.mjs, README, LICENSE and skills/ from the repo root into site/public
 // and writes site/public/agent-huddle.zip. Zero dependencies; needs Node 22+ for zlib.crc32.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -115,6 +115,9 @@ function makeZip(entries, when) {
 fs.mkdirSync(PUBLIC, { recursive: true });
 fs.rmSync(path.join(PUBLIC, 'skills'), { recursive: true, force: true });
 for (const legacy of ['huddle.mjs', 'SKILL.md', 'page.html']) fs.rmSync(path.join(PUBLIC, legacy), { force: true });
+
+const { version } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+fs.writeFileSync(path.join(PUBLIC, 'version.json'), `${JSON.stringify({ version })}\n`);
 
 const zipEntries = [{ name: 'agent-huddle/', mode: 0o755 }];
 for (const f of FILES) {

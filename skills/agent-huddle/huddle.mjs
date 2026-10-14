@@ -1417,7 +1417,78 @@ async function doctor() {
     line(false, `server at http://127.0.0.1:${port}: ${message}`);
   }
   checkAgents();
+  console.log('\nVersion');
+  console.log(`  ${describeVersion(await latestVersion())}`);
   process.exitCode = failed ? 1 : 0;
+}
+
+// ---- version check and upgrade ----
+// The only code paths that talk to anything but 127.0.0.1: doctor's version check and upgrade.
+
+const baseUrl = () => (process.env.AGENT_HUDDLE_BASE_URL || 'https://agent-huddle.vercel.app').replace(/\/+$/, '');
+
+export function parseVersion(v) {
+  const m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(String(v).trim());
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+// -1, 0 or 1; null when either side is not a x.y.z version.
+export function compareVersions(a, b) {
+  const x = parseVersion(a);
+  const y = parseVersion(b);
+  if (!x || !y) return null;
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+  return 0;
+}
+
+async function latestVersion() {
+  try {
+    const res = await fetch(`${baseUrl()}/version.json`, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return null;
+    const { version } = await res.json();
+    return parseVersion(version) ? String(version) : null;
+  } catch {
+    return null;
+  }
+}
+
+function describeVersion(latest) {
+  if (!latest) return 'could not check (offline?)';
+  if (compareVersions(VERSION, latest) < 0) {
+    return `update available: ${VERSION} → ${latest}. Run: node ${THIS_FILE} upgrade`;
+  }
+  return `up to date (${VERSION})`;
+}
+
+async function upgrade(args) {
+  const latest = await latestVersion();
+  console.log(describeVersion(latest));
+  if (args.includes('--check') || !latest || compareVersions(VERSION, latest) >= 0) return;
+  const base = baseUrl();
+  console.log(
+    [
+      '',
+      `Upgrading runs the installer from ${base}/install.sh with --yes.`,
+      'It updates the skills for the agents saved in ~/.agent-huddle/install.json; if none are saved, it installs for the agents it detects.',
+      'To choose targets yourself, run install.sh interactively instead.',
+      '',
+    ].join('\n'),
+  );
+  const res = await fetch(`${base}/install.sh`, { signal: AbortSignal.timeout(15000) });
+  if (!res.ok) throw new Error(`could not download ${base}/install.sh (${res.status})`);
+  const script = await res.text();
+  const code = await new Promise((resolve, reject) => {
+    const child = spawn('bash', ['-s', '--', '--yes'], { stdio: ['pipe', 'inherit', 'inherit'], env: process.env });
+    child.on('error', reject);
+    child.on('close', resolve);
+    child.stdin.on('error', () => {});
+    child.stdin.end(script);
+  });
+  if (code !== 0) {
+    console.error(`the installer exited with code ${code}`);
+    process.exit(code || 1);
+  }
+  console.log('\nUpgrade complete. Restart your agents so they load the new skills.');
 }
 
 // ---- room management ----
@@ -1576,25 +1647,124 @@ async function endRoom(args) {
   console.log(result.stopping ? 'Server stopped (no rooms left).' : `${result.live} room(s) still live; server keeps running.`);
 }
 
+const COMMANDS = {
+  new: {
+    group: 'Rooms',
+    summary: 'create a room (starts the server if needed), print join and page URLs',
+    usage: 'new [name] [--round-cap N|off]',
+    options: ['--round-cap N|off  agent posts in a row before the room pauses (1-50, default 10)'],
+    example: 'node huddle.mjs new "api redesign"',
+  },
+  ls: {
+    group: 'Rooms',
+    summary: 'list live rooms with their join and page URLs',
+    usage: 'ls [--json]',
+    options: ['--json  machine-readable output'],
+    example: 'node huddle.mjs ls',
+  },
+  open: {
+    group: 'Rooms',
+    summary: "open a room's page in the browser",
+    usage: 'open [room] [--print]',
+    options: ['--print  only print the URL'],
+    example: 'node huddle.mjs open "api redesign"',
+  },
+  invite: {
+    group: 'Rooms',
+    summary: 'print the invite text to paste into any agent (default: newest room)',
+    usage: 'invite [room]',
+    options: [],
+    example: 'node huddle.mjs invite "api redesign"',
+  },
+  end: {
+    group: 'Rooms',
+    summary: 'end a room for everyone; asks for confirmation',
+    usage: 'end <room> | end all',
+    options: ['--yes          skip the confirmation prompt', '--all          same as "end all"', '--keep-server  leave the server running after the last room ends'],
+    example: 'node huddle.mjs end "api redesign" --yes',
+  },
+  wait: {
+    group: 'Agents',
+    summary: 'block until something addresses an agent link',
+    usage: 'wait <agent-link> [--minutes N]',
+    options: ['--minutes N  how long to wait (default 5, max 55)'],
+    example: 'node huddle.mjs wait http://127.0.0.1:4747/s/<id>/as/<token> --minutes 5',
+  },
+  up: {
+    group: 'Server',
+    summary: 'start the local server (or reuse the running one), print its URL',
+    usage: 'up',
+    options: [],
+    example: 'node huddle.mjs up',
+  },
+  down: {
+    group: 'Server',
+    summary: 'stop the server',
+    usage: 'down',
+    options: [],
+    example: 'node huddle.mjs down',
+  },
+  serve: {
+    group: 'Server',
+    summary: 'run the server in the foreground (used by up)',
+    usage: 'serve',
+    options: [],
+    example: 'node huddle.mjs serve',
+  },
+  doctor: {
+    group: 'Maintenance',
+    summary: 'check Node, the state directory, the server, detected agents and the latest version',
+    usage: 'doctor',
+    options: [],
+    example: 'node huddle.mjs doctor',
+  },
+  upgrade: {
+    group: 'Maintenance',
+    summary: 'install the latest version of the skills',
+    usage: 'upgrade [--check]',
+    options: ['--check  only report whether an update is available'],
+    example: 'node huddle.mjs upgrade --check',
+  },
+  help: {
+    group: 'Maintenance',
+    summary: 'show this text, or the usage of one command',
+    usage: 'help [command]',
+    options: [],
+    example: 'node huddle.mjs help end',
+  },
+};
+
+const HELP_GROUPS = ['Rooms', 'Agents', 'Server', 'Maintenance'];
+
 function usage() {
-  console.log(`agent-huddle ${VERSION}
+  const lines = [`agent-huddle ${VERSION}`, '', 'Usage: node huddle.mjs <command>'];
+  for (const group of HELP_GROUPS) {
+    lines.push('', `${group}`);
+    for (const [name, c] of Object.entries(COMMANDS)) {
+      if (c.group === group) lines.push(`  ${name.padEnd(8)} ${c.summary}`);
+    }
+  }
+  lines.push(
+    '',
+    'Skills: /huddle-start → new, /huddle-join → join URL, /huddle-rooms → ls/open, /huddle-end → end',
+    '',
+    'Run "node huddle.mjs help <command>" for options and an example.',
+  );
+  console.log(lines.join('\n'));
+}
 
-Usage: node huddle.mjs <command>
-
-  up             start the local server (or reuse the running one), print its URL
-  new [name]     ensure the server is up, create a room, print join and page URLs
-                 (--round-cap N|off: agent posts in a row before the room pauses, default 10)
-  ls [--json]    list live rooms with their join and page URLs
-  open [room]    open a room's page in the browser (--print to only print the URL)
-  invite [room]  print the invite text to paste into any agent (default: newest room)
-  end <room>     end a room for everyone; asks for confirmation (--yes skips the prompt)
-  end all        end every live room (same as --all); the server stops with the last room
-                 (--keep-server leaves it running)
-  down           stop the server
-  wait <link>    block until something addresses an agent link (--minutes N, default 5, max 55)
-  doctor         check Node, the state directory and the server connection
-  serve          run the server in the foreground (used by up)
-  help           show this text`);
+function commandHelp(name) {
+  const c = COMMANDS[name];
+  if (!c) {
+    console.error(`Unknown command "${name}".\n`);
+    usage();
+    process.exitCode = 1;
+    return;
+  }
+  const lines = [`node huddle.mjs ${c.usage}`, '', c.summary];
+  if (c.options.length) lines.push('', 'Options', ...c.options.map((o) => `  ${o}`));
+  lines.push('', 'Example', `  ${c.example}`);
+  console.log(lines.join('\n'));
 }
 
 async function main(argv) {
@@ -1618,10 +1788,13 @@ async function main(argv) {
       return down();
     case 'doctor':
       return doctor();
+    case 'upgrade':
+      return upgrade(args);
     case 'wait':
       return waitForTurn(args);
-    case undefined:
     case 'help':
+      return args[0] ? commandHelp(args[0]) : usage();
+    case undefined:
     case '--help':
     case '-h':
       return usage();
