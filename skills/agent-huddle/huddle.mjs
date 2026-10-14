@@ -108,6 +108,7 @@ function cleanRole(value, required) {
 export function createHuddle(opts = {}) {
   const {
     idleMs = 900000,
+    quietMs = 30000,
     serverIdleMs = 1800000,
     roundCap = 10,
     onIdle,
@@ -241,7 +242,33 @@ export function createHuddle(opts = {}) {
     for (const agent of s.agents.values()) {
       if (agent.waiters.size && m.to.includes(agent.handle)) flushWaiters(s, agent);
     }
+    if (m.to.length) noticeQuiet(s, m);
     return m;
+  }
+
+  function formatAge(ms) {
+    const min = Math.floor(ms / 60000);
+    if (min < 1) return '<1 min';
+    if (min < 60) return `${min} min`;
+    return `${Math.floor(min / 60)} h`;
+  }
+
+  function noticeQuiet(s, m) {
+    const now = Date.now();
+    const quiet = [];
+    for (const handle of m.to) {
+      const agent = s.agents.get(handle);
+      if (!agent || handle === m.from || agent.nudged || agent.waiters.size) continue;
+      if (agent.status !== 'left' && now - agent.lastSeen <= quietMs) continue;
+      agent.nudged = true;
+      quiet.push(agent);
+    }
+    if (!quiet.length) return;
+    const text =
+      quiet.length === 1
+        ? `${quiet[0].handle} isn't listening (last seen ${formatAge(now - quiet[0].lastSeen)} ago). If its turn ended, nudge it in its own terminal.`
+        : `Not listening: ${quiet.map((a) => `${a.handle} (${formatAge(now - a.lastSeen)})`).join(', ')}. If their turns ended, nudge them in their own terminals.`;
+    system(s, text, { toYou: true });
   }
 
   const system = (s, text, extra) => addMessage(s, 'system', text, { ...extra, kind: 'system' });
@@ -763,6 +790,7 @@ How the room works:
     const upload = method === 'POST' && key === 'files';
     const body = method === 'POST' && !upload ? await readBody(req) : {};
     agent.lastSeen = Date.now();
+    agent.nudged = false;
     const leaving = method === 'POST' && key === 'leave';
     if (agent.status === 'left' && !leaving) {
       agent.status = 'active';
@@ -872,7 +900,10 @@ How the room works:
       const f = await receiveFile(s, req, res, url, 'you');
       return sendJson(res, 201, { ...fileMeta(f), url: `${base}/s/${s.id}/h/${token}/api/files/${f.id}` });
     }
-    return sendJson(res, 404, { error: 'not found' });
+    return sendJson(res, 404, {
+      error: 'not found',
+      hint: `This is the human page link. Agents join at ${base}/s/${s.id} (GET it for the protocol, POST ${base}/s/${s.id}/join to join).`,
+    });
   }
 
   // ---- lifecycle ----
@@ -1013,6 +1044,7 @@ async function serve() {
   };
   huddle = createHuddle({
     idleMs: num('AGENT_HUDDLE_IDLE_MS', 900000),
+    quietMs: num('AGENT_HUDDLE_QUIET_MS', 30000),
     serverIdleMs: num('AGENT_HUDDLE_SERVER_IDLE_MS', 1800000),
     roundCap: num('AGENT_HUDDLE_ROUND_CAP', 10),
     maxFileBytes: num('AGENT_HUDDLE_MAX_FILE', MAX_FILE_BYTES),

@@ -308,6 +308,8 @@ code.chip {
 .sys .gut { display: flex; justify-content: center; padding-top: 3px; color: var(--subtle); }
 .sys.t-join .gut, .sys.t-done .gut { color: var(--ok); }
 .sys.t-claim .gut { color: var(--claim-text); }
+.sys.t-alert { color: var(--claim-text); }
+.sys.t-alert .gut { color: var(--idle); }
 .sys .txt { min-width: 0; overflow-wrap: anywhere; }
 .sys .who { font-family: var(--font-mono); color: var(--text-2); }
 .sys .mention { background: none; padding: 0; line-height: inherit; color: var(--text-2); font-family: var(--font-mono); font-weight: 400; }
@@ -972,6 +974,8 @@ a.fchip:hover .fdl { color: var(--text); }
     [/^(\S+) finished task #/, 'done'],
     [/^(\S+) released task #/, 'release'],
     [/^(\S+) spawned /, 'spawn'],
+    [/^(\S+) isn't listening\b/, 'alert'],
+    [/^Not listening:/, 'alert'],
   ];
   let lastKey = null, lastAt = 0, lastDay = '';
 
