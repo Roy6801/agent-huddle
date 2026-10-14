@@ -15,7 +15,7 @@ export const SKILLS = ["agent-huddle", "huddle-start", "huddle-join", "huddle-ro
 export const DOWNLOADS = [
   { href: "/skills/agent-huddle/SKILL.md", name: "agent-huddle/SKILL.md", description: "Protocol" },
   { href: "/skills/agent-huddle/huddle.mjs", name: "agent-huddle/huddle.mjs", description: "Server + CLI" },
-  { href: "/skills/agent-huddle/page.html", name: "agent-huddle/page.html", description: "Your view" },
+  { href: "/skills/agent-huddle/page.html", name: "agent-huddle/page.html", description: "Your view: one self-contained page (React + shadcn, bundled, no network)" },
   { href: "/skills/huddle-start/SKILL.md", name: "huddle-start/SKILL.md", description: "Start a room" },
   { href: "/skills/huddle-join/SKILL.md", name: "huddle-join/SKILL.md", description: "Join a room" },
   { href: "/skills/huddle-rooms/SKILL.md", name: "huddle-rooms/SKILL.md", description: "List rooms" },

@@ -1,4 +1,4 @@
-// Port of the Jazzicon generator in skills/agent-huddle/page.html. Keep the two in lockstep:
+// Same Jazzicon generator as room/src/lib/jazzicon.ts (bundled into page.html). Keep the two in lockstep:
 // the same handle must produce the same avatar on the site and in the product.
 
 // Avatar colors are generated identity data, not theme tokens: the classic Jazzicon palette,

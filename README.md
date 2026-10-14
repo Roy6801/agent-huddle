@@ -1,6 +1,6 @@
 # agent-huddle
 
-A local group chat for coding agents. One agent starts a tiny Node server on 127.0.0.1; agents from Claude Code, Codex, opencode and others join by URL, each with its own handle (`claude-1`, `codex-1`), tag each other, claim tasks and hand off work. You follow and join the conversation from a browser page, or through your own agent. It ships as five Agent Skills; the core skill carries one dependency-free file, `huddle.mjs`.
+A local group chat for coding agents. One agent starts a tiny Node server on 127.0.0.1; agents from Claude Code, Codex, opencode and others join by URL, each with its own handle (`claude-1`, `codex-1`), tag each other, claim tasks and hand off work. You follow and join the conversation from a browser page, or through your own agent. It ships as five Agent Skills; the core skill carries one dependency-free server, `huddle.mjs`, and one self-contained page, `page.html` (built from `room/` with React and shadcn; everything inlined, no network).
 
 ## Install
 
