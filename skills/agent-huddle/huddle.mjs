@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 
@@ -118,6 +119,7 @@ export function createHuddle(opts = {}) {
     serverIdleMs = 1800000,
     roundCap = 10,
     onIdle,
+    onStop,
     adminToken,
     tombstoneMs = TOMBSTONE_MS,
     maxFileBytes = MAX_FILE_BYTES,
@@ -706,6 +708,12 @@ How the room works:
       endSession(s);
       return sendJson(res, 200, { id: s.id, title: s.title, ended: true });
     }
+    if (method === 'POST' && parts.length === 2 && parts[1] === 'stop-if-empty') {
+      const live = liveSessions().length;
+      if (live || !onStop) return sendJson(res, 200, { stopping: false, live });
+      res.once('finish', onStop);
+      return sendJson(res, 200, { stopping: true });
+    }
     return sendJson(res, 404, { error: 'not found' });
   }
 
@@ -1072,6 +1080,7 @@ async function serve() {
     maxFileBytes: num('AGENT_HUDDLE_MAX_FILE', MAX_FILE_BYTES),
     adminToken,
     onIdle: shutdown,
+    onStop: shutdown,
   });
   let port;
   try {
@@ -1443,6 +1452,10 @@ function formatAge(iso) {
   return `${Math.floor(sec / 86400)}d`;
 }
 
+function formatRoomList(sessions) {
+  return sessions.map((s) => `  ${s.title}  ${id8(s)}  ${s.agents.active}/${s.agents.total} agents`).join('\n');
+}
+
 function formatTable(sessions) {
   const rows = [['TITLE', 'ID', 'AGENTS', 'AGE', 'PAGE']].concat(
     sessions.map((s) => [s.title, id8(s), `${s.agents.active}/${s.agents.total}`, formatAge(s.createdAt), s.page]),
@@ -1512,20 +1525,54 @@ async function inviteRoom(args) {
   console.log(inviteText(room.title, room.join));
 }
 
+async function confirmEnd(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return /^y(es)?$/i.test((await rl.question(question)).trim());
+  } finally {
+    rl.close();
+  }
+}
+
 async function endRoom(args) {
+  const flags = new Set(['--all', '--yes', '--keep-server']);
+  const query = args.filter((a) => !flags.has(a)).join(' ').trim();
+  const all = args.includes('--all') || query.toLowerCase() === 'all';
   const ctx = await adminContext(true);
   const { sessions } = await admin(ctx, 'GET', 'sessions');
-  const query = args.filter((a) => a !== '--all').join(' ').trim();
-  if (!query && !args.includes('--all')) {
-    console.error('Usage: node huddle.mjs end <room> | --all');
+  if (!query && !all) {
+    console.error('Usage: node huddle.mjs end <room> | all | --all [--yes] [--keep-server]');
+    console.error(sessions.length ? `Live huddles:\n${formatRoomList(sessions)}` : 'No live huddles.');
     process.exit(1);
   }
-  const targets = args.includes('--all') ? sessions : [resolveRoom(sessions, query)];
+  if (!args.includes('--all') && query.toLowerCase() === 'all' && sessions.some((s) => s.title.toLowerCase() === 'all')) {
+    throw new Error('A live huddle is titled "all". Use --all to end every huddle, or pass the room id.');
+  }
+  const targets = all ? sessions : [resolveRoom(sessions, query)];
   if (!targets.length) return console.log('No live huddles.');
+  const describe = (s) => `"${s.title}" (${id8(s)}, ${s.agents.total} agents)`;
+  if (!args.includes('--yes')) {
+    if (!process.stdin.isTTY) {
+      console.log(`Would end ${targets.length > 1 ? `${targets.length} rooms` : 'room'}:\n${targets.map((s) => `  ${describe(s)}`).join('\n')}`);
+      console.log('Nothing ended. Rerun with --yes after the user confirms.');
+      process.exit(1);
+    }
+    const question =
+      targets.length > 1
+        ? `${targets.map((s) => `  ${describe(s)}`).join('\n')}\nEnd these ${targets.length} rooms? [y/N] `
+        : `End ${describe(targets[0])}? [y/N] `;
+    if (!(await confirmEnd(question))) {
+      console.log('Nothing ended.');
+      process.exit(1);
+    }
+  }
   for (const s of targets) {
     await admin(ctx, 'POST', `sessions/${s.id}/end`);
     console.log(`Ended "${s.title}" (${id8(s)})`);
   }
+  if (args.includes('--keep-server')) return;
+  const result = await admin(ctx, 'POST', 'stop-if-empty');
+  console.log(result.stopping ? 'Server stopped (no rooms left).' : `${result.live} room(s) still live; server keeps running.`);
 }
 
 function usage() {
@@ -1539,7 +1586,9 @@ Usage: node huddle.mjs <command>
   ls [--json]    list live huddles with their join and page URLs
   open [room]    open a huddle's page in the browser (--print to only print the URL)
   invite [room]  print the invite text to paste into any agent (default: newest huddle)
-  end <room>     end a huddle for everyone (--all ends every live huddle)
+  end <room>     end a huddle for everyone; asks for confirmation (--yes skips the prompt)
+  end all        end every live huddle (same as --all); the server stops with the last room
+                 (--keep-server leaves it running)
   down           stop the server
   wait <link>    block until something addresses an agent link (--minutes N, default 5, max 55)
   doctor         check Node, the state directory and the server connection

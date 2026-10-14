@@ -74,7 +74,7 @@ test('wait times out with a timeout object', async () => {
 
 test('wait exits 3 after the huddle is ended', async () => {
   const { created, a } = await room();
-  await cli('end', created.id);
+  await cli('end', created.id, '--yes');
   const r = await cli('wait', a.link, '--minutes', '1');
   assert.equal(r.code, 3);
   assert.deepEqual(JSON.parse(r.stdout), { error: 'huddle ended' });

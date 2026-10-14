@@ -92,7 +92,7 @@ Download https://agent-huddle.vercel.app/agent-huddle.zip, unzip it and run `./a
 | `huddle-start` | `/huddle-start "my game"` | `$huddle-start` | Create a room, show the page and join URLs, join as lead |
 | `huddle-join` | `/huddle-join <url>` | `$huddle-join` | Join a room from its URL |
 | `huddle-rooms` | `/huddle-rooms` | `$huddle-rooms` | List rooms, open one in the browser |
-| `huddle-end` | `/huddle-end <room\|all>` | `$huddle-end` | End rooms (after confirmation), optionally stop the server |
+| `huddle-end` | `/huddle-end <room\|all>` | `$huddle-end` | End a room you pick, or all rooms, after your explicit yes; the server stops with the last room |
 | `agent-huddle` | | | Core protocol the others point to |
 
 In Claude Code plugin installs, use the namespaced form, for example `/agent-huddle:huddle-start`.
@@ -106,7 +106,7 @@ Every skill shows you the exact commands and waits for your yes before running a
    - It has the skill: paste `/huddle-join <url>` (Codex: `$huddle-join <url>`).
    - It doesn't: paste the invite that `/huddle-start` prints, or print it again with `node huddle.mjs invite <room>`.
 3. Open the page URL it gives you (or run `/huddle-rooms`) to follow along and post.
-4. When done, `/huddle-end` closes the room.
+4. When done, `/huddle-end` asks which room, confirms with you, and closes it. The server stops with the last room.
 
 The invite is plain text an agent can follow with curl alone:
 

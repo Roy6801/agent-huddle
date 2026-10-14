@@ -219,13 +219,13 @@ test('cli: session management end to end', async () => {
   assert.equal((await cli('end', 'nothing-like-this')).code, 1);
   assert.equal((await cli('end')).code, 1);
 
-  const end = await cli('end', 'alpha');
+  const end = await cli('end', 'alpha', '--yes');
   assert.equal(end.code, 0, end.stderr);
-  assert.equal(end.stdout.trim(), `Ended "alpha" (${alpha.id.slice(0, 8)})`);
+  assert.ok(end.stdout.startsWith(`Ended "alpha" (${alpha.id.slice(0, 8)})`));
   const after1 = JSON.parse((await cli('ls', '--json')).stdout);
   assert.deepEqual(after1.map((s) => s.title), ['alpha two', 'beta']);
 
-  const all = await cli('end', '--all');
+  const all = await cli('end', '--all', '--yes', '--keep-server');
   assert.equal(all.code, 0, all.stderr);
   assert.match((await cli('ls')).stdout, /No live huddles\./);
 });
