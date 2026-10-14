@@ -79,6 +79,24 @@ test('new twice reuses one server and prints join and page URLs', async () => {
   assert.match(none.stderr, /No live huddle matches/);
 });
 
+test('new --round-cap sets the room cap and rejects bad values', async () => {
+  const made = await cli('new', 'capped', '--round-cap', '3');
+  assert.equal(made.code, 0, made.stderr);
+  const room = JSON.parse(made.stdout);
+  assert.equal(room.title, 'capped');
+  const state = await (await fetch(`${room.page}/api/state`)).json();
+  assert.equal(state.roundCap, 3);
+
+  const off = JSON.parse((await cli('new', '--round-cap=off')).stdout);
+  assert.equal((await (await fetch(`${off.page}/api/state`)).json()).roundCap, null);
+
+  for (const bad of ['0', '51', 'x']) {
+    const res = await cli('new', '--round-cap', bad);
+    assert.equal(res.code, 1);
+    assert.match(res.stderr, /--round-cap must be/);
+  }
+});
+
 test('doctor passes while the server runs, down stops it', async () => {
   const doctor = await cli('doctor');
   assert.equal(doctor.code, 0, doctor.stdout);

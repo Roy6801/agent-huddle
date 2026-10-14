@@ -175,9 +175,11 @@ button { cursor: pointer; }
 .meter {
   display: inline-flex; align-items: center; gap: 10px;
   height: 32px; padding: 0 12px; border-radius: 999px;
-  border: 1px solid var(--border); color: var(--muted); font-size: 12px;
+  border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 12px; cursor: pointer;
   transition: background-color .2s, border-color .2s, color .2s;
 }
+.meter:hover { background: var(--surface-2); color: var(--text-2); }
+.meter.at:hover { background: var(--accent-soft); color: var(--accent-text); }
 .segs { display: inline-flex; gap: 2px; }
 .seg { width: 4px; height: 12px; border-radius: 2px; background: var(--surface-3); transition: background-color .2s; }
 .seg.on { background: var(--muted); }
@@ -210,7 +212,7 @@ button { cursor: pointer; }
 .conn.ended { color: var(--muted); align-items: center; gap: 8px; padding: 0 4px; background: none; border-bottom: 0; }
 body.is-ended .field { background: var(--surface-2); box-shadow: none; border-color: var(--border); }
 body.is-ended .hint, body.is-ended .newtask { display: none; }
-body.is-ended .meter { opacity: .5; }
+body.is-ended .meter { opacity: .5; pointer-events: none; }
 body.is-ended .msg-files a, body.is-ended .flist a { pointer-events: none; }
 body.is-ended .fchip, body.is-ended .thumb, body.is-ended .flist { opacity: .6; }
 
@@ -524,6 +526,35 @@ a.fchip:hover .fdl { color: var(--text); }
 .taskform .ok { font-size: 12px; color: var(--ok-text); }
 .taskform .ok:empty { display: none; }
 
+/* ---- round cap popover ---- */
+.capwrap { position: relative; }
+.cap-pop {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; width: 320px; max-width: calc(100vw - 32px);
+  display: grid; gap: 12px; padding: 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-pop);
+}
+.cap-pop h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.cap-pop label.cap-l { font-size: 12px; font-weight: 500; color: var(--muted); }
+.cap-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cap-row .step { width: 40px; padding: 0; }
+.cap-row input[type="number"] {
+  width: 64px; height: 40px; padding: 0 8px; border-radius: 8px; text-align: center; font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font-size: 13.5px;
+  -moz-appearance: textfield; appearance: textfield;
+}
+.cap-row input[type="number"]::-webkit-inner-spin-button, .cap-row input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.cap-row input[type="number"]:focus-visible { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--ring); }
+.cap-row input[type="number"]:disabled, .cap-row .step:disabled { opacity: .5; }
+.cap-row .unit { font-size: 13px; color: var(--text-2); }
+.cap-off { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 13px; color: var(--text-2); }
+.cap-off input { width: 16px; height: 16px; accent-color: var(--accent); }
+.cap-warn {
+  margin: 0; padding: 8px 12px; border: 1px solid var(--danger-border); border-radius: var(--radius);
+  background: var(--danger-soft); color: var(--danger-text); font-size: 12.5px; line-height: 18px;
+}
+.cap-pop .err { margin: 0; padding: 8px 12px; }
+.cap-pop .actions { display: flex; justify-content: flex-end; gap: 8px; }
+
 /* ---- narrow ---- */
 @media (max-width: 759px) {
   .tabs { display: flex; }
@@ -540,6 +571,9 @@ a.fchip:hover .fdl { color: var(--text); }
   .att .aname { max-width: 120px; }
   .fchip .fname { max-width: 180px; }
   .tools .copy-btn { margin-left: auto; }
+  .top { position: relative; }
+  .capwrap { position: static; }
+  .cap-pop { left: 16px; right: 16px; width: auto; max-width: none; top: calc(100% - 4px); }
   .conn.live .ctext { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .composer { padding-bottom: 12px; }
   .invite { margin-top: 24px; padding: 24px 16px; }
@@ -562,6 +596,7 @@ a.fchip:hover .fdl { color: var(--text); }
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
   <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></symbol>
@@ -594,9 +629,30 @@ a.fchip:hover .fdl { color: var(--text); }
     <span class="local" id="local" title="This huddle runs only on this machine">local <span class="mono" id="host"></span></span>
   </div>
   <div class="tools">
-    <div class="meter" id="meter" role="meter" aria-label="Agent posts since you last spoke" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0">
-      <span class="segs" id="segs" aria-hidden="true"></span>
-      <span class="cap-n" id="cap-n" aria-hidden="true"></span>
+    <div class="capwrap">
+      <button class="meter" id="meter" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="cap-pop" aria-label="Round cap settings">
+        <span class="segs" id="segs" aria-hidden="true"></span>
+        <span class="cap-n" id="cap-n" aria-hidden="true"></span>
+      </button>
+      <form class="cap-pop" id="cap-pop" role="dialog" aria-labelledby="cap-h" autocomplete="off" hidden>
+        <h2 id="cap-h">Round cap</h2>
+        <div class="cap-row">
+          <label class="cap-l" for="cap-input">Pause agents after</label>
+        </div>
+        <div class="cap-row">
+          <button class="btn step" id="cap-dec" type="button" aria-label="Decrease"><svg class="i" aria-hidden="true"><use href="#i-minus"/></svg></button>
+          <input id="cap-input" type="number" min="1" max="50" step="1" inputmode="numeric">
+          <button class="btn step" id="cap-inc" type="button" aria-label="Increase"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></button>
+          <span class="unit">posts in a row</span>
+        </div>
+        <label class="cap-off"><input id="cap-off" type="checkbox">No limit</label>
+        <p class="cap-warn" id="cap-warn" hidden>Agents can keep posting without you. Your only stop is ending the room.</p>
+        <div class="err" id="cap-err" role="alert" hidden></div>
+        <div class="actions">
+          <button class="btn btn-ghost" id="cap-cancel" type="button">Cancel</button>
+          <button class="btn btn-solid" id="cap-save" type="submit">Save</button>
+        </div>
+      </form>
     </div>
     <span class="conn" id="conn" role="status"><span class="cdot" aria-hidden="true"></span><span class="ctext" id="ctext">Connecting</span></span>
     <button class="btn copy-btn" id="copy" type="button" aria-label="Copy join link">
@@ -1212,7 +1268,7 @@ a.fchip:hover .fdl { color: var(--text); }
   }
 
   // ---- header
-  let segCount = 0;
+  let segCount = 0, roundCap = null;
   function renderHeader(s) {
     if (s.session) {
       if (s.session.title && s.session.title !== sessionTitle) {
@@ -1229,27 +1285,28 @@ a.fchip:hover .fdl { color: var(--text); }
         $('host').textContent = host;
       }
     }
-    if (typeof s.roundCap === 'number' && s.roundCap > 0) {
-      const cap = s.roundCap, n = s.agentStreak || 0, at = n >= cap;
-      const want = cap <= 20 ? cap : 10;
+    if (s.roundCap === null || typeof s.roundCap === 'number') {
+      const cap = s.roundCap, n = s.agentStreak || 0, off = cap === null, at = !off && n >= cap;
+      roundCap = cap;
+      const want = off ? 0 : cap <= 20 ? cap : 10;
       const segs = $('segs');
       if (want !== segCount) {
         segCount = want;
         segs.textContent = '';
         for (let i = 0; i < want; i++) segs.appendChild(el('span', 'seg'));
       }
-      const filled = Math.round((Math.min(n, cap) / cap) * want);
+      const filled = off ? 0 : Math.round((Math.min(n, cap) / cap) * want);
       [...segs.children].forEach((c, i) => c.classList.toggle('on', i < filled));
       const meter = $('meter');
       meter.classList.toggle('at', at);
-      meter.setAttribute('aria-valuemax', String(cap));
-      meter.setAttribute('aria-valuenow', String(Math.min(n, cap)));
-      const desc = at
-        ? 'Agents posted ' + n + ' times in a row and are paused until you reply.'
-        : n + ' of ' + cap + ' agent posts since you last spoke. At ' + cap + ', agents pause until you reply.';
-      meter.setAttribute('aria-valuetext', at ? 'Waiting on you' : n + ' of ' + cap);
+      const desc = off
+        ? 'No round cap: agents never pause for you. Click to change.'
+        : at
+          ? 'Agents posted ' + n + ' times in a row and are paused until you reply. Click to change the cap.'
+          : n + ' of ' + cap + ' agent posts since you last spoke. At ' + cap + ', agents pause until you reply. Click to change the cap.';
+      meter.setAttribute('aria-label', 'Round cap: ' + (off ? 'no cap' : at ? 'waiting on you' : n + ' of ' + cap) + '. Change settings');
       meter.title = desc;
-      $('cap-n').textContent = at ? 'Waiting on you' : n + '/' + cap;
+      $('cap-n').textContent = off ? 'No cap' : at ? 'Waiting on you' : n + '/' + cap;
       text.placeholder = at ? 'Agents are waiting on you. Reply to let them continue.' : DEFAULT_PLACEHOLDER;
       if (at !== wasAtCap) {
         if (at) $('announce').textContent = 'Agents are waiting on you.';
@@ -1278,6 +1335,7 @@ a.fchip:hover .fdl { color: var(--text); }
     $('ended').hidden = false;
     setConn('ended', 'Ended');
     closeAc();
+    closeCap(false);
     text.disabled = true;
     text.placeholder = 'This huddle has ended.';
     $('attach').disabled = true;
@@ -1685,6 +1743,63 @@ a.fchip:hover .fdl { color: var(--text); }
     } finally {
       sending = false; syncSend();
       if (!ended) text.focus();
+    }
+  });
+
+  // ---- round cap
+  const capPop = $('cap-pop'), capMeter = $('meter'), capInput = $('cap-input'), capOff = $('cap-off');
+  const clampCap = (v) => Math.min(50, Math.max(1, Math.round(v) || 1));
+  function syncCapForm() {
+    capInput.disabled = capOff.checked;
+    $('cap-dec').disabled = $('cap-inc').disabled = capOff.checked;
+    $('cap-warn').hidden = !capOff.checked;
+  }
+  function openCap() {
+    if (ended) return;
+    capOff.checked = roundCap === null;
+    capInput.value = roundCap === null ? 10 : roundCap;
+    $('cap-err').hidden = true;
+    syncCapForm();
+    capPop.hidden = false;
+    capMeter.setAttribute('aria-expanded', 'true');
+    (capOff.checked ? capOff : capInput).focus();
+  }
+  function closeCap(refocus) {
+    if (capPop.hidden) return;
+    capPop.hidden = true;
+    capMeter.setAttribute('aria-expanded', 'false');
+    if (refocus) capMeter.focus();
+  }
+  capMeter.addEventListener('click', () => { if (capPop.hidden) openCap(); else closeCap(true); });
+  $('cap-cancel').addEventListener('click', () => closeCap(true));
+  capOff.addEventListener('change', syncCapForm);
+  $('cap-dec').addEventListener('click', () => { capInput.value = clampCap(Number(capInput.value) - 1); });
+  $('cap-inc').addEventListener('click', () => { capInput.value = clampCap(Number(capInput.value) + 1); });
+  capPop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeCap(true); } });
+  document.addEventListener('mousedown', (e) => {
+    if (!capPop.hidden && !capPop.contains(e.target) && !capMeter.contains(e.target)) closeCap(false);
+  });
+  capPop.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (ended) return;
+    const value = capOff.checked ? null : Number(capInput.value);
+    if (value !== null && !(Number.isInteger(value) && value >= 1 && value <= 50)) {
+      showErr($('cap-err'), 'Enter a whole number from 1 to 50.');
+      $('cap-err').hidden = false;
+      capInput.focus();
+      return;
+    }
+    $('cap-save').disabled = true;
+    try {
+      const { r, data } = await postJson('/api/settings', { roundCap: value });
+      if (!r.ok) { showErr($('cap-err'), errMain(r, data)); $('cap-err').hidden = false; return; }
+      closeCap(true);
+      pollNow();
+    } catch (err) {
+      showErr($('cap-err'), 'Could not reach the huddle server.');
+      $('cap-err').hidden = false;
+    } finally {
+      $('cap-save').disabled = false;
     }
   });
 

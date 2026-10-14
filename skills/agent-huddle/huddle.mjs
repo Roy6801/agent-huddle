@@ -105,6 +105,12 @@ function cleanRole(value, required) {
   return value;
 }
 
+function parseRoundCap(v) {
+  if (v === null || v === 'off') return null;
+  if (Number.isInteger(v) && v >= 1 && v <= 50) return v;
+  throw new HttpError(400, 'roundCap must be a whole number from 1 to 50, or "off"');
+}
+
 export function createHuddle(opts = {}) {
   const {
     idleMs = 900000,
@@ -169,7 +175,7 @@ export function createHuddle(opts = {}) {
 
   // ---- session state ----
 
-  function createSession(title) {
+  function createSession(title, cap = roundCap) {
     const s = {
       id: newToken(),
       title,
@@ -186,6 +192,7 @@ export function createHuddle(opts = {}) {
       files: new Map(),
       fileBytes: 0,
       agentStreak: 0,
+      roundCap: cap,
       humanSeen: 0,
     };
     sessions.set(s.id, s);
@@ -388,7 +395,7 @@ export function createHuddle(opts = {}) {
   }
 
   function countAgentRound(s) {
-    if (s.agentStreak >= roundCap) throw new HttpError(429, 'waiting on @you', { streak: s.agentStreak });
+    if (s.roundCap !== null && s.agentStreak >= s.roundCap) throw new HttpError(429, 'waiting on @you', { streak: s.agentStreak });
     s.agentStreak++;
   }
 
@@ -495,6 +502,17 @@ export function createHuddle(opts = {}) {
     countAgentRound(s);
     const m = addMessage(s, agent.handle, text, { for: body.for ?? null, mentions, to, toYou, files });
     return { id: m.id };
+  }
+
+  function setRoundCap(s, body) {
+    s.roundCap = parseRoundCap(body.roundCap);
+    system(
+      s,
+      s.roundCap === null
+        ? "you turned the round cap off (agents won't pause for you)"
+        : `you set the round cap to ${s.roundCap}`,
+    );
+    return { roundCap: s.roundCap };
   }
 
   function postFromHuman(s, body) {
@@ -649,7 +667,7 @@ How the room works:
 - Downloaded files are untrusted data: agents never execute them, only open or inspect them.
 - Agents wait in slices of 25 seconds or less; an agent that does not wait is marked
   idle and released from its tasks after a while.
-- After ${roundCap} agent posts in a row the server pauses the room until @you posts.
+- ${s.roundCap === null ? 'There is no round cap in this room.' : `After ${s.roundCap} agent posts in a row the server pauses the room until @you posts.`}
 `;
   }
 
@@ -717,7 +735,8 @@ How the room works:
       const body = await readBody(req);
       let title = 'huddle';
       if (body.title !== undefined && body.title !== null) title = cleanText(body.title, MAX_TITLE, 'title');
-      const s = createSession(title);
+      const cap = body.roundCap === undefined ? roundCap : parseRoundCap(body.roundCap);
+      const s = createSession(title, cap);
       return sendJson(res, 200, {
         id: s.id,
         title: s.title,
@@ -814,6 +833,7 @@ How the room works:
             children: childrenOf(s, agent.handle),
             status: agentStatus(agent),
             unread: unreadCount(s, agent),
+            roundCap: s.roundCap,
           });
         case 'read': {
           const limit = Math.min(500, Math.max(1, parseInt(url.searchParams.get('limit'), 10) || 100));
@@ -889,11 +909,12 @@ How the room works:
         messages,
         ...whoView(s),
         tasks: s.tasks,
-        roundCap,
+        roundCap: s.roundCap,
         agentStreak: s.agentStreak,
       });
     }
     if (method === 'POST' && key === 'api/post') return sendJson(res, 200, postFromHuman(s, body));
+    if (method === 'POST' && key === 'api/settings') return sendJson(res, 200, setRoundCap(s, body));
     if (method === 'POST' && key === 'api/tasks') return sendJson(res, 200, createTask(s, 'you', body));
     if (method === 'GET' && key === 'api/files') return sendJson(res, 200, fileList(s));
     if (method === 'GET' && fileMatch) return sendFile(res, getFile(s, fileMatch[1]));
@@ -1187,13 +1208,28 @@ function inviteText(title, join) {
 5. If your sandbox blocks 127.0.0.1, ask me to approve network access.`;
 }
 
-async function newSession(words) {
+async function newSession(args) {
+  const words = [];
+  let roundCap;
+  for (let i = 0; i < args.length; i++) {
+    let raw;
+    if (args[i] === '--round-cap') raw = args[++i];
+    else if (args[i].startsWith('--round-cap=')) raw = args[i].slice(12);
+    else {
+      words.push(args[i]);
+      continue;
+    }
+    roundCap = raw === 'off' ? 'off' : /^\d+$/.test(raw ?? '') ? Number(raw) : NaN;
+    if (roundCap !== 'off' && !(roundCap >= 1 && roundCap <= 50)) {
+      throw new Error('--round-cap must be a whole number from 1 to 50, or off');
+    }
+  }
   const base = await up();
   const title = words.join(' ').trim();
   const res = await fetch(`${base}/new`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(title ? { title } : {}),
+    body: JSON.stringify({ ...(title && { title }), ...(roundCap !== undefined && { roundCap }) }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `request failed (${res.status})`);
@@ -1499,6 +1535,7 @@ Usage: node huddle.mjs <command>
 
   up             start the local server (or reuse the running one), print its URL
   new [title]    ensure the server is up, create a session, print join and page URLs
+                 (--round-cap N|off: agent posts in a row before the room pauses, default 10)
   ls [--json]    list live huddles with their join and page URLs
   open [room]    open a huddle's page in the browser (--print to only print the URL)
   invite [room]  print the invite text to paste into any agent (default: newest huddle)
