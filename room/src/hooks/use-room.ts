@@ -137,7 +137,8 @@ export type Room = ReturnType<typeof useRoomState> & {
   live: Agent[];
   files: SharedFile[];
   atCap: boolean;
-  announce: (msg: string) => void;
+  /** Speaks through the page's live regions; urgent is for errors and the room ending. */
+  announce: (msg: string, urgent?: boolean) => void;
 };
 
 export const RoomContext = createContext<Room | null>(null);

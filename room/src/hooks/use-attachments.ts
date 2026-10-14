@@ -103,6 +103,7 @@ export function useAttachments(callbacks: Callbacks) {
             att.size = data.size;
             att.pct = 100;
             rerender();
+            if (!att.removed) cb.current.announce(`${att.name} uploaded`);
             return resolve();
           }
           if (xhr.status === 410) {

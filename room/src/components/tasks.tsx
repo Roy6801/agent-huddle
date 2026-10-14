@@ -1,5 +1,5 @@
 import { CircleCheckIcon, CircleDashedIcon, CircleDotIcon, PlusIcon } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { ErrorBox, type ErrorInfo } from "@/components/error-box";
 import { Jazzicon } from "@/components/identity";
@@ -9,6 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { useRoom } from "@/hooks/use-room";
+import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { errMain, postJson, validOf } from "@/lib/api";
 import type { Task, TaskStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -53,7 +54,10 @@ function TaskCard({ task }: { task: Task }) {
       onOpenChange={setOpen}
     >
       <li className={cn("rounded-lg border bg-background/60 transition-colors", done && "bg-transparent", open && "bg-background")}>
-        <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50">
+        <CollapsibleTrigger
+          data-roving-item
+          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
           <Icon aria-hidden className={cn("size-3.5 shrink-0", status.iconClass)} />
           <span className="shrink-0 font-mono text-[11px] text-muted-foreground">#{task.id}</span>
           <span
@@ -64,7 +68,12 @@ function TaskCard({ task }: { task: Task }) {
           >
             {task.title}
           </span>
-          {task.owner && <Jazzicon handle={task.owner} size={16} />}
+          {task.owner && (
+            <>
+              <Jazzicon handle={task.owner} size={16} />
+              <span className="sr-only">{`, owned by ${who(task.owner)}, `}</span>
+            </>
+          )}
           <Badge variant="outline" className={cn("h-[18px] px-1.5 text-[10.5px] font-medium", status.badge)}>
             {status.label}
           </Badge>
@@ -109,6 +118,8 @@ function NewTask() {
   const titleRef = useRef<HTMLInputElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const okTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const id = useId();
+  const describedBy = error ? `${id}-error` : undefined;
   const handles = live.map((a) => a.handle);
   const current = handles.includes(assignee) ? assignee : "";
 
@@ -190,10 +201,14 @@ function NewTask() {
             }
           }}
         >
-          <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-            Title
+          <div className="grid gap-1.5">
+            <label htmlFor={`${id}-title`} className="text-xs font-medium text-muted-foreground">
+              Title
+            </label>
             <Input
               ref={titleRef}
+              id={`${id}-title`}
+              aria-describedby={describedBy}
               value={title}
               maxLength={200}
               placeholder="What needs doing?"
@@ -201,10 +216,14 @@ function NewTask() {
               onChange={(e) => setTitle(e.target.value)}
               className="font-normal text-foreground"
             />
-          </label>
-          <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-            Assign to
+          </div>
+          <div className="grid gap-1.5">
+            <label htmlFor={`${id}-assignee`} className="text-xs font-medium text-muted-foreground">
+              Assign to
+            </label>
             <NativeSelect
+              id={`${id}-assignee`}
+              aria-describedby={describedBy}
               value={current}
               disabled={state.ended}
               onChange={(e) => setAssignee(e.target.value)}
@@ -217,8 +236,8 @@ function NewTask() {
                 </NativeSelectOption>
               ))}
             </NativeSelect>
-          </label>
-          {error && <ErrorBox error={error} />}
+          </div>
+          {error && <ErrorBox id={`${id}-error`} error={error} />}
           <div role="status" className="text-xs text-presence empty:hidden">
             {ok}
           </div>
@@ -241,13 +260,14 @@ export function Tasks() {
   const { tasks } = state;
   const done = tasks.filter((t) => t.status === "done").length;
   const sorted = tasks.slice().sort((a, b) => (ORDER[a.status] ?? 3) - (ORDER[b.status] ?? 3) || a.id - b.id);
+  const roving = useRovingFocus<HTMLUListElement>();
 
   return (
     <section aria-labelledby="tasks-h" className="min-w-0">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 id="tasks-h" className="text-xs font-medium text-muted-foreground">
+        <h3 id="tasks-h" className="text-xs font-medium text-muted-foreground">
           Tasks
-        </h2>
+        </h3>
         {tasks.length > 0 && (
           <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
             {done}/{tasks.length} done
@@ -259,7 +279,7 @@ export function Tasks() {
           No tasks yet. Agents add them as they split the work, or add one yourself.
         </p>
       ) : (
-        <ul className="mt-2 flex flex-col gap-1.5">
+        <ul {...roving} className="mt-2 flex flex-col gap-1.5">
           {sorted.map((t) => (
             <TaskCard key={t.id} task={t} />
           ))}

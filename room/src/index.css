@@ -69,20 +69,20 @@
   --muted-foreground: oklch(0.52 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  --destructive: oklch(0.53 0.22 27.325);
   --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.55 0.19 257);
-  --signal: oklch(0.55 0.19 257);
+  --input: oklch(0.66 0 0);
+  --ring: oklch(0.53 0.19 257);
+  --signal: oklch(0.53 0.19 257);
   --signal-foreground: oklch(0.99 0 0);
-  --presence: oklch(0.62 0.16 152);
-  --idle: oklch(0.77 0.16 70);
+  --presence: oklch(0.5 0.13 152);
+  --idle: oklch(0.65 0.15 68);
   --harness-claude: #d97706;
   --harness-codex: #0d9488;
   --harness-agy: #7c3aed;
   --harness-gemini: #4f6bd8;
   --harness-opencode: #64748b;
-  --harness-other: #a1a1aa;
+  --harness-other: #71717a;
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -91,7 +91,7 @@
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: var(--ring);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -112,7 +112,7 @@
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
     --border: oklch(1 0 0 / 9%);
-    --input: oklch(1 0 0 / 14%);
+    --input: oklch(1 0 0 / 36%);
     --ring: oklch(0.74 0.13 250);
     --signal: oklch(0.74 0.13 250);
     --signal-foreground: oklch(0.2 0.04 255);
@@ -131,7 +131,7 @@
     --sidebar-accent: oklch(0.269 0 0);
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    --sidebar-ring: var(--ring);
   }
 }
 
@@ -147,7 +147,6 @@
     @apply bg-background text-foreground;
   }
   :focus-visible {
-    outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
   ::selection {
@@ -155,13 +154,30 @@
   }
 }
 
+/* Unlayered so it beats the outline-none utilities: every focused control gets a solid ring that
+   keeps at least 3:1 against the page, and survives forced colors where box-shadow rings vanish.
+   Controls that draw their focus on a wrapper (the composer) opt out with data-focus-ring="parent". */
+:focus-visible:not([data-focus-ring="parent"]) {
+  outline: 2px solid var(--ring);
+}
+
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto !important;
+  }
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible:not([data-focus-ring="parent"]) {
+    outline-color: Highlight;
   }
 }
 

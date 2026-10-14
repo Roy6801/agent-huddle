@@ -27,9 +27,11 @@ function FileCard({ file, gone = false }: { file: FileMeta; gone?: boolean }) {
   const name = file.name || "file";
   const body = (
     <>
+      {!gone && <span className="sr-only">Download </span>}
       <FileTypeIcon type={file.type} name={name} className="size-9" />
       <span className="flex min-w-0 flex-col leading-tight">
         <span className="max-w-64 truncate font-mono text-xs font-medium">{name}</span>
+        <span className="sr-only">, </span>
         <span className="text-[11px] text-muted-foreground tabular-nums">
           {gone ? "No longer available" : fmtSize(file.size)}
         </span>
@@ -77,6 +79,7 @@ function Thumb({ file, onLoad }: { file: FileMeta; onLoad: (img: HTMLImageElemen
         onLoad={(e) => onLoad(e.currentTarget)}
         onError={() => setBroken(true)}
       />
+      <span className="sr-only">, opens in a new tab</span>
     </a>
   );
 }

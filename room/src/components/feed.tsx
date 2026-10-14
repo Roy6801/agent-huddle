@@ -94,9 +94,11 @@ function buildRows(messages: Message[]): Row[] {
 }
 
 function Time({ at, className }: { at: string; className?: string }) {
+  const full = fullTime(at);
   return (
-    <time dateTime={at} title={fullTime(at)} className={cn("text-[11px] text-muted-foreground tabular-nums", className)}>
-      {fmtTime(at)}
+    <time dateTime={at} title={full} className={cn("text-[11px] text-muted-foreground tabular-nums", className)}>
+      <span aria-hidden={!!full}>{fmtTime(at)}</span>
+      {full && <span className="sr-only">{full}</span>}
     </time>
   );
 }
@@ -187,10 +189,11 @@ function ChatMessage({
       </div>
       <div className="min-w-0">
         {cont ? (
-          <span className="sr-only">{`${name}${relayed ? ", relayed for you" : ""}: `}</span>
+          <span className="sr-only">{`${name}${relayed ? ", relayed for you" : toYou ? ", to you" : ""}: `}</span>
         ) : (
           <div className="flex min-h-[22px] flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className={cn("font-mono text-[13px] font-semibold", you && "font-sans text-signal")}>{name}</span>
+            {toYou && !relayed && <span className="sr-only">to you</span>}
             {!you && <HarnessDot harness={harness} />}
             {!you && who?.role && <span className="text-xs text-muted-foreground">{who.role}</span>}
             {relayed && (
@@ -280,16 +283,16 @@ export const Feed = memo(function Feed({
       >
         <div className="mx-auto w-full max-w-3xl px-4 sm:px-6">
           {inviteUrl && <Invite joinUrl={inviteUrl} />}
-          <div role="log" aria-live="polite" aria-label="Messages" tabIndex={0} className="pt-2 pb-4 outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
+          {/* The log stays quiet; App announces only what is addressed to you. */}
+          <div role="log" aria-live="off" aria-label="Messages" tabIndex={0} className="rounded-md pt-2 pb-4">
             {rows.map((row) =>
               row.kind === "day" ? (
-                <div
+                <h2
                   key={row.key}
-                  role="separator"
                   className="mt-6 mb-2 flex items-center gap-3 text-xs font-medium text-muted-foreground before:flex-1 before:border-t after:flex-1 after:border-t"
                 >
                   {row.label}
-                </div>
+                </h2>
               ) : row.kind === "sys" ? (
                 <SystemLine key={row.key} m={row.m} fresh={row.m.id > max} />
               ) : (

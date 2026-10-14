@@ -1,7 +1,8 @@
 import { CornerDownRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { HarnessDot, PresenceAvatar } from "@/components/identity";
+import { GroupAvatar, HarnessDot, Jazzicon, PresenceAvatar } from "@/components/identity";
+import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Sidebar,
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/sidebar";
 import { usePanels } from "@/hooks/use-panels";
 import { useRoom } from "@/hooks/use-room";
+import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { fmtAgo, fullTime } from "@/lib/format";
 import type { Agent, AgentStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -26,6 +28,8 @@ const GROUPS: [AgentStatus, string][] = [
   ["idle", "Idle"],
   ["left", "Left"],
 ];
+
+const ORDER: Record<AgentStatus, number> = { active: 0, idle: 1, left: 2 };
 
 const STATUS_TEXT: Record<AgentStatus, string> = {
   active: "Active",
@@ -87,8 +91,10 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
       <SidebarMenuItem>
         <CollapsibleTrigger asChild>
           <SidebarMenuButton
-            tooltip={`${agent.handle} · ${agent.status}`}
-            className={cn("h-9 gap-2.5 group-data-[collapsible=icon]:p-1.5!", agent.status === "left" && "opacity-55")}
+            data-roving-item
+            // The drawer never shows it, and a hidden tooltip would swallow the first Esc.
+            tooltip={isMobile ? undefined : `${agent.handle} · ${agent.status}`}
+            className={cn("h-9 gap-2.5 group-data-[collapsible=icon]:p-1.5!", agent.status === "left" && "text-muted-foreground")}
             onClick={() => {
               if (state === "collapsed" && !isMobile) setOpen(true);
             }}
@@ -102,7 +108,11 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
                 <CornerDownRightIcon className="size-3.5! text-muted-foreground" />
               </span>
             )}
-            <PresenceAvatar handle={agent.handle} status={agent.status} />
+            <PresenceAvatar
+              handle={agent.handle}
+              status={agent.status}
+              className={cn(agent.status === "left" && "opacity-55")}
+            />
             <span className="min-w-0 truncate font-mono text-xs font-medium">{agent.handle}</span>
             {agent.role && <span className="min-w-0 truncate text-[11px] text-muted-foreground">{agent.role}</span>}
             <HarnessDot harness={agent.harness} className="ml-auto group-data-[collapsible=icon]:hidden" />
@@ -116,7 +126,7 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
             </Detail>
             <Detail label="Harness">
               <span className="inline-flex items-center gap-1.5">
-                <HarnessDot harness={agent.harness} />
+                <HarnessDot harness={agent.harness} decorative />
                 {agent.harness}
               </span>
             </Detail>
@@ -142,6 +152,7 @@ export function AgentsPanel() {
   const { state } = useRoom();
   const { agents } = state;
   const nActive = agents.filter((a) => a.status === "active").length;
+  const roving = useRovingFocus<HTMLDivElement>();
 
   return (
     <Sidebar side="left" collapsible="icon" role="complementary" aria-label="Agents">
@@ -149,14 +160,14 @@ export function AgentsPanel() {
         <span className="grid size-8 shrink-0 place-items-center rounded-lg border bg-background text-foreground/80">
           <Mark />
         </span>
-        <span className="min-w-0 truncate text-sm font-medium group-data-[collapsible=icon]:hidden">In the room</span>
+        <h2 className="min-w-0 truncate text-sm font-medium group-data-[collapsible=icon]:hidden">In the room</h2>
         {agents.length > 0 && (
           <span className="ml-auto text-xs text-muted-foreground tabular-nums group-data-[collapsible=icon]:hidden">
             {nActive} active
           </span>
         )}
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent {...roving}>
         {agents.length === 0 ? (
           <p className="px-4 py-3 text-xs leading-5 text-muted-foreground group-data-[collapsible=icon]:hidden">
             No agents yet. Share the join link to bring them in.
@@ -167,9 +178,11 @@ export function AgentsPanel() {
             if (!members.length) return null;
             return (
               <SidebarGroup key={status} className="py-1">
-                <SidebarGroupLabel className="gap-1.5">
-                  {label}
-                  <span className="text-muted-foreground/70 tabular-nums">{members.length}</span>
+                <SidebarGroupLabel asChild className="gap-1.5">
+                  <h3>
+                    {label}
+                    <span className="tabular-nums">{members.length}</span>
+                  </h3>
                 </SidebarGroupLabel>
                 <SidebarMenu className="gap-0.5">
                   {tree(members).map(({ agent, depth }) => (
@@ -186,34 +199,50 @@ export function AgentsPanel() {
   );
 }
 
-/** Phone-width roster: the demo's horizontal strip of agent chips. Tapping one opens its detail. */
-export function AgentStrip() {
-  const { state } = useRoom();
-  const { openAgents } = usePanels();
-  if (!state.agents.length) return null;
-  const order: Record<AgentStatus, number> = { active: 0, idle: 1, left: 2 };
-  const agents = state.agents.slice().sort((a, b) => order[a.status] - order[b.status]);
+/** Phone header: up to three overlapping avatars, presence on the front one, opening the agents drawer. */
+export function AgentStack({ expanded, onClick, className }: { expanded: boolean; onClick: () => void; className?: string }) {
+  const { live } = useRoom();
+  const sorted = live.slice().sort((a, b) => ORDER[a.status] - ORDER[b.status]);
+  const shown = sorted.slice(0, 3);
+  const extra = sorted.length - shown.length;
+  const nActive = live.filter((a) => a.status === "active").length;
+  const name = live.length ? `Agents, ${live.length} in the room, ${nActive} active` : "Agents, none in the room yet";
+
   return (
-    <div className="relative min-w-0 flex-1">
-      <ul aria-label="Agents in the room" className="flex gap-1.5 overflow-x-auto py-2 pr-6 pl-3 [scrollbar-width:none]">
-        {agents.map((a) => (
-          <li key={a.handle} className="shrink-0">
-            <button
-              type="button"
-              onClick={() => openAgents(a.handle)}
-              className={cn(
-                "flex h-9 items-center gap-2 rounded-lg border px-2.5 transition-[opacity,background-color] hover:bg-muted",
-                a.status === "left" && "opacity-45",
-              )}
-            >
-              <PresenceAvatar handle={a.handle} status={a.status} ringClass="ring-background bg-background" />
-              <span className="font-mono text-xs font-medium">{a.handle}</span>
-              <span className="sr-only">{`, ${a.status}. Show details`}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-background to-transparent" />
-    </div>
+    <Button
+      variant="ghost"
+      aria-label={name}
+      aria-expanded={expanded}
+      aria-haspopup="dialog"
+      onClick={onClick}
+      className={cn("h-11 shrink-0 gap-1 px-1.5", className)}
+    >
+      {shown.length ? (
+        <span className="flex items-center">
+          {shown.map((a, i) =>
+            i === 0 ? (
+              <PresenceAvatar
+                key={a.handle}
+                handle={a.handle}
+                status={a.status}
+                size={26}
+                ringClass="ring-background bg-background"
+                className="z-3 rounded-full ring-2 ring-background"
+              />
+            ) : (
+              <Jazzicon
+                key={a.handle}
+                handle={a.handle}
+                size={26}
+                className={cn("relative -ml-2.5 ring-2 ring-background", i === 1 ? "z-2" : "z-1")}
+              />
+            ),
+          )}
+        </span>
+      ) : (
+        <GroupAvatar size={26} />
+      )}
+      {extra > 0 && <span className="text-xs font-medium text-muted-foreground tabular-nums">+{extra}</span>}
+    </Button>
   );
 }

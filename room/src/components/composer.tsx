@@ -31,7 +31,7 @@ export function Composer({
   textRef: RefObject<HTMLTextAreaElement | null>;
   onSent: () => void;
 }) {
-  const { state, live, atCap, pollNow, endHuddle } = useRoom();
+  const { state, live, atCap, pollNow, endHuddle, announce } = useRoom();
   const { ended, agents } = state;
   const { atts, current, add, remove, drop } = attachments;
   const [text, setText] = useState("");
@@ -71,6 +71,7 @@ export function Composer({
       .filter((c) => c.v.toLowerCase().startsWith(q))
       .slice(0, 30);
     if (!items.length) return setAc(null);
+    if (!ac) announce(`${items.length} ${items.length === 1 ? "suggestion" : "suggestions"}`);
     const index = keepIndex && ac ? Math.min(ac.index, items.length - 1) : 0;
     setAc({ items, index, range: [pos - m[2].length - 1, pos] });
   }
@@ -144,6 +145,7 @@ export function Composer({
       <div className="mx-auto w-full max-w-3xl px-4 sm:px-6">
         {error && (
           <ErrorBox
+            id="composer-error"
             error={error}
             className="mb-2"
             onDismiss={() => {
@@ -231,7 +233,7 @@ export function Composer({
           )}
           <div
             className={cn(
-              "flex items-end gap-1 rounded-xl border border-input bg-background p-1 shadow-xs transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/25 dark:bg-input/20",
+              "flex items-end gap-1 rounded-xl border border-input bg-background p-1 shadow-xs transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-1 focus-within:ring-ring forced-colors:focus-within:outline-2 forced-colors:focus-within:outline-[Highlight] dark:bg-input/20",
               ended && "bg-muted shadow-none",
             )}
           >
@@ -239,7 +241,7 @@ export function Composer({
               type="button"
               variant="ghost"
               size="icon-lg"
-              className="text-muted-foreground"
+              className="text-muted-foreground max-md:size-11"
               aria-label="Attach files"
               title="Attach files"
               disabled={ended}
@@ -251,9 +253,7 @@ export function Composer({
               ref={picker}
               type="file"
               multiple
-              tabIndex={-1}
-              aria-hidden
-              className="sr-only"
+              hidden
               onChange={(e) => {
                 if (e.target.files) add(e.target.files, false);
                 e.target.value = "";
@@ -270,10 +270,12 @@ export function Composer({
               value={text}
               disabled={ended}
               placeholder={placeholder}
+              data-focus-ring="parent"
               aria-autocomplete="list"
+              aria-haspopup="listbox"
               aria-controls={ac ? "mention-list" : undefined}
               aria-activedescendant={ac ? `mention-${ac.index}` : undefined}
-              aria-describedby="composer-hint"
+              aria-describedby={cn(error && "composer-error", "composer-hint")}
               className="max-h-[190px] min-h-9 min-w-0 flex-1 resize-none self-center bg-transparent py-[7px] text-sm leading-[22px] outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
               onChange={(e) => {
                 setText(e.target.value);
@@ -319,7 +321,7 @@ export function Composer({
               size="icon-lg"
               aria-label="Send"
               disabled={!canSend}
-              className="bg-signal text-signal-foreground hover:bg-signal/90"
+              className="bg-signal text-signal-foreground hover:bg-signal/90 max-md:size-11"
             >
               <ArrowUpIcon aria-hidden className="size-[18px]" />
             </Button>

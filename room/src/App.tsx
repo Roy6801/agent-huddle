@@ -1,18 +1,36 @@
-import { CircleAlertIcon, CircleStopIcon } from "lucide-react";
+import { CircleAlertIcon, CircleStopIcon, TriangleAlertIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
-import { AgentStrip, AgentsPanel } from "@/components/agents-panel";
+import { AgentsPanel } from "@/components/agents-panel";
 import { Board } from "@/components/board";
 import { Chat } from "@/components/chat";
-import { Header, MobileBoardButton } from "@/components/header";
+import { Header } from "@/components/header";
+import { ShortcutsDialog, useShortcutsKey } from "@/components/shortcuts";
 import { SidebarInset, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useAnnouncements } from "@/hooks/use-announcements";
 import { PanelsContext, usePersistedOpen, type Panels } from "@/hooks/use-panels";
 import { RoomContext, useDerived, useRoom, useRoomState, type Room } from "@/hooks/use-room";
 
+/** First tab stop on the page. The message box, or the feed once the room has ended. */
+function SkipLink() {
+  return (
+    <a
+      href="#composer-text"
+      className="sr-only rounded-lg bg-background px-3 py-2 text-sm font-medium shadow-lg focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50"
+      onClick={(e) => {
+        e.preventDefault();
+        const box = document.getElementById("composer-text") as HTMLTextAreaElement | null;
+        (box && !box.disabled ? box : document.querySelector<HTMLElement>('[role="log"]'))?.focus();
+      }}
+    >
+      Skip to message box
+    </a>
+  );
+}
 
 function Banners() {
-  const { state } = useRoom();
+  const { state, atCap } = useRoom();
   return (
     <>
       {state.notice && (
@@ -24,8 +42,14 @@ function Banners() {
           {state.notice}
         </div>
       )}
+      {atCap && !state.ended && (
+        <p className="flex shrink-0 items-center gap-2 border-b border-signal/20 bg-signal/5 px-4 py-2 text-[13px] leading-5 font-medium text-signal md:hidden">
+          <TriangleAlertIcon aria-hidden className="size-4 shrink-0" />
+          Agents are waiting on you. Reply to continue.
+        </p>
+      )}
       {state.ended && (
-        <div role="status" className="flex shrink-0 items-start gap-3 border-b bg-muted/50 px-4 py-3">
+        <div className="flex shrink-0 items-start gap-3 border-b bg-muted/50 px-4 py-3">
           <span className="grid size-8 shrink-0 place-items-center rounded-full border bg-background text-muted-foreground">
             <CircleStopIcon aria-hidden className="size-4" />
           </span>
@@ -64,6 +88,9 @@ function Shell() {
   const [board, setBoard] = usePersistedOpen("agent-huddle.board-open.v2", () => true);
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [capRequest, setCapRequest] = useState(0);
+  const [shortcuts, setShortcuts] = useState(false);
+  const showShortcuts = useCallback(() => setShortcuts(true), []);
+  useShortcutsKey(showShortcuts);
 
   const openAgents = useCallback(
     (handle?: string) => {
@@ -88,31 +115,34 @@ function Shell() {
 
   return (
     <PanelsContext.Provider value={panels}>
+      <SkipLink />
       <AgentsPanel />
-      <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
-        <SidebarProvider
-          open={board}
-          onOpenChange={setBoard}
-          keyboardShortcut="."
-          className="min-h-0 flex-1"
-          style={{ "--sidebar-width": "19rem" } as CSSProperties}
-        >
-          <BoardBridge into={boardControls} />
-          <div className="flex min-w-0 flex-1 flex-col">
-            <Header
-              onToggleAgents={agents.toggleSidebar}
-              onToggleBoard={() => boardControls.current?.toggleSidebar()}
-            />
-            <div className="flex shrink-0 items-center border-b md:hidden">
-              <AgentStrip />
-              <MobileBoardButton />
+      <SidebarInset asChild className="min-h-0 min-w-0 overflow-hidden">
+        <div>
+          <SidebarProvider
+            open={board}
+            onOpenChange={setBoard}
+            keyboardShortcut="."
+            className="min-h-0 flex-1"
+            style={{ "--sidebar-width": "19rem" } as CSSProperties}
+          >
+            <BoardBridge into={boardControls} />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <Header
+                agentsOpen={agents.isMobile ? agents.openMobile : agents.open}
+                onToggleAgents={agents.toggleSidebar}
+                onShowShortcuts={showShortcuts}
+              />
+              <main id="main" className="flex min-h-0 flex-1 flex-col">
+                <Banners />
+                <Chat />
+              </main>
             </div>
-            <Banners />
-            <Chat />
-          </div>
-          <Board />
-        </SidebarProvider>
+            <Board />
+          </SidebarProvider>
+        </div>
       </SidebarInset>
+      <ShortcutsDialog open={shortcuts} onOpenChange={setShortcuts} />
     </PanelsContext.Provider>
   );
 }
@@ -120,14 +150,8 @@ function Shell() {
 export function App() {
   const { state, pollNow, endHuddle } = useRoomState();
   const { identities, live, files, atCap } = useDerived(state);
-  const [announcement, setAnnouncement] = useState("");
   const [agentsOpen, setAgentsOpen] = usePersistedOpen("agent-huddle.agents-open.v2", () => true);
-  const wasAtCap = useRef(false);
-
-  const announce = useCallback((msg: string) => {
-    setAnnouncement("");
-    requestAnimationFrame(() => setAnnouncement(msg));
-  }, []);
+  const { live: spoken, announce } = useAnnouncements(state, atCap);
 
   const room = useMemo<Room>(
     () => ({ state, pollNow, endHuddle, announce, identities, live, files, atCap }),
@@ -135,17 +159,8 @@ export function App() {
   );
 
   useEffect(() => {
-    if (state.name) document.title = `Huddle · ${state.name}`;
-  }, [state.name]);
-
-  useEffect(() => {
     document.documentElement.toggleAttribute("data-ended", state.ended);
   }, [state.ended]);
-
-  useEffect(() => {
-    if (atCap && !wasAtCap.current) announce("Agents are waiting on you.");
-    wasAtCap.current = atCap;
-  }, [atCap, announce]);
 
   return (
     <RoomContext.Provider value={room}>
@@ -159,7 +174,10 @@ export function App() {
           <Shell />
         </SidebarProvider>
         <div role="status" className="sr-only">
-          {announcement}
+          {spoken.polite}
+        </div>
+        <div role="alert" className="sr-only">
+          {spoken.assertive}
         </div>
       </TooltipProvider>
     </RoomContext.Provider>

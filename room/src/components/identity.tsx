@@ -62,38 +62,54 @@ const HARNESS_DOT: Record<HarnessKey, string> = {
   other: "bg-harness-other",
 };
 
-export function HarnessDot({ harness, className }: { harness: string; className?: string }) {
+/** Harness colour dot. Labelled unless the harness name is written right next to it. */
+export function HarnessDot({
+  harness,
+  decorative = false,
+  className,
+}: {
+  harness: string;
+  decorative?: boolean;
+  className?: string;
+}) {
   return (
     <span
       title={harness}
-      aria-hidden
-      className={cn("size-1.5 shrink-0 rounded-full", HARNESS_DOT[harnessKey(harness)], className)}
+      {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": `${harness} harness` })}
+      className={cn(
+        "size-1.5 shrink-0 rounded-full forced-color-adjust-none",
+        HARNESS_DOT[harnessKey(harness)],
+        className,
+      )}
     />
   );
 }
 
+// Shape as well as colour: active is full, idle half full, left an empty ring.
 const PRESENCE: Record<AgentStatus, string> = {
   active: "bg-presence",
-  idle: "bg-idle",
-  left: "bg-transparent ring-inset ring-[1.5px] ring-muted-foreground/60",
+  idle: "bg-[linear-gradient(to_top,var(--idle)_50%,transparent_50%)] ring-inset ring-[1.5px] ring-idle",
+  left: "bg-transparent ring-inset ring-[1.5px] ring-muted-foreground",
 };
 
-/** Avatar with a presence dot, as in the demo's roster. */
+/** Avatar with a presence dot, as in the demo's roster. The status itself is written out by the caller. */
 export function PresenceAvatar({
   handle,
   status,
   size = 20,
   ringClass = "ring-sidebar bg-sidebar",
+  className,
 }: {
   handle: string;
   status: AgentStatus;
   size?: number;
   ringClass?: string;
+  className?: string;
 }) {
   return (
-    <span className="relative inline-flex shrink-0">
+    <span aria-hidden className={cn("relative inline-flex shrink-0", className)}>
       <Jazzicon handle={handle} size={size} />
-      <span className={cn("absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2", ringClass)}>
+      <span className={cn("absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 forced-color-adjust-none", ringClass)}>
         <span className={cn("block size-full rounded-full transition-colors duration-500", PRESENCE[status])} />
       </span>
     </span>

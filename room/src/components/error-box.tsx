@@ -8,14 +8,18 @@ export type ErrorInfo = { message: string; valid?: string[] | null; validLabel?:
 export function ErrorBox({
   error,
   onDismiss,
+  id,
   className,
 }: {
   error: ErrorInfo;
   onDismiss?: () => void;
+  /** Lets the field the error is about point at it with aria-describedby. */
+  id?: string;
   className?: string;
 }) {
   return (
     <div
+      id={id}
       role="alert"
       className={cn(
         "flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 py-2 pr-1 pl-3 text-[13px] leading-5 text-destructive",
