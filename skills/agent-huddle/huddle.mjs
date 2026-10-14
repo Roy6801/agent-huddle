@@ -1131,6 +1131,119 @@ async function down() {
   throw new Error('server did not stop within 3 seconds');
 }
 
+const SKILL_NAMES = ['agent-huddle', 'huddle-start', 'huddle-join', 'huddle-rooms', 'huddle-end'];
+const INSTALL_HINT = 'curl -fsSL https://agent-huddle.vercel.app/install.sh | bash';
+
+function onPath(binary) {
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    if (!dir) continue;
+    try {
+      const file = path.join(dir, binary);
+      if (!fs.statSync(file).isFile()) continue;
+      fs.accessSync(file, fs.constants.X_OK);
+      return true;
+    } catch {}
+  }
+  return false;
+}
+
+function realOrSelf(p) {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+function agentRows() {
+  const home = os.homedir();
+  const exists = (p) => fs.existsSync(p);
+  const rows = [];
+  const seen = new Set();
+  const add = (agent, label, skillsPath, found) => {
+    const key = realOrSelf(skillsPath);
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push({ agent, label, path: skillsPath, found });
+  };
+
+  const claudeDirs = [];
+  if (process.env.CLAUDE_CONFIG_DIR) claudeDirs.push(process.env.CLAUDE_CONFIG_DIR);
+  const claudeBinary = onPath('claude');
+  if (exists(path.join(home, '.claude')) || claudeBinary) claudeDirs.push(path.join(home, '.claude'));
+  try {
+    for (const name of fs.readdirSync(home).sort()) {
+      if (name.startsWith('.claude-') && exists(path.join(home, name, 'settings.json'))) {
+        claudeDirs.push(path.join(home, name));
+      }
+    }
+  } catch {}
+  const claudeSeen = new Set();
+  for (const dir of claudeDirs) {
+    const key = realOrSelf(dir);
+    if (claudeSeen.has(key)) continue;
+    claudeSeen.add(key);
+    add('claude', 'Claude Code', path.join(dir, 'skills'), true);
+  }
+  if (!claudeSeen.size) add('claude', 'Claude Code', path.join(home, '.claude', 'skills'), false);
+
+  const fixed = [
+    ['codex', 'Codex', path.join(home, '.codex'), path.join(home, '.agents', 'skills')],
+    ['agy', 'Antigravity', path.join(home, '.gemini', 'antigravity-cli'), path.join(home, '.gemini', 'antigravity-cli', 'skills')],
+    ['gemini', 'Gemini CLI', path.join(home, '.gemini', 'settings.json'), path.join(home, '.gemini', 'skills')],
+    ['opencode', 'opencode', path.join(home, '.config', 'opencode'), path.join(home, '.config', 'opencode', 'skills')],
+  ];
+  const detected = {};
+  for (const [agent, label, signal, skillsPath] of fixed) {
+    detected[agent] = onPath(agent) || exists(signal);
+    add(agent, label, skillsPath, detected[agent]);
+  }
+
+  let saved = null;
+  try {
+    saved = JSON.parse(fs.readFileSync(path.join(resolveHome(), 'install.json'), 'utf8'));
+  } catch {}
+  const labels = { claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity', gemini: 'Gemini CLI', opencode: 'opencode' };
+  if (saved && Array.isArray(saved.targets)) {
+    for (const target of saved.targets) {
+      if (!target || typeof target.path !== 'string' || !path.isAbsolute(target.path)) continue;
+      const known = labels[target.agent];
+      add(known ? target.agent : 'other', known || 'Other', target.path, known ? Boolean(detected[target.agent] || claudeSeen.size) : true);
+    }
+  }
+  return rows;
+}
+
+function codexNetworkAllowed() {
+  try {
+    const text = fs.readFileSync(path.join(os.homedir(), '.codex', 'config.toml'), 'utf8');
+    return /^\s*network_access\s*=\s*true\b/m.test(text);
+  } catch {
+    return false;
+  }
+}
+
+function checkAgents() {
+  console.log('Agents');
+  for (const row of agentRows()) {
+    if (!row.found) {
+      console.log(`  - ${row.label}: not found`);
+      continue;
+    }
+    const missing = SKILL_NAMES.filter((skill) => !fs.existsSync(path.join(row.path, skill, 'SKILL.md')));
+    if (missing.length) {
+      console.log(`! ${row.label}: skills not installed at ${row.path}; run: ${INSTALL_HINT}`);
+    } else {
+      console.log(`✓ ${row.label}: found, skills installed at ${row.path}`);
+    }
+    if (row.agent === 'codex' && !codexNetworkAllowed()) {
+      console.log(
+        '! Codex: localhost may be blocked; approve network access when asked or set network_access = true under [sandbox_workspace_write]',
+      );
+    }
+  }
+}
+
 async function doctor() {
   let failed = false;
   const line = (ok, text) => {
@@ -1155,6 +1268,7 @@ async function doctor() {
     const { message } = diagnose(err);
     line(false, `server at http://127.0.0.1:${port}: ${message}`);
   }
+  checkAgents();
   process.exitCode = failed ? 1 : 0;
 }
 
