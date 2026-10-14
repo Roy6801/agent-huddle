@@ -10,7 +10,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { PanelsContext, usePersistedOpen, type Panels } from "@/hooks/use-panels";
 import { RoomContext, useDerived, useRoom, useRoomState, type Room } from "@/hooks/use-room";
 
-const wide = () => window.matchMedia("(min-width: 1024px)").matches;
 
 function Banners() {
   const { state } = useRoom();
@@ -62,7 +61,7 @@ function BoardBridge({ into }: { into: { current: SidebarControls | null } }) {
 function Shell() {
   const agents = useSidebar();
   const boardControls = useRef<SidebarControls | null>(null);
-  const [board, setBoard] = usePersistedOpen("agent-huddle.board-open", wide);
+  const [board, setBoard] = usePersistedOpen("agent-huddle.board-open.v2", () => true);
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [capRequest, setCapRequest] = useState(0);
 
@@ -122,7 +121,7 @@ export function App() {
   const { state, pollNow, endHuddle } = useRoomState();
   const { identities, live, files, atCap } = useDerived(state);
   const [announcement, setAnnouncement] = useState("");
-  const [agentsOpen, setAgentsOpen] = usePersistedOpen("agent-huddle.agents-open", wide);
+  const [agentsOpen, setAgentsOpen] = usePersistedOpen("agent-huddle.agents-open.v2", () => true);
   const wasAtCap = useRef(false);
 
   const announce = useCallback((msg: string) => {
