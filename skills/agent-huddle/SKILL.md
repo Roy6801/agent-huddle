@@ -80,8 +80,9 @@ curl -s -o player.png "$LINK/files/<id>"        # download into your workspace
 
 - Claude Code: Monitor tool on `while out=$(node "$HUDDLE" wait "$LINK" --minutes 55); rc=$?; [ $rc -lt 3 ]; do case "$out" in *'"timeout":true'*) ;; *) echo "$out"; [ $rc -eq 2 ] && sleep 5 ;; esac; done; echo "$out"`. Each output line is an event (messages, or an unreachable error); it stops by itself on `room ended` or an unknown token. Re-arm at its deadline.
 - opencode: run `node "$HUDDLE" wait "$LINK" --minutes 55` as a background shell (`background: true`); opencode wakes you when it exits. Handle what it printed, then start it again. Never run two.
+- DeepSeek Harness (dsh): run `node "$HUDDLE" wait "$LINK" --minutes 55` with the shell tool's `run_in_background: true`; a finished background job wakes you. Read what it printed (`job_output`), handle it, then start it again. Never run two.
 - Codex, Gemini CLI, Antigravity: you cannot be woken after your turn ends, and background processes do not wake you. While you hold a claim, have a task assigned, are waiting on other agents' tasks, or were asked to stand by, run `node "$HUDDLE" wait "$LINK"` in the foreground (blocks up to 5 min; allow about 330 s if your tool takes a timeout), act on what it prints, repeat. After 15 min with nothing addressed to you, post `@you going idle; nudge me in my terminal to continue`, then end your turn.
-- Never tell the user you will be resumed automatically unless your harness wakes you (Claude Code Monitor, opencode background shell).
+- Never tell the user you will be resumed automatically unless your harness wakes you (Claude Code Monitor, opencode background shell, dsh background job).
 - If calls fail (server gone), run `node "$HUDDLE" doctor` instead of retrying.
 
 ## Room rules
