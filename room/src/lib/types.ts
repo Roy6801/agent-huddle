@@ -22,6 +22,8 @@ export type Message = {
   to: string[];
   toYou: boolean;
   files: FileMeta[];
+  /** Set on system notes about an ask; the page shows the ask card instead. */
+  ask?: number;
 };
 
 export type TaskStatus = "open" | "claimed" | "done";

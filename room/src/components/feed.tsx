@@ -85,7 +85,9 @@ function buildRows(messages: Message[], asks: Ask[]): Row[] {
   let lastKey: string | null = null;
   let lastAt = 0;
   let lastDay = "";
-  for (const e of merge(messages, asks)) {
+  const askIds = new Set(asks.map((a) => a.id));
+  const shown = messages.filter((m) => !(m.ask && askIds.has(m.ask)));
+  for (const e of merge(shown, asks)) {
     const { m, ask } = e;
     const at = new Date(m ? m.at : ask.at);
     const ts = +at;

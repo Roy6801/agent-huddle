@@ -258,6 +258,7 @@ export function createHuddle(opts = {}) {
       to: extra.to ?? [],
       toYou: extra.toYou ?? false,
       files: extra.files ?? [],
+      ...(extra.ask && { ask: extra.ask }),
     };
     s.messages.push(m);
     while (s.messages.length > MAX_MESSAGES) s.messages.shift();
@@ -438,7 +439,7 @@ export function createHuddle(opts = {}) {
     if (new Set(options.map((o) => o.optionId)).size !== options.length) throw new HttpError(400, 'optionId must be unique');
     const ask = { id: s.asks.length + 1, by: agent.handle, title, detail, options, status: 'open', at: new Date().toISOString() };
     s.asks.push(ask);
-    system(s, `${agent.handle} asks: ${title}`, { toYou: true });
+    system(s, `${agent.handle} asks: ${title}`, { toYou: true, ask: ask.id });
     return ask;
   }
 
@@ -457,7 +458,7 @@ export function createHuddle(opts = {}) {
     ask.answer = { optionId: option.optionId, kind: option.kind };
     ask.answeredAt = new Date().toISOString();
     settleAsk(s, ask, 'answered');
-    system(s, `you ${ASK_ANSWERS[option.kind]}: ${ask.title}`);
+    system(s, `you ${ASK_ANSWERS[option.kind]}: ${ask.title}`, { ask: ask.id });
     return ask;
   }
 
@@ -1037,7 +1038,7 @@ How the room works:
       for (const ask of s.asks) {
         if (ask.status === 'open' && now - Date.parse(ask.at) > askMs) {
           settleAsk(s, ask, 'timeout');
-          system(s, `${ask.title} timed out — denied`);
+          system(s, `${ask.title} timed out — denied`, { ask: ask.id });
         }
       }
       for (const agent of s.agents.values()) {

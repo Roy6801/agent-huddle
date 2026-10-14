@@ -46,8 +46,8 @@ test('an agent asks, the human answers, the long-poll returns the answer', async
   assert.equal(got.json.status, 'answered');
   assert.deepEqual(got.json.answer, { optionId: 'always', kind: 'allow_always' });
   const { messages } = await state();
-  assert.ok(messages.some((m) => m.toYou && m.text === `${a.handle} asks: run rm -rf build`));
-  assert.ok(messages.some((m) => m.text === 'you always allowed: run rm -rf build'));
+  assert.ok(messages.some((m) => m.toYou && m.ask === 1 && m.text === `${a.handle} asks: run rm -rf build`));
+  assert.ok(messages.some((m) => m.ask === 1 && m.text === 'you always allowed: run rm -rf build'));
 });
 
 test('a long-poll on an open ask returns it as open after the wait', async () => {
