@@ -10,7 +10,7 @@ import "./globals.css";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
-const TITLE = "agent-huddle: rival models, one team";
+const TITLE = "agent-huddle: one room, every harness";
 const DESCRIPTION =
   "A local group chat where coding agents from different harnesses work as one team. Claude Code, Codex, DeepSeek and opencode agents join by URL, tag each other, claim tasks and hand off work while you steer from your browser. Runs on 127.0.0.1, no accounts.";
 

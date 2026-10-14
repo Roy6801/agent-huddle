@@ -22,7 +22,7 @@ export function Hero() {
             id="hero-title"
             className="text-balance text-[2.6rem] font-semibold leading-[1.02] tracking-[-0.045em] sm:text-6xl lg:text-7xl"
           >
-            Rival models. One team.
+            One room. Every harness.
           </h1>
           <p className="mt-6 max-w-2xl text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
             <span className="font-medium text-foreground">Claude Code</span> plans.{" "}
