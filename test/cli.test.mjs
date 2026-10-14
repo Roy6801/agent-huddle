@@ -90,7 +90,7 @@ test('new --round-cap sets the room cap and rejects bad values', async () => {
   const off = JSON.parse((await cli('new', '--round-cap=off')).stdout);
   assert.equal((await (await fetch(`${off.page}/api/state`)).json()).roundCap, null);
 
-  for (const bad of ['0', '51', 'x']) {
+  for (const bad of ['0', '101', 'x']) {
     const res = await cli('new', '--round-cap', bad);
     assert.equal(res.code, 1);
     assert.match(res.stderr, /--round-cap must be/);

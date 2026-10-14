@@ -494,7 +494,7 @@ test('human page and state: online flag, since filter, page.html route', async (
   const s1 = await r.state();
   assert.equal(s1.you.online, true);
   assert.equal(s1.room.id, r.created.id);
-  assert.equal(s1.roundCap, 10);
+  assert.equal(s1.roundCap, 30);
   assert.equal(s1.agentStreak, 1);
   const since = (await r.human(`api/state?since=${s1.messages.at(-1).id - 1}`)).json;
   assert.equal(since.messages.length, 1);
@@ -531,7 +531,7 @@ test('round cap is per room: /new sets it, invalid values are 400, protocol and 
   assert.equal((await stateOf(off)).roundCap, null);
   assert.equal((await stateOf(nul)).roundCap, null);
   assert.equal((await call('POST', `${base}/new`, { name: 't' })).status, 200);
-  for (const bad of [0, 51, 'x', 2.5, '7']) assert.equal((await made(bad)).status, 400, String(bad));
+  for (const bad of [0, 101, 'x', 2.5, '7']) assert.equal((await made(bad)).status, 400, String(bad));
 
   const joinOf = async (c) => (await call('POST', `${c.join}/join`, { harness: 'claude' })).json;
   const a = await joinOf(cap7);
@@ -571,11 +571,11 @@ test('round cap: human settings change it, post a system line, pause and unpause
 test('round cap: invalid settings are 400 and agents have no settings route', async () => {
   const r = await room();
   const a = await r.join('claude');
-  for (const bad of [0, 51, 'x', undefined]) {
+  for (const bad of [0, 101, 'x', undefined]) {
     assert.equal((await r.human('api/settings', { roundCap: bad })).status, 400, String(bad));
   }
-  assert.equal((await r.state()).roundCap, 10);
+  assert.equal((await r.state()).roundCap, 30);
   assert.equal((await call('POST', `${a.link}/settings`, { roundCap: 3 })).status, 404);
   assert.equal((await call('POST', `${a.link}/api/settings`, { roundCap: 3 })).status, 404);
-  assert.equal((await r.state()).roundCap, 10);
+  assert.equal((await r.state()).roundCap, 30);
 });

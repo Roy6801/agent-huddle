@@ -10,7 +10,9 @@ import { useRoom, useSource } from "@/hooks/use-room";
 import { errMain } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-const clampCap = (v: number) => Math.min(50, Math.max(1, Math.round(v) || 1));
+const DEFAULT_CAP = 30;
+const MAX_CAP = 100;
+const clampCap = (v: number) => Math.min(MAX_CAP, Math.max(1, Math.round(v) || 1));
 
 /** The cap state in words, for meters and button names. Null until the first state arrives. */
 export function capText(cap: number | null | undefined, n: number, atCap: boolean) {
@@ -128,7 +130,7 @@ export function RoundCap() {
   const { capRequest } = usePanels();
   const { roundCap, ended } = state;
   const [open, setOpen] = useState(false);
-  const [value, setValue] = useState("10");
+  const [value, setValue] = useState(String(DEFAULT_CAP));
   const [off, setOff] = useState(false);
   const [error, setError] = useState<ErrorInfo | null>(null);
   const [saving, setSaving] = useState(false);
@@ -140,7 +142,7 @@ export function RoundCap() {
     if (next && ended) return;
     if (next) {
       setOff(roundCap === null);
-      setValue(String(roundCap ?? 10));
+      setValue(String(roundCap ?? DEFAULT_CAP));
       setError(null);
       requestAnimationFrame(() => (roundCap === null ? offBox.current : input.current)?.focus());
     } else if (refocus) {
@@ -161,8 +163,8 @@ export function RoundCap() {
   async function save() {
     if (ended) return;
     const n = off ? null : Number(value);
-    if (n !== null && !(Number.isInteger(n) && n >= 1 && n <= 50)) {
-      setError({ message: "Enter a whole number from 1 to 50." });
+    if (n !== null && !(Number.isInteger(n) && n >= 1 && n <= MAX_CAP)) {
+      setError({ message: `Enter a whole number from 1 to ${MAX_CAP}.` });
       input.current?.focus();
       return;
     }
@@ -235,7 +237,7 @@ export function RoundCap() {
               id="cap-input"
               type="number"
               min={1}
-              max={50}
+              max={MAX_CAP}
               step={1}
               inputMode="numeric"
               disabled={off}

@@ -116,10 +116,13 @@ function cleanRole(value, required) {
   return value;
 }
 
+const ROUND_CAP_DEFAULT = 30;
+const ROUND_CAP_MAX = 100;
+
 function parseRoundCap(v) {
   if (v === null || v === 'off') return null;
-  if (Number.isInteger(v) && v >= 1 && v <= 50) return v;
-  throw new HttpError(400, 'roundCap must be a whole number from 1 to 50, or "off"');
+  if (Number.isInteger(v) && v >= 1 && v <= ROUND_CAP_MAX) return v;
+  throw new HttpError(400, `roundCap must be a whole number from 1 to ${ROUND_CAP_MAX}, or "off"`);
 }
 
 const HEADLESS_LIMITS = { wakesPerHour: [1, 120], runMinutes: [1, 120], idleMinutes: [5, 1440] };
@@ -151,7 +154,7 @@ export function createHuddle(opts = {}) {
     activeMs = ACTIVE_WINDOW_MS,
     serverIdleMs = 1800000,
     askMs = 600000,
-    roundCap = 10,
+    roundCap = ROUND_CAP_DEFAULT,
     onIdle,
     onStop,
     adminToken,
@@ -1265,7 +1268,7 @@ async function serve() {
     activeMs: num('AGENT_HUDDLE_ACTIVE_MS', ACTIVE_WINDOW_MS),
     serverIdleMs: num('AGENT_HUDDLE_SERVER_IDLE_MS', 1800000),
     askMs: num('AGENT_HUDDLE_ASK_MS', 600000),
-    roundCap: num('AGENT_HUDDLE_ROUND_CAP', 10),
+    roundCap: num('AGENT_HUDDLE_ROUND_CAP', ROUND_CAP_DEFAULT),
     maxFileBytes: num('AGENT_HUDDLE_MAX_FILE', MAX_FILE_BYTES),
     adminToken,
     onIdle: shutdown,
@@ -1891,8 +1894,8 @@ async function newRoom(args) {
       continue;
     }
     roundCap = raw === 'off' ? 'off' : /^\d+$/.test(raw ?? '') ? Number(raw) : NaN;
-    if (roundCap !== 'off' && !(roundCap >= 1 && roundCap <= 50)) {
-      throw new Error('--round-cap must be a whole number from 1 to 50, or off');
+    if (roundCap !== 'off' && !(roundCap >= 1 && roundCap <= ROUND_CAP_MAX)) {
+      throw new Error(`--round-cap must be a whole number from 1 to ${ROUND_CAP_MAX}, or off`);
     }
   }
   const base = await up();
@@ -2503,7 +2506,7 @@ const COMMANDS = {
     summary: 'create a room (starts the server if needed), print join and page URLs',
     usage: 'new [name] [--round-cap N|off] [--dir <path>]',
     options: [
-      '--round-cap N|off  agent posts in a row before the room pauses (1-50, default 10)',
+      `--round-cap N|off  agent posts in a row before the room pauses (1-${ROUND_CAP_MAX}, default ${ROUND_CAP_DEFAULT})`,
       '--dir <path>  folder the page suggests for headless agents (default: current directory)',
     ],
     example: 'node huddle.mjs new "api redesign"',
