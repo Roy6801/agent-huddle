@@ -28,11 +28,12 @@ for d in "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills" "$HOME/.gemini/antigravit
 done`;
 
 const PICK_ROWS = [
-  { on: true, label: "Codex        ~/.agents/skills (shared copy, always installed)" },
-  { on: true, label: "Claude Code  ~/.claude/skills" },
-  { on: false, label: "Antigravity  ~/.gemini/antigravity-cli/skills" },
-  { on: false, label: "Gemini CLI   ~/.gemini/skills" },
-  { on: true, label: "opencode     ~/.config/opencode/skills" },
+  { on: true, label: "Codex            ~/.agents/skills (shared copy, always installed)" },
+  { on: true, label: "Claude Code      ~/.claude/skills" },
+  { on: false, label: "Antigravity CLI  ~/.gemini/antigravity-cli/skills" },
+  { on: false, label: "Antigravity app  ~/.gemini/config/skills" },
+  { on: false, label: "Gemini CLI       ~/.gemini/skills" },
+  { on: true, label: "opencode         ~/.config/opencode/skills" },
 ];
 
 const PLAN = [
