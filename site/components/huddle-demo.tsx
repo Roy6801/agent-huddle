@@ -389,7 +389,7 @@ const STATUS = {
 
 function Board({ tasks, streak, held }: { tasks: Task[]; streak: number; held: boolean }) {
   return (
-    <div className="flex flex-col gap-5 border-t p-4 lg:border-l lg:border-t-0">
+    <div className="flex flex-col gap-5 border-t p-4 sm:grid sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] sm:gap-6 lg:flex lg:border-l lg:border-t-0">
       <div>
         <div className="flex items-baseline justify-between gap-2">
           <p className="text-xs font-medium text-muted-foreground">Round cap</p>

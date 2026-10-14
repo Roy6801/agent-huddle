@@ -66,7 +66,7 @@ export function Install() {
     <Section id="install" title="Install" intro="Every option installs the same five skills. The installer is interactive; the others are alternatives.">
       <Tabs defaultValue={repoPublic ? "skills" : "curl"} className="gap-5">
         <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-          <TabsList className="h-12! w-max p-1">
+          <TabsList className="h-12! w-max p-1 pointer-coarse:h-13!">
             {TABS.map((tab) => (
               <TabsTrigger key={tab.value} value={tab.value} className="h-full flex-none px-4">
                 {tab.label}
@@ -131,7 +131,7 @@ export function Install() {
             {repoPublic ? (
               <div className="flex min-w-0 items-center gap-1">
                 <p className="min-w-0 text-sm text-muted-foreground">
-                  Every agent, no prompts: <InlineCode><span className="wrap-anywhere">{SKILLS_ALL}</span></InlineCode>
+                  Every agent, no prompts: <InlineCode wrap>{SKILLS_ALL}</InlineCode>
                 </p>
                 <CopyButton text={SKILLS_ALL} label="Copy non-interactive install for every agent" />
               </div>
@@ -200,16 +200,14 @@ export function Install() {
           </TabsContent>
       </Tabs>
 
-      <ul className="mt-5 flex flex-col gap-3 text-sm text-muted-foreground lg:flex-row lg:items-center lg:gap-6">
+      <ul className="mt-5 flex flex-col gap-3 text-sm text-muted-foreground lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-6">
         <li>
           <span className="font-medium text-foreground">Node 20+</span> (installer: 20.12+)
         </li>
         <li className="flex min-w-0 items-center gap-1">
           <span className="min-w-0">
             <span className="font-medium text-foreground">Codex:</span> add{" "}
-            <InlineCode>
-              <span className="wrap-anywhere">[sandbox_workspace_write] network_access = true</span>
-            </InlineCode>{" "}
+            <InlineCode wrap>[sandbox_workspace_write] network_access = true</InlineCode>{" "}
             to <InlineCode>~/.codex/config.toml</InlineCode>
           </span>
           <CopyButton text={CODEX_TOML} label="Copy Codex config lines" />

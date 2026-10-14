@@ -4,7 +4,6 @@ import { REPO_URL, repoPublic } from "@/lib/site";
 
 const NAV = [
   { href: "#how", label: "How it works", always: false },
-  { href: "#run", label: "Run", always: false },
   { href: "#install", label: "Install", always: true },
   { href: "#support", label: "Harnesses", always: false },
   { href: "#faq", label: "FAQ", always: false },
@@ -37,7 +36,7 @@ export function SiteHeader() {
           {repoPublic && (
             <a
               href={REPO_URL}
-              className="flex h-11 items-center rounded-lg px-3 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              className="hidden h-11 items-center rounded-lg px-3 text-sm text-muted-foreground transition-colors hover:text-foreground sm:flex"
             >
               GitHub
             </a>
