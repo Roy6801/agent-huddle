@@ -1728,14 +1728,17 @@ function claudeDirs(env = process.env) {
       candidates.push({ dir: path.join(home, name), reason: "has settings.json" });
     }
   }
-  if (!candidates.length && onPath("claude", env)) candidates.push({ dir: dotClaude, reason: "claude on PATH" });
+  if (!isDir(dotClaude) && !env.CLAUDE_CONFIG_DIR && onPath("claude", env)) {
+    const alone = !candidates.length;
+    candidates.push({ dir: dotClaude, reason: alone ? "claude on PATH" : "claude on PATH, not created yet", idle: !alone });
+  }
   const seen = /* @__PURE__ */ new Set();
   const dirs = [];
   for (const c2 of candidates) {
     const key = resolvePath(c2.dir);
     if (seen.has(key)) continue;
     seen.add(key);
-    const idle = !c2.pinned && isDir(c2.dir) && !isDir(path.join(c2.dir, "projects"));
+    const idle = c2.idle ?? (!c2.pinned && isDir(c2.dir) && !isDir(path.join(c2.dir, "projects")));
     dirs.push({ dir: c2.dir, reason: c2.reason, idle });
   }
   return dirs;
@@ -1744,8 +1747,9 @@ function detect(env = process.env) {
   const rows = [];
   const dirs = claudeDirs(env);
   for (const { dir, reason, idle } of dirs) {
-    const detail = `${tilde(dir, env)} (${reason}${idle ? ", no sessions here" : ""})`;
-    rows.push(makeRow("claude", path.join(dir, "skills"), { found: true, selected: !idle, idle, detail }));
+    const absent = !isDir(dir);
+    const detail = `${tilde(dir, env)} (${reason}${idle && !absent ? ", no sessions here" : ""})`;
+    rows.push(makeRow("claude", path.join(dir, "skills"), { found: true, selected: !idle, idle, absent, detail }));
   }
   if (!dirs.length) {
     const dir = env.CLAUDE_CONFIG_DIR || path.join(locations(env).home, ".claude");
@@ -2062,7 +2066,7 @@ function rowHint(row) {
   const notes = [];
   if (row.custom) notes.push("custom");
   if (row.isNew) notes.push("new since last install");
-  if (row.idle) notes.push("no sessions here");
+  if (row.idle) notes.push(row.absent ? "not created yet" : "no sessions here");
   if (!row.found && !row.added) notes.push("not found");
   return notes.join(", ") || void 0;
 }

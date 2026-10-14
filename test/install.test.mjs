@@ -169,7 +169,9 @@ test('detect: claude on PATH without a config dir, nothing at all, and the other
   const withCustom = detect(envFor(custom, { agents: ['claude'] }));
   assert.deepEqual(summary(withCustom.filter((r) => r.agent === 'claude')), [
     `claude x ${join(custom, '.claude-work', 'skills')}`,
+    `claude - ${join(custom, '.claude', 'skills')}`,
   ]);
+  assert.equal(withCustom[1].detail, '~/.claude (claude on PATH, not created yet)');
 
   const none = detect(envFor(tmp()));
   assert.equal(none[0].found, false);

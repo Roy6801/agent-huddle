@@ -136,15 +136,19 @@ export function claudeDirs(env = process.env) {
       candidates.push({ dir: path.join(home, name), reason: 'has settings.json' });
     }
   }
-  // claude on PATH with no config dir yet: it will use ~/.claude on first run.
-  if (!candidates.length && onPath('claude', env)) candidates.push({ dir: dotClaude, reason: 'claude on PATH' });
+  // claude on PATH without ~/.claude: plain `claude` creates it on first run. Preselected only when
+  // there is no other config dir, so installing never recreates a folder the user does not use.
+  if (!isDir(dotClaude) && !env.CLAUDE_CONFIG_DIR && onPath('claude', env)) {
+    const alone = !candidates.length;
+    candidates.push({ dir: dotClaude, reason: alone ? 'claude on PATH' : 'claude on PATH, not created yet', idle: !alone });
+  }
   const seen = new Set();
   const dirs = [];
   for (const c of candidates) {
     const key = resolvePath(c.dir);
     if (seen.has(key)) continue;
     seen.add(key);
-    const idle = !c.pinned && isDir(c.dir) && !isDir(path.join(c.dir, 'projects'));
+    const idle = c.idle ?? (!c.pinned && isDir(c.dir) && !isDir(path.join(c.dir, 'projects')));
     dirs.push({ dir: c.dir, reason: c.reason, idle });
   }
   return dirs;
@@ -155,8 +159,9 @@ export function detect(env = process.env) {
   const rows = [];
   const dirs = claudeDirs(env);
   for (const { dir, reason, idle } of dirs) {
-    const detail = `${tilde(dir, env)} (${reason}${idle ? ', no sessions here' : ''})`;
-    rows.push(makeRow('claude', path.join(dir, 'skills'), { found: true, selected: !idle, idle, detail }));
+    const absent = !isDir(dir);
+    const detail = `${tilde(dir, env)} (${reason}${idle && !absent ? ', no sessions here' : ''})`;
+    rows.push(makeRow('claude', path.join(dir, 'skills'), { found: true, selected: !idle, idle, absent, detail }));
   }
   if (!dirs.length) {
     const dir = env.CLAUDE_CONFIG_DIR || path.join(locations(env).home, '.claude');

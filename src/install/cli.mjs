@@ -58,7 +58,7 @@ function rowHint(row) {
   const notes = [];
   if (row.custom) notes.push('custom');
   if (row.isNew) notes.push('new since last install');
-  if (row.idle) notes.push('no sessions here');
+  if (row.idle) notes.push(row.absent ? 'not created yet' : 'no sessions here');
   if (!row.found && !row.added) notes.push('not found');
   return notes.join(', ') || undefined;
 }
