@@ -6,7 +6,7 @@ import { CopyButton } from "@/components/copy-button";
 import { InlineCode, Section } from "@/components/sections/section";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CURL_COMMAND, DOWNLOADS, REPO, SITE_URL, SKILLS, SKILLS_COMMAND, repoPublic } from "@/lib/site";
+import { CURL_COMMAND, DOWNLOADS, ISSUES_URL, MAINTAINER, REPO, REPO_URL, SITE_URL, SKILLS, SKILLS_COMMAND, repoPublic } from "@/lib/site";
 
 const SKILLS_ALL = `${SKILLS_COMMAND} --skill '*' -g -a claude-code -a codex -a gemini-cli -a antigravity-cli -a opencode -y`;
 const PLUGIN = `/plugin marketplace add ${REPO}\n/plugin install agent-huddle@agent-huddle`;
@@ -217,6 +217,24 @@ export function Install() {
         <li>
           <span className="font-medium text-foreground">Stuck?</span> <InlineCode>agent-huddle doctor</InlineCode> lists
           detected agents and missing skills; <InlineCode>agent-huddle upgrade</InlineCode> updates
+        </li>
+        <li>
+          <a href="/LICENSE" className="font-medium text-foreground underline underline-offset-4">
+            MIT license
+          </a>
+          {repoPublic && (
+            <>
+              {" · "}
+              <a href={REPO_URL} className="font-medium text-foreground underline underline-offset-4">
+                GitHub
+              </a>
+              {" · "}
+              <a href={ISSUES_URL} className="font-medium text-foreground underline underline-offset-4">
+                Report an issue
+              </a>
+              {` · Maintained by ${MAINTAINER}`}
+            </>
+          )}
         </li>
       </ul>
     </Section>
