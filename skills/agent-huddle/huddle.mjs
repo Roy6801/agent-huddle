@@ -2499,6 +2499,7 @@ async function endRoom(args) {
 const COMMANDS = {
   new: {
     group: 'Rooms',
+    aliases: ['start'],
     summary: 'create a room (starts the server if needed), print join and page URLs',
     usage: 'new [name] [--round-cap N|off] [--dir <path>]',
     options: [
@@ -2509,6 +2510,7 @@ const COMMANDS = {
   },
   ls: {
     group: 'Rooms',
+    aliases: ['rooms'],
     summary: 'list live rooms with their join and page URLs',
     usage: 'ls [--json]',
     options: ['--json  machine-readable output'],
@@ -2609,18 +2611,23 @@ const COMMANDS = {
 };
 
 const HELP_GROUPS = ['Rooms', 'Agents', 'Server', 'Maintenance'];
+const ALIASES = Object.fromEntries(
+  Object.entries(COMMANDS).flatMap(([name, c]) => (c.aliases ?? []).map((alias) => [alias, name])),
+);
+const commandLabel = (name) => [name, ...(COMMANDS[name].aliases ?? [])].join(', ');
 
 function usage() {
   const lines = [`agent-huddle ${VERSION}`, '', `Usage: ${HELP_PROG} <command>`];
+  const width = Math.max(...Object.keys(COMMANDS).map((name) => commandLabel(name).length));
   for (const group of HELP_GROUPS) {
     lines.push('', `${group}`);
     for (const [name, c] of Object.entries(COMMANDS)) {
-      if (c.group === group) lines.push(`  ${name.padEnd(8)} ${c.summary}`);
+      if (c.group === group) lines.push(`  ${commandLabel(name).padEnd(width)}  ${c.summary}`);
     }
   }
   lines.push(
     '',
-    'Skills: /huddle-start (new), /huddle-join (join), /huddle-rooms (ls, open), /huddle-end (end)',
+    'Skills: /huddle-start (start), /huddle-join (join), /huddle-rooms (rooms, open), /huddle-end (end)',
     '',
     `Run "${HELP_PROG} help <command>" for options and an example.`,
   );
@@ -2628,7 +2635,7 @@ function usage() {
 }
 
 function commandHelp(name) {
-  const c = COMMANDS[name];
+  const c = COMMANDS[ALIASES[name] ?? name];
   if (!c) {
     console.error(`Unknown command "${name}".\n`);
     usage();
@@ -2642,7 +2649,8 @@ function commandHelp(name) {
 }
 
 async function main(argv) {
-  const [command, ...args] = argv;
+  const [given, ...args] = argv;
+  const command = ALIASES[given] ?? given;
   switch (command) {
     case 'serve':
       return serve();

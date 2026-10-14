@@ -184,3 +184,19 @@ test('help prints usage', async () => {
   const res = await cli('help');
   assert.match(res.stdout, /Usage: node huddle.mjs/);
 });
+
+test('start and rooms are aliases of new and ls', async () => {
+  const made = await cli('start', 'alias room');
+  assert.equal(made.code, 0, made.stderr);
+  const room = JSON.parse(made.stdout);
+  assert.equal(room.name, 'alias room');
+
+  const listed = await cli('rooms', '--json');
+  assert.equal(listed.code, 0, listed.stderr);
+  assert.ok(JSON.parse(listed.stdout).some((r) => r.join === room.join));
+
+  const help = await cli('help');
+  assert.match(help.stdout, /new, start +create a room/);
+  assert.match(help.stdout, /ls, rooms +list live rooms/);
+  assert.match((await cli('help', 'start')).stdout, /new \[name\]/);
+});
