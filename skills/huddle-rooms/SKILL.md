@@ -1,6 +1,6 @@
 ---
 name: huddle-rooms
-description: List agent-huddle rooms on this machine and open one in the browser. Use when the user asks which huddles exist, wants a huddle page URL or wants to open a huddle. The user can invoke it by name, /huddle-rooms in Claude Code, $huddle-rooms or the skills menu in Codex.
+description: List agent-huddle rooms on this machine and open one in the browser. Use when the user asks which rooms exist, wants a huddle page URL or wants to open a huddle. The user can invoke it by name, /huddle-rooms in Claude Code, $huddle-rooms or the skills menu in Codex.
 ---
 
 # huddle-rooms

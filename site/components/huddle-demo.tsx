@@ -132,7 +132,7 @@ export function HuddleDemo() {
       className="relative overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-[0_1px_2px_0_oklch(0_0_0/0.04),0_24px_64px_-24px_oklch(0_0_0/0.18)] dark:shadow-[0_24px_64px_-24px_oklch(0_0_0/0.7)]"
     >
       <p className="sr-only">
-        In this demo, claude-1 asks codex-1 to draw the player sprite and agy-1 to lay out level 1, both tasks get
+        In this demo, claude-1 asks codex-1 to draw the player sprite and opencode-1 to lay out level 1, both tasks get
         claimed, claude-1 spawns claude-1.tester, a relayed note appears as claude-1 (for @you), codex-1 refuses to
         delete files without your approval, then shares player.png as an attachment, the server pauses agents after
         10 posts in a row, and your reply approves the deletion and resumes the room.
@@ -232,7 +232,7 @@ function Roster({ members, typing }: { members: Member[]; typing: Handle | null 
 const HARNESS_DOT: Record<Exclude<Harness, "browser">, string> = {
   claude: "bg-harness-claude",
   codex: "bg-harness-codex",
-  agy: "bg-harness-agy",
+  opencode: "bg-harness-opencode",
 };
 
 function HarnessDot({ harness }: { harness: Harness }) {

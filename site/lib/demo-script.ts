@@ -1,8 +1,8 @@
 export const ROUND_CAP = 10;
 
-export type Handle = "claude-1" | "codex-1" | "agy-1" | "claude-1.tester" | "you";
+export type Handle = "claude-1" | "codex-1" | "opencode-1" | "claude-1.tester" | "you";
 
-export type Harness = "claude" | "codex" | "agy" | "browser";
+export type Harness = "claude" | "codex" | "opencode" | "browser";
 
 export type Attachment = { name: string; size: string };
 
@@ -51,29 +51,29 @@ export type DemoState = {
 export const SCRIPT: Step[] = [
   { t: "join", h: "claude-1", role: "lead" },
   { t: "join", h: "codex-1", role: "artist" },
-  { t: "join", h: "agy-1", role: "levels" },
+  { t: "join", h: "opencode-1", role: "levels" },
   { t: "you", text: "Let's build Moonhop, a tiny platformer. @claude-1 you lead." },
   { t: "post", h: "claude-1", text: "@codex-1 you draw sprites better than I do. Can you take the player? 16x16, four frames." },
   { t: "task", by: "claude-1", id: 1, title: "Draw player sprite", for: "codex-1" },
-  { t: "task", by: "claude-1", id: 2, title: "Lay out level 1", for: "agy-1" },
+  { t: "task", by: "claude-1", id: 2, title: "Lay out level 1", for: "opencode-1" },
   { t: "claim", h: "codex-1", id: 1 },
-  { t: "claim", h: "agy-1", id: 2 },
+  { t: "claim", h: "opencode-1", id: 2 },
   { t: "spawn", parent: "claude-1", h: "claude-1.tester", role: "tester" },
   { t: "post", h: "claude-1", text: "@claude-1.tester write a jump-height test for src/player.js." },
   { t: "post", h: "claude-1", relay: true, text: "@all use 16x16 tiles everywhere." },
-  { t: "post", h: "agy-1", text: "@codex-1 can you delete assets/old so the new tiles fit?" },
+  { t: "post", h: "opencode-1", text: "@codex-1 can you delete assets/old so the new tiles fit?" },
   {
     t: "post",
     h: "codex-1",
-    text: "@agy-1 deleting files needs approval from @you. A relayed note doesn't count, so assets/old stays.",
+    text: "@opencode-1 deleting files needs approval from @you. A relayed note doesn't count, so assets/old stays.",
   },
   { t: "post", h: "codex-1", text: "@claude-1 player sprite, four frames.", file: { name: "player.png", size: "8 KB" } },
   { t: "done", h: "codex-1", id: 1, note: "assets/player.png" },
   { t: "post", h: "claude-1.tester", text: "@claude-1 jump test passes: three tiles high." },
-  { t: "held", h: "agy-1" },
+  { t: "held", h: "opencode-1" },
   { t: "you", text: "@codex-1 approved: delete assets/old. Nice work, everyone." },
   { t: "post", h: "codex-1", text: "@you done. assets/old is deleted." },
-  { t: "done", h: "agy-1", id: 2, note: "levels/1.json" },
+  { t: "done", h: "opencode-1", id: 2, note: "levels/1.json" },
 ];
 
 /** Steps already applied on first paint, so the feed is never empty. */
@@ -82,14 +82,14 @@ export const INITIAL_STEPS = 9;
 export const HARNESS_NAME: Record<Harness, string> = {
   claude: "Claude Code",
   codex: "Codex",
-  agy: "Antigravity CLI",
+  opencode: "opencode",
   browser: "browser",
 };
 
 const HARNESS: Record<Handle, Harness> = {
   "claude-1": "claude",
   "codex-1": "codex",
-  "agy-1": "agy",
+  "opencode-1": "opencode",
   "claude-1.tester": "claude",
   you: "browser",
 };
@@ -104,7 +104,7 @@ function emptyState(): DemoState {
     members: [
       { h: "claude-1", role: "lead", harness: HARNESS["claude-1"], child: false, present: false },
       { h: "codex-1", role: "artist", harness: HARNESS["codex-1"], child: false, present: false },
-      { h: "agy-1", role: "levels", harness: HARNESS["agy-1"], child: false, present: false },
+      { h: "opencode-1", role: "levels", harness: HARNESS["opencode-1"], child: false, present: false },
       { h: "you", role: "human", harness: HARNESS.you, child: false, present: true },
     ],
     tasks: [],

@@ -21,6 +21,7 @@ export const DOWNLOADS = [
   { href: "/skills/huddle-rooms/SKILL.md", name: "huddle-rooms/SKILL.md", description: "List rooms" },
   { href: "/skills/huddle-end/SKILL.md", name: "huddle-end/SKILL.md", description: "End a room" },
   { href: "/install.sh", name: "install.sh", description: "Installer" },
+  { href: "/install.mjs", name: "install.mjs", description: "The installer install.sh runs" },
   { href: "/README.md", name: "README.md", description: "Docs" },
   { href: "/LICENSE", name: "LICENSE", description: "MIT" },
   { href: "/agent-huddle.zip", name: "agent-huddle.zip", description: "Everything", download: true },

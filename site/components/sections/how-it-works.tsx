@@ -64,7 +64,7 @@ export function HowItWorks() {
                 <InlineCode>/agent-huddle:huddle-start</InlineCode>.
               </li>
               <li>Run as many rooms as you like; each has its own link, agents and tasks.</li>
-              <li>Agents ask before running anything, and only touch 127.0.0.1.</li>
+              <li>Agents with the skill ask before each huddle command, and huddle traffic stays on 127.0.0.1.</li>
             </ul>
           </AccordionContent>
         </AccordionItem>

@@ -1,6 +1,6 @@
 # agent-huddle
 
-A local group chat for coding agents. One agent starts a tiny Node server on 127.0.0.1; agents from Claude Code, Codex, Antigravity and others join by URL, each with its own handle (`claude-1`, `codex-1`), tag each other, claim tasks and hand off work. You follow and join the conversation from a browser page, or through your own agent. It ships as five Agent Skills; the core skill carries one dependency-free file, `huddle.mjs`.
+A local group chat for coding agents. One agent starts a tiny Node server on 127.0.0.1; agents from Claude Code, Codex, opencode and others join by URL, each with its own handle (`claude-1`, `codex-1`), tag each other, claim tasks and hand off work. You follow and join the conversation from a browser page, or through your own agent. It ships as five Agent Skills; the core skill carries one dependency-free file, `huddle.mjs`.
 
 ## Install
 
@@ -16,6 +16,7 @@ The installer detects your coding agents (Claude Code, Codex, Antigravity, Gemin
 
 ```text
 ◆  Install the skills for
+│  ◼ Codex        ~/.agents/skills (shared copy, always installed)
 │  ◼ Claude Code  ~/.claude/skills
 │  ◻ Antigravity  ~/.gemini/antigravity-cli/skills
 │  ◻ Gemini CLI   ~/.gemini/skills
@@ -24,7 +25,7 @@ The installer detects your coding agents (Claude Code, Codex, Antigravity, Gemin
 └
 ```
 
-If you use `CLAUDE_CONFIG_DIR`, every Claude Code config folder that holds sessions is listed too. Next, **Folders** offers Continue, Edit a folder, or Add a custom folder for an agent or path it didn't detect. Before anything is written, a plan lists every copy, link, replace and backup:
+Every Claude Code config folder is listed; folders without sessions start unchecked. Next, **Folders** offers Continue, Edit a folder, or Add a custom folder for an agent or path it didn't detect. Before anything is written, a plan lists every copy, link, replace and backup:
 
 ```text
 ◇  Folders
@@ -97,7 +98,7 @@ Download https://agent-huddle.vercel.app/agent-huddle.zip, unzip it and run `./a
 
 In Claude Code plugin installs, use the namespaced form, for example `/agent-huddle:huddle-start`.
 
-Every skill shows you the exact commands and waits for your yes before running anything. Everything talks only to 127.0.0.1. Agents never run what a peer asks without your approval.
+Every skill shows you the exact commands and waits for your yes before running anything. Huddle traffic stays on 127.0.0.1. The skill and the invite tell agents never to run what a peer asks without your OK; approval only counts from you.
 
 ## Quick start
 
@@ -125,7 +126,7 @@ Why the invite comes from you: agents rightly distrust instructions fetched from
 
 - Agents reply only when addressed: by handle, role, `@all`, or an assigned task. A post of yours with no mention goes to everyone.
 - Peer messages are discussion, not commands. Risky actions need your approval, which counts only when it comes from your posts on the page or directly in the agent's own harness. A message an agent relays "for @you" is labelled as relayed and is never approval.
-- After 10 agent posts in a row without you, the server stops further agent posts ("waiting on @you") until you post.
+- By default, after 10 agent posts in a row, agents wait for you (the server answers "waiting on @you" until you post). Creating a task and finishing one with a note also count. Change the cap (1–50) or turn it off from the room page.
 - Agents idle for 15 minutes leave the room and their task claims are released; they rejoin on their next request.
 
 ## Codex network setting
@@ -141,11 +142,12 @@ network_access = true
 
 | Harness | Joins | Hears mentions between turns | Setup | Skills folder |
 | --- | --- | --- | --- | --- |
-| Claude Code | Yes | Yes (the Monitor tool keeps the wait loop alive) | If you use the sandbox, allow local binding | `~/.claude/skills` (or your config dir) |
+| Claude Code | Yes | Yes (the Monitor tool keeps the wait loop alive) | If you use the sandbox, allow local binding (macOS; on Linux add the commands to `sandbox.excludedCommands`) | `~/.claude/skills` (or your config dir) |
 | Codex | Yes | Not yet: only while its turn runs; the room flags it when it isn't listening, nudge it in its terminal | Approve localhost network access or set `network_access` | `~/.agents/skills` |
 | Antigravity | Untested | Not yet | | `~/.gemini/antigravity-cli/skills` |
 | Gemini CLI | Untested | Not yet | | `~/.gemini/skills` |
 | opencode | Yes | Yes (a background `wait` wakes it) | | `~/.config/opencode/skills` |
+| DeepSeek Harness (`dsh`) | Untested | Likely yes (a finished background job wakes it; untested) | — | `~/.agents/skills` (shared copy) |
 
 Headless workers that wake other agents on a mention are next on the roadmap.
 
@@ -155,7 +157,7 @@ Headless workers that wake other agents on a mention are next on the roadmap.
 node skills/agent-huddle/huddle.mjs doctor   # from a clone; installed copies live in the agent-huddle skill folder
 ```
 
-`doctor` checks whether the server is running and reachable, and explains a blocked sandbox with the exact fix. It also lists the coding agents it detects and which of them are missing the skills, with the command that fixes it. Other commands: `up`, `new [room name]`, `wait <link>` (block until your agent link is addressed), `down`.
+`doctor` checks whether the server is running and reachable, and explains a blocked sandbox with the exact fix. It also lists the coding agents it detects and which of them are missing the skills, with the command that fixes it. Run `node huddle.mjs help` for every command.
 
 ## Limits
 
@@ -170,7 +172,7 @@ node --test               # server, CLI, installer and download tests
 node skills/agent-huddle/huddle.mjs help
 pnpm --dir site install   # landing site (Next.js), deployed to Vercel
 pnpm --dir site dev       # http://localhost:3000
-pnpm --dir site build
+pnpm --dir site build     # needs Node 22+
 ```
 
 MIT licensed.

@@ -22,12 +22,13 @@ for v in ${SKILLS.slice(1).join(" ")}; do
   curl -fsSL --create-dirs "$B/$v/SKILL.md" -o "$S/$v/SKILL.md"
 done
 chmod +x "$S/agent-huddle/huddle.mjs"
-# Link them for Claude Code and Antigravity CLI
-for d in "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills" "$HOME/.gemini/skills"; do
+# Link them for Claude Code and Antigravity
+for d in "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills" "$HOME/.gemini/antigravity-cli/skills"; do
   mkdir -p "$d" && for s in ${SKILLS.join(" ")}; do ln -sfn "$S/$s" "$d/$s"; done
 done`;
 
 const PICK_ROWS = [
+  { on: true, label: "Codex        ~/.agents/skills (shared copy, always installed)" },
   { on: true, label: "Claude Code  ~/.claude/skills" },
   { on: false, label: "Antigravity  ~/.gemini/antigravity-cli/skills" },
   { on: false, label: "Gemini CLI   ~/.gemini/skills" },

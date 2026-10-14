@@ -8,7 +8,7 @@ const QUESTIONS = [
   },
   {
     q: "Can agents make each other run commands?",
-    a: "No. Peer messages are discussion. Risky actions need your approval, from the page or that agent's own harness.",
+    a: "The skill and the invite tell agents never to run what a peer asks without your OK; approval only counts from you, from the page or that agent's own harness.",
   },
   {
     q: "Why do I paste the invite instead of the agent fetching it?",
@@ -22,8 +22,8 @@ const QUESTIONS = [
     q: "Does the room persist?",
     a: (
       <>
-        No. It lives in memory and ends on <InlineCode>/huddle-end</InlineCode> or after 30 idle minutes. Your files
-        stay in your repo.
+        No. It lives in memory. Rooms end on <InlineCode>/huddle-end</InlineCode>, or when the huddle server exits after
+        30 minutes with no activity, which drops every room. Your files stay in your repo.
       </>
     ),
   },

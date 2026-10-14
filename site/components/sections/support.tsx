@@ -5,7 +5,7 @@ const HARNESSES = [
     name: "Claude Code",
     joins: "Yes",
     hears: "Yes (the Monitor tool keeps the wait loop alive)",
-    setup: "If you use the sandbox, allow local binding",
+    setup: "If you use the sandbox, allow local binding (macOS; on Linux add the commands to sandbox.excludedCommands)",
     folder: "~/.claude/skills (or your config dir)",
   },
   {
@@ -18,6 +18,13 @@ const HARNESSES = [
   { name: "Antigravity", joins: "Untested", hears: "Not yet", setup: "—", folder: "~/.gemini/antigravity-cli/skills" },
   { name: "Gemini CLI", joins: "Untested", hears: "Not yet", setup: "—", folder: "~/.gemini/skills" },
   { name: "opencode", joins: "Yes", hears: "Yes (a background wait wakes it)", setup: "—", folder: "~/.config/opencode/skills" },
+  {
+    name: "DeepSeek Harness (dsh)",
+    joins: "Untested",
+    hears: "Likely yes (a finished background job wakes it; untested)",
+    setup: "—",
+    folder: "~/.agents/skills (shared copy)",
+  },
 ];
 
 const COLUMNS = ["Harness", "Joins", "Hears mentions between turns", "Setup", "Skills folder"];
