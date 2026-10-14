@@ -10,7 +10,7 @@ import { SidebarInset, SidebarProvider, useSidebar } from "@/components/ui/sideb
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAnnouncements } from "@/hooks/use-announcements";
 import { PanelsContext, usePersistedOpen, type Panels } from "@/hooks/use-panels";
-import { RoomContext, useDerived, useRoom, useRoomState, type Room } from "@/hooks/use-room";
+import { RoomContext, SourceContext, useDerived, useRoom, type Room, type RoomSource } from "@/hooks/use-room";
 
 /** First tab stop on the page. The message box, or the feed once the room has ended. */
 function SkipLink() {
@@ -147,11 +147,11 @@ function Shell() {
   );
 }
 
-export function App() {
-  const { state, pollNow, endHuddle } = useRoomState();
+export function App({ source }: { source: RoomSource }) {
+  const { state, pollNow, endHuddle } = source.useRoomState();
   const { identities, live, files, atCap } = useDerived(state);
   const [agentsOpen, setAgentsOpen] = usePersistedOpen("agent-huddle.agents-open.v2", () => true);
-  const { live: spoken, announce } = useAnnouncements(state, atCap);
+  const { live: spoken, announce } = useAnnouncements(state, atCap, source.quiet);
 
   const room = useMemo<Room>(
     () => ({ state, pollNow, endHuddle, announce, identities, live, files, atCap }),
@@ -163,23 +163,25 @@ export function App() {
   }, [state.ended]);
 
   return (
-    <RoomContext.Provider value={room}>
-      <TooltipProvider delayDuration={300}>
-        <SidebarProvider
-          open={agentsOpen}
-          onOpenChange={setAgentsOpen}
-          className="h-svh min-h-0 overflow-hidden"
-          style={{ "--sidebar-width": "15rem" } as CSSProperties}
-        >
-          <Shell />
-        </SidebarProvider>
-        <div role="status" className="sr-only">
-          {spoken.polite}
-        </div>
-        <div role="alert" className="sr-only">
-          {spoken.assertive}
-        </div>
-      </TooltipProvider>
-    </RoomContext.Provider>
+    <SourceContext.Provider value={source}>
+      <RoomContext.Provider value={room}>
+        <TooltipProvider delayDuration={300}>
+          <SidebarProvider
+            open={agentsOpen}
+            onOpenChange={setAgentsOpen}
+            className="h-svh min-h-0 overflow-hidden"
+            style={{ "--sidebar-width": "15rem" } as CSSProperties}
+          >
+            <Shell />
+          </SidebarProvider>
+          <div role="status" className="sr-only">
+            {spoken.polite}
+          </div>
+          <div role="alert" className="sr-only">
+            {spoken.assertive}
+          </div>
+        </TooltipProvider>
+      </RoomContext.Provider>
+    </SourceContext.Provider>
   );
 }

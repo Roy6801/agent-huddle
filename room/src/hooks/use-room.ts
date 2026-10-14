@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-import { base } from "@/lib/api";
+import { base, type ApiError, type Posted, type Upload } from "@/lib/api";
 import type { Agent, Conn, Message, SharedFile, StateResponse, Task } from "@/lib/types";
 
 export type RoomState = {
@@ -128,6 +128,29 @@ export function useRoomState() {
   }, [poll]);
 
   return { state, pollNow, endHuddle };
+}
+
+/**
+ * Where the room's state comes from and where your actions go: the local server for page.html, a
+ * scripted conversation for the site's demo. Must be stable for the page's lifetime.
+ */
+export type RoomSource = {
+  useRoomState: () => ReturnType<typeof useRoomState>;
+  post: <T = ApiError>(path: string, body: unknown) => Promise<Posted<T>>;
+  upload: (file: File, name: string, onProgress: (pct: number) => void) => Upload;
+  fileUrl: (id: string) => string;
+  /** False when the join link is only for show, as in the demo. */
+  canCopyJoin: boolean;
+  /** Keeps room activity out of the live regions; an autoplaying demo must not talk over the page. */
+  quiet: boolean;
+};
+
+export const SourceContext = createContext<RoomSource | null>(null);
+
+export function useSource() {
+  const source = useContext(SourceContext);
+  if (!source) throw new Error("useSource must be used inside SourceContext");
+  return source;
 }
 
 export type Identities = Map<string, { harness: string; role: string | null }>;

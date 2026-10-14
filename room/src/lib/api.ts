@@ -5,7 +5,9 @@ export const fileUrl = (id: string) => `${base}/api/files/${encodeURIComponent(i
 
 export type ApiError = { error?: string; valid?: string[]; limit?: number };
 
-export async function postJson<T = ApiError>(path: string, body: unknown) {
+export type Posted<T> = { r: Response; data: (T & ApiError) | null };
+
+export async function postJson<T = ApiError>(path: string, body: unknown): Promise<Posted<T>> {
   const r = await fetch(base + path, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -18,6 +20,37 @@ export async function postJson<T = ApiError>(path: string, body: unknown) {
     // no body
   }
   return { r, data };
+}
+
+export type UploadReply = { id?: string; size?: number; error?: string; limit?: number };
+
+export type UploadOutcome = { kind: "load"; status: number; data: UploadReply | null } | { kind: "error" } | { kind: "abort" };
+
+export type Upload = { done: Promise<UploadOutcome>; abort: () => void };
+
+/** XHR rather than fetch, for upload progress. */
+export function uploadFile(file: File, name: string, onProgress: (pct: number) => void): Upload {
+  const xhr = new XMLHttpRequest();
+  const done = new Promise<UploadOutcome>((resolve) => {
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    });
+    xhr.addEventListener("load", () => {
+      let data: UploadReply | null = null;
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        // no body
+      }
+      resolve({ kind: "load", status: xhr.status, data });
+    });
+    xhr.addEventListener("error", () => resolve({ kind: "error" }));
+    xhr.addEventListener("abort", () => resolve({ kind: "abort" }));
+    xhr.open("POST", `${base}/api/files?name=${encodeURIComponent(name)}`);
+    xhr.setRequestHeader("content-type", file.type || "application/octet-stream");
+    xhr.send(file);
+  });
+  return { done, abort: () => xhr.abort() };
 }
 
 export function errMain(r: Response, data: ApiError | null) {

@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { usePanels } from "@/hooks/use-panels";
-import { useRoom } from "@/hooks/use-room";
-import { errMain, postJson } from "@/lib/api";
+import { useRoom, useSource } from "@/hooks/use-room";
+import { errMain } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const clampCap = (v: number) => Math.min(50, Math.max(1, Math.round(v) || 1));
@@ -124,6 +124,7 @@ export function CapRing() {
 
 export function RoundCap() {
   const { state, pollNow } = useRoom();
+  const { post } = useSource();
   const { capRequest } = usePanels();
   const { roundCap, ended } = state;
   const [open, setOpen] = useState(false);
@@ -167,7 +168,7 @@ export function RoundCap() {
     }
     setSaving(true);
     try {
-      const { r, data } = await postJson("/api/settings", { roundCap: n });
+      const { r, data } = await post("/api/settings", { roundCap: n });
       if (!r.ok) return setError({ message: errMain(r, data) });
       show(false);
       pollNow();

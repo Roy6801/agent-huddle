@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useReducer, useRef } from "react";
 
-import { base } from "@/lib/api";
+import type { Upload, UploadReply } from "@/lib/api";
 import { fmtSize, INLINE_TYPES } from "@/lib/format";
 
 export const MAX_ATTACH = 10;
@@ -14,7 +14,7 @@ export type Att = {
   id?: string;
   size?: number;
   preview?: string;
-  xhr?: XMLHttpRequest;
+  abort?: () => void;
   promise?: Promise<void>;
   removed?: boolean;
 };
@@ -23,9 +23,10 @@ type Callbacks = {
   onError: (message: string) => void;
   onEnded: () => void;
   announce: (message: string) => void;
+  upload: (file: File, name: string, onProgress: (pct: number) => void) => Upload;
 };
 
-function uploadError(att: Att, status: number, data: { error?: string; limit?: number } | null) {
+function uploadError(att: Att, status: number, data: UploadReply | null) {
   if (status === 413) {
     const limit = data?.limit ? fmtSize(data.limit) : "";
     return data && /full/.test(data.error || "")
@@ -64,7 +65,7 @@ export function useAttachments(callbacks: Callbacks) {
   const remove = useCallback(
     (att: Att) => {
       att.removed = true;
-      if (att.xhr && att.state === "uploading") att.xhr.abort();
+      if (att.abort && att.state === "uploading") att.abort();
       drop(att);
     },
     [drop],
@@ -73,55 +74,43 @@ export function useAttachments(callbacks: Callbacks) {
   const clear = useCallback(() => list.current.slice().forEach(remove), [remove]);
 
   const upload = useCallback(
-    (att: Att) =>
-      new Promise<void>((resolve) => {
-        const xhr = new XMLHttpRequest();
-        att.xhr = xhr;
+    (att: Att) => {
+      const job = cb.current.upload(att.file, att.name, (pct) => {
+        att.pct = pct;
+        rerender();
+      });
+      att.abort = job.abort;
+      return job.done.then((res) => {
+        if (res.kind === "abort") {
+          att.state = "error";
+          return;
+        }
         const fail = (msg: string) => {
           att.state = "error";
           if (!att.removed) {
             drop(att);
             cb.current.onError(msg);
           }
-          resolve();
         };
-        xhr.upload.addEventListener("progress", (e) => {
-          if (!e.lengthComputable) return;
-          att.pct = Math.round((e.loaded / e.total) * 100);
+        if (res.kind === "error") return fail(`Could not reach the server to upload ${att.name}.`);
+        const { status, data } = res;
+        if (status === 201 && data?.id) {
+          att.state = "done";
+          att.id = data.id;
+          att.size = data.size;
+          att.pct = 100;
           rerender();
-        });
-        xhr.addEventListener("load", () => {
-          let data: { id?: string; size?: number; error?: string; limit?: number } | null = null;
-          try {
-            data = JSON.parse(xhr.responseText);
-          } catch {
-            // no body
-          }
-          if (xhr.status === 201 && data?.id) {
-            att.state = "done";
-            att.id = data.id;
-            att.size = data.size;
-            att.pct = 100;
-            rerender();
-            if (!att.removed) cb.current.announce(`${att.name} uploaded`);
-            return resolve();
-          }
-          if (xhr.status === 410) {
-            att.state = "error";
-            cb.current.onEnded();
-            return resolve();
-          }
-          fail(uploadError(att, xhr.status, data));
-        });
-        xhr.addEventListener("error", () => fail(`Could not reach the server to upload ${att.name}.`));
-        xhr.addEventListener("abort", () => {
+          if (!att.removed) cb.current.announce(`${att.name} uploaded`);
+          return;
+        }
+        if (status === 410) {
           att.state = "error";
-          resolve();
-        });
-        xhr.open("POST", `${base}/api/files?name=${encodeURIComponent(att.name)}`);
-        xhr.setRequestHeader("content-type", att.file.type || "application/octet-stream");
-        xhr.send(att.file);
-      }),
+          cb.current.onEnded();
+          return;
+        }
+        fail(uploadError(att, status, data));
+      });
+    },
     [drop],
   );
 

@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { useRoom } from "@/hooks/use-room";
+import { useRoom, useSource } from "@/hooks/use-room";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
-import { errMain, postJson, validOf } from "@/lib/api";
+import { errMain, validOf } from "@/lib/api";
 import type { Task, TaskStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -110,6 +110,7 @@ function TaskCard({ task }: { task: Task }) {
 
 function NewTask() {
   const { state, live, pollNow, endHuddle } = useRoom();
+  const { post } = useSource();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [assignee, setAssignee] = useState("");
@@ -142,7 +143,7 @@ function NewTask() {
     const body: { title: string; assignee?: string } = { title: t };
     if (current) body.assignee = current;
     try {
-      const { r, data } = await postJson<{ id?: number }>("/api/tasks", body);
+      const { r, data } = await post<{ id?: number }>("/api/tasks", body);
       if (r.status === 410) {
         endHuddle();
       } else if (r.ok) {

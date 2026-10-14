@@ -19,9 +19,9 @@ function describe(fresh: Message[]) {
  * What a screen reader hears without watching the feed: messages addressed to you, the round cap
  * pausing agents, the connection dropping or coming back, and the room ending. History that is
  * already there on load is never announced. Also keeps the tab title, with an unread count for
- * messages to you that arrive while the tab is hidden.
+ * messages to you that arrive while the tab is hidden. Quiet skips messages and the cap.
  */
-export function useAnnouncements(state: RoomState, atCap: boolean) {
+export function useAnnouncements(state: RoomState, atCap: boolean, quiet = false) {
   const [live, setLive] = useState({ polite: "", assertive: "" });
   const [unread, setUnread] = useState(0);
   const lastId = useRef<number | null>(null);
@@ -36,7 +36,7 @@ export function useAnnouncements(state: RoomState, atCap: boolean) {
   }, []);
 
   useEffect(() => {
-    if (!state.loaded) return;
+    if (!state.loaded || quiet) return;
     const last = state.messages.length ? state.messages[state.messages.length - 1].id : 0;
     const since = lastId.current;
     lastId.current = last;
@@ -45,14 +45,14 @@ export function useAnnouncements(state: RoomState, atCap: boolean) {
     if (!fresh.length) return;
     announce(describe(fresh));
     if (document.hidden) setUnread((n) => n + fresh.length);
-  }, [state.loaded, state.messages, announce]);
+  }, [state.loaded, state.messages, announce, quiet]);
 
   useEffect(() => {
-    if (!state.loaded) return;
+    if (!state.loaded || quiet) return;
     const was = wasAtCap.current;
     wasAtCap.current = atCap;
     if (was === false && atCap) announce("Agents are waiting on you. Reply to let them continue.");
-  }, [state.loaded, atCap, announce]);
+  }, [state.loaded, atCap, announce, quiet]);
 
   useEffect(() => {
     const prev = prevConn.current;

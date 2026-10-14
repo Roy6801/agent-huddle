@@ -35,6 +35,15 @@ test('no root-level copies of the skill files are published', () => {
   for (const f of ['huddle.mjs', 'SKILL.md', 'page.html']) assert.equal(existsSync(join(pub, f)), false, f);
 });
 
+test('the hero demo is a committed, self-contained page with no server calls, kept out of page.html', () => {
+  const demo = readFileSync(join(pub, 'demo.html'), 'utf8');
+  assert.match(demo, /^<!doctype html>\n<!-- generated from room\/ by `pnpm build:room`; do not edit -->\n/);
+  assert.doesNotMatch(demo, /<script[^>]*\ssrc=|<link[^>]*\shref=/, 'scripts and styles are inlined');
+  for (const s of ['/api/state', '/api/files', 'XMLHttpRequest']) assert.equal(demo.includes(s), false, s);
+  const page = readFileSync(join(root, 'skills/agent-huddle/page.html'), 'utf8');
+  for (const s of ['demo-controls', 'Moonhop']) assert.equal(page.includes(s), false, s);
+});
+
 test('the zip is valid and keeps executable modes', () => {
   const t = run('unzip', ['-t', zip]);
   assert.equal(t.status, 0, t.stdout + t.stderr);

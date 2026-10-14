@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
 import { usePanels } from "@/hooks/use-panels";
-import { useRoom } from "@/hooks/use-room";
+import { useRoom, useSource } from "@/hooks/use-room";
 import { isMac, MOD } from "@/lib/keyboard";
 import type { Conn } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -56,7 +56,7 @@ function Connection({ conn, className }: { conn: Conn; className?: string }) {
       )}
     >
       <ConnDot conn={conn} />
-      <span className={cn(conn === "live" && "sr-only sm:not-sr-only")}>{text}</span>
+      <span className={cn(conn === "live" && "sr-only @2xl:not-sr-only")}>{text}</span>
     </span>
   );
 }
@@ -107,6 +107,7 @@ export function Header({
   onShowShortcuts: () => void;
 }) {
   const { state, atCap } = useRoom();
+  const { canCopyJoin } = useSource();
   const { openBoard } = usePanels();
   const board = useSidebar();
   const boardOpen = board.isMobile ? board.openMobile : board.open;
@@ -120,7 +121,7 @@ export function Header({
   }
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-1 border-b bg-background px-1.5 md:h-12 md:gap-2 md:pr-3 md:pl-2">
+    <header className="@container flex h-14 shrink-0 items-center gap-1 border-b bg-background px-1.5 md:h-12 md:gap-2 md:pr-3 md:pl-2">
       <Button
         variant="ghost"
         size="icon-sm"
@@ -146,9 +147,9 @@ export function Header({
       <Badge
         variant="outline"
         title="This room runs only on this machine"
-        className="hidden min-w-0 shrink gap-1.5 font-normal text-muted-foreground md:inline-flex"
+        className="hidden gap-1.5 font-normal text-muted-foreground md:@3xl:inline-flex"
       >
-        local <span className="truncate font-mono text-[11px] text-foreground/80">{host}</span>
+        local <span className="font-mono text-[11px] text-foreground/80">{host}</span>
       </Badge>
       <div className="flex shrink-0 items-center gap-0.5 md:ml-auto md:gap-1.5">
         {atCap && !ended && (
@@ -159,7 +160,7 @@ export function Header({
             onClick={() => openBoard("cap")}
           >
             <TriangleAlertIcon aria-hidden />
-            Waiting on you
+            <span className="sr-only @xl:not-sr-only">Waiting on you</span>
           </Button>
         )}
         <Connection conn={conn} className="hidden md:inline-flex" />
@@ -169,10 +170,10 @@ export function Header({
           label="Copy join link"
           title={joinUrl ? `Copy join link: ${joinUrl}` : undefined}
           icon={<LinkIcon aria-hidden />}
-          labelClassName="sr-only md:not-sr-only"
+          labelClassName="sr-only md:@xl:not-sr-only"
           variant="outline"
           size="sm"
-          disabled={ended || !joinUrl}
+          disabled={ended || !joinUrl || !canCopyJoin}
           className="max-md:size-11 max-md:border-transparent max-md:bg-transparent max-md:px-0 max-md:dark:border-transparent max-md:dark:bg-transparent"
         />
         <Button
@@ -182,7 +183,7 @@ export function Header({
           aria-keyshortcuts="?"
           title="Keyboard shortcuts (?)"
           onClick={onShowShortcuts}
-          className="hidden md:inline-flex"
+          className="hidden md:@2xl:inline-flex"
         >
           <KeyboardIcon aria-hidden />
         </Button>

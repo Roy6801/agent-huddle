@@ -5,13 +5,14 @@ import { Composer } from "@/components/composer";
 import type { ErrorInfo } from "@/components/error-box";
 import { Feed, type FeedHandle } from "@/components/feed";
 import { useAttachments } from "@/hooks/use-attachments";
-import { useRoom } from "@/hooks/use-room";
+import { useRoom, useSource } from "@/hooks/use-room";
 
 const hasFiles = (e: { dataTransfer: DataTransfer | null }) => !!e.dataTransfer && [...e.dataTransfer.types].includes("Files");
 
 /** Feed, invite and composer; the whole column accepts dropped files. */
 export function Chat() {
   const { state, identities, announce, endHuddle } = useRoom();
+  const { upload } = useSource();
   const { ended, loaded, agents, joinUrl, messages } = state;
   const [error, setError] = useState<ErrorInfo | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -22,6 +23,7 @@ export function Chat() {
     onError: (message) => setError({ message }),
     onEnded: endHuddle,
     announce,
+    upload,
   });
   const { add, clear } = attachments;
 

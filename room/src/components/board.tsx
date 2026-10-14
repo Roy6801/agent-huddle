@@ -2,12 +2,12 @@ import { FileTypeIcon } from "@/components/files";
 import { RoundCap } from "@/components/round-cap";
 import { Tasks } from "@/components/tasks";
 import { Sidebar, SidebarContent, SidebarHeader, SidebarRail } from "@/components/ui/sidebar";
-import { useRoom } from "@/hooks/use-room";
-import { fileUrl } from "@/lib/api";
+import { useRoom, useSource } from "@/hooks/use-room";
 import { fmtSize, fmtTime, INLINE_TYPES } from "@/lib/format";
 
 function SharedFiles() {
   const { files } = useRoom();
+  const { fileUrl } = useSource();
   if (!files.length) return null;
   return (
     <section aria-labelledby="files-h" className="min-w-0">

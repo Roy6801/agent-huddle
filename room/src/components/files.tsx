@@ -1,7 +1,7 @@
 import { DownloadIcon, FileArchiveIcon, FileCodeIcon, FileIcon, FileTextIcon, ImageIcon } from "lucide-react";
 import { useState } from "react";
 
-import { fileUrl } from "@/lib/api";
+import { useSource } from "@/hooks/use-room";
 import { fileKind, fmtSize, INLINE_TYPES, type FileKind } from "@/lib/format";
 import type { FileMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,7 @@ export function FileTypeIcon({ type, name, className }: { type: string; name: st
 }
 
 function FileCard({ file, gone = false }: { file: FileMeta; gone?: boolean }) {
+  const { fileUrl } = useSource();
   const name = file.name || "file";
   const body = (
     <>
@@ -59,6 +60,7 @@ function FileCard({ file, gone = false }: { file: FileMeta; gone?: boolean }) {
 }
 
 function Thumb({ file, onLoad }: { file: FileMeta; onLoad: (img: HTMLImageElement) => void }) {
+  const { fileUrl } = useSource();
   const [broken, setBroken] = useState(false);
   const name = file.name || "image";
   if (broken) return <FileCard file={file} gone />;

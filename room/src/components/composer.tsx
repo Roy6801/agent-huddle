@@ -7,8 +7,8 @@ import { GroupAvatar, Jazzicon } from "@/components/identity";
 import { Button } from "@/components/ui/button";
 import type { useAttachments } from "@/hooks/use-attachments";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useRoom } from "@/hooks/use-room";
-import { errMain, postJson, validOf } from "@/lib/api";
+import { useRoom, useSource } from "@/hooks/use-room";
+import { errMain, validOf } from "@/lib/api";
 import { fmtSize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +32,7 @@ export function Composer({
   onSent: () => void;
 }) {
   const { state, live, atCap, pollNow, endHuddle, announce } = useRoom();
+  const { post } = useSource();
   const { ended, agents } = state;
   const { atts, current, add, remove, drop } = attachments;
   const [text, setText] = useState("");
@@ -40,12 +41,6 @@ export function Composer({
   const picker = useRef<HTMLInputElement>(null);
   const acList = useRef<HTMLUListElement>(null);
 
-  useLayoutEffect(() => {
-    const ta = textRef.current;
-    if (!ta) return;
-    ta.style.height = "auto";
-    ta.style.height = `${Math.min(ta.scrollHeight, MAX_TEXT_H)}px`;
-  }, [text, textRef]);
 
   useLayoutEffect(() => {
     acList.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest" });
@@ -103,7 +98,7 @@ export function Composer({
       if (!v && !sent.length) return;
       const body: { text: string; files?: string[] } = { text: v };
       if (sent.length) body.files = sent.map((a) => a.id!);
-      const { r, data } = await postJson("/api/post", body);
+      const { r, data } = await post("/api/post", body);
       if (r.status === 410) {
         endHuddle();
       } else if (r.ok) {
@@ -131,7 +126,16 @@ export function Composer({
       ? narrow
         ? "Agents are waiting on you"
         : "Agents are waiting on you. Reply to let them continue."
-      : DEFAULT_PLACEHOLDER;
+      : narrow
+        ? "Message the room"
+        : DEFAULT_PLACEHOLDER;
+
+  useLayoutEffect(() => {
+    const ta = textRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(ta.scrollHeight, MAX_TEXT_H)}px`;
+  }, [text, textRef, placeholder]);
 
   return (
     <form

@@ -1,0 +1,55 @@
+/* Plain CSS on the room's tokens: index.css keeps src/demo out of Tailwind's sources, so page.html
+   carries none of the demo. Phones: under the header on the right, and under the "waiting on you"
+   banner while it shows. Wider: the foot of the agents panel, or stacked in its rail when collapsed. */
+.demo-controls {
+  position: fixed;
+  top: 4rem;
+  right: 0.5rem;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.125rem 0.125rem 0.125rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: color-mix(in oklch, var(--background) 88%, transparent);
+  box-shadow: 0 4px 12px -4px color-mix(in oklch, var(--foreground) 18%, transparent);
+  color: var(--muted-foreground);
+  backdrop-filter: blur(8px);
+}
+
+.demo-controls button {
+  border-radius: 9999px;
+}
+
+.demo-label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 767px) {
+  .demo-controls[data-at-cap] {
+    top: 7.5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .demo-controls {
+    top: auto;
+    right: auto;
+    bottom: 0.75rem;
+    left: 0.75rem;
+  }
+
+  body:has([data-side="left"][data-state="collapsed"]) .demo-controls {
+    left: 0.3125rem;
+    flex-direction: column;
+    padding: 0.125rem;
+  }
+
+  body:has([data-side="left"][data-state="collapsed"]) .demo-label {
+    display: none;
+  }
+}
