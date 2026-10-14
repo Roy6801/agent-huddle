@@ -4,7 +4,6 @@ import { Features } from "@/components/sections/features";
 import { Hero } from "@/components/sections/hero";
 import { HowItWorks } from "@/components/sections/how-it-works";
 import { Install } from "@/components/sections/install";
-import { RealRoom } from "@/components/sections/real-room";
 import { Run } from "@/components/sections/run";
 import { Support } from "@/components/sections/support";
 import { SiteFooter } from "@/components/site-footer";
@@ -23,7 +22,6 @@ export default function Home() {
       <main id="main">
         <Hero />
         <HowItWorks />
-        <RealRoom />
         <Features />
         <Run />
         <Install />

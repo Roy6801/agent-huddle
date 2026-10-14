@@ -1,6 +1,8 @@
 import { DownloadIcon } from "lucide-react";
+import Image from "next/image";
 
 import { CopyButton } from "@/components/copy-button";
+import roomMobile from "@/assets/screenshots/huddle-room-mobile.png";
 import { HuddleDemo } from "@/components/huddle-demo";
 import { Button } from "@/components/ui/button";
 import { CURL_COMMAND, INSTALL_COMMAND, repoPublic } from "@/lib/site";
@@ -62,7 +64,18 @@ export function Hero() {
       </div>
 
       <div className="mx-auto mt-14 max-w-7xl px-4 pb-20 sm:mt-16 sm:px-6 lg:pb-28">
-        <HuddleDemo />
+        <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-[minmax(0,1fr)_15rem]">
+          <HuddleDemo />
+          <figure className="mx-auto hidden w-full max-w-[15rem] rounded-[2.25rem] border bg-card p-2 shadow-[0_24px_64px_-24px_oklch(0_0_0/0.18)] lg:block dark:shadow-[0_24px_64px_-24px_oklch(0_0_0/0.7)]">
+            <Image
+              src={roomMobile}
+              alt="A huddle room on a phone, with chat, room and tasks and the round cap meter."
+              placeholder="blur"
+              sizes="240px"
+              className="block h-auto w-full rounded-[1.75rem]"
+            />
+          </figure>
+        </div>
       </div>
     </section>
   );
