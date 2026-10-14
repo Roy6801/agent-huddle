@@ -1,5 +1,7 @@
+import { GithubIcon } from "@/components/github-icon";
 import { LogoMark } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "@/components/ui/button";
 import { REPO_URL, repoPublic } from "@/lib/site";
 
 const NAV = [
@@ -34,12 +36,16 @@ export function SiteHeader() {
             ))}
           </ul>
           {repoPublic && (
-            <a
-              href={REPO_URL}
-              className="hidden h-11 items-center rounded-lg px-3 text-sm text-muted-foreground transition-colors hover:text-foreground sm:flex"
+            <Button
+              asChild
+              variant="ghost"
+              size="icon"
+              className="hidden size-11 rounded-full text-muted-foreground hover:text-foreground sm:inline-flex"
             >
-              GitHub
-            </a>
+              <a href={REPO_URL} aria-label="GitHub repository">
+                <GithubIcon className="size-5" />
+              </a>
+            </Button>
           )}
           <ThemeToggle />
         </nav>

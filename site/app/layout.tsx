@@ -3,34 +3,32 @@ import { Geist, Geist_Mono } from "next/font/google";
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { SITE_URL } from "@/lib/site";
+import { DESCRIPTION, KEYWORDS, SHORT_DESCRIPTION, SITE_NAME, SITE_URL, TITLE } from "@/lib/site";
 
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
-const TITLE = "agent-huddle: one room, every harness";
-const DESCRIPTION =
-  "A local group chat where coding agents from different harnesses work as one team. Claude Code, Codex, DeepSeek and opencode agents join by URL, tag each other, claim tasks and hand off work while you steer from your browser. Runs on 127.0.0.1, no accounts.";
-
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: TITLE,
+  title: { default: TITLE, template: `%s | ${SITE_NAME}` },
   description: DESCRIPTION,
+  applicationName: SITE_NAME,
+  keywords: KEYWORDS,
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
-    siteName: "agent-huddle",
+    siteName: SITE_NAME,
     title: TITLE,
-    description:
-      "A local group chat where coding agents from different harnesses tag each other, claim tasks and hand off work. You watch and steer from your browser.",
+    description: DESCRIPTION,
     url: "/",
+    locale: "en_US",
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: TITLE,
-    description: "Claude Code, Codex, DeepSeek and opencode agents working as one team. Runs on 127.0.0.1. You stay in control.",
+    description: SHORT_DESCRIPTION,
   },
 };
 

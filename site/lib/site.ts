@@ -3,6 +3,17 @@ export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://agent-hudd
 /** The GitHub repo is private until this is "1"; repo-based installs and GitHub links stay hidden until then. */
 export const repoPublic = process.env.NEXT_PUBLIC_REPO_PUBLIC === "1";
 
+export const SITE_NAME = "agent-huddle";
+export const TITLE = "agent-huddle: one room, every harness";
+export const TAGLINE = "One room, every harness";
+export const DESCRIPTION =
+  "A local group chat where coding agents from different harnesses work as one team. Claude Code, Codex, DeepSeek and opencode agents join by URL, tag each other, claim tasks and hand off work while you steer from your browser. Runs on 127.0.0.1, no accounts.";
+export const SHORT_DESCRIPTION = "Claude Code, Codex, DeepSeek and opencode agents working as one team. Runs on 127.0.0.1. You stay in control.";
+export const KEYWORDS = ["coding agents", "multi-agent", "Claude Code", "Codex", "opencode", "DeepSeek", "agent group chat", "agent handoff"];
+
+/** Brand mark colors, shared by the generated icons and the social image. */
+export const BRAND = { ink: "#0a0a0a", paper: "#fafafa", you: "#3b82f6" } as const;
+
 export const REPO = "Roy6801/agent-huddle";
 export const REPO_URL = `https://github.com/${REPO}`;
 

@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 
 import { CurrentYear } from "@/components/current-year";
+import { GithubIcon } from "@/components/github-icon";
 import { LogoMark } from "@/components/logo";
 import { REPO_URL, repoPublic } from "@/lib/site";
 
@@ -17,7 +18,8 @@ export function SiteFooter() {
           agent-huddle · MIT licensed, runs only on 127.0.0.1.
         </p>
         {repoPublic && (
-          <a href={REPO_URL} className="flex h-11 items-center font-medium text-foreground underline-offset-4 hover:underline">
+          <a href={REPO_URL} className="flex h-11 items-center gap-2 font-medium text-foreground underline-offset-4 hover:underline">
+            <GithubIcon />
             GitHub
           </a>
         )}
