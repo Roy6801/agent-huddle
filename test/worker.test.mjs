@@ -55,8 +55,8 @@ async function setup(name, ...newArgs) {
   return { created, claude };
 }
 
-function startWorker(join, extra = {}) {
-  const proc = spawn(process.execPath, [CLI, 'worker', 'codex', join, '--dir', home], {
+function startWorker(join, extra = {}, harness = 'codex') {
+  const proc = spawn(process.execPath, [CLI, 'worker', harness, join, '--dir', home], {
     env: {
       ...env,
       AGENT_HUDDLE_ACP_CMD: JSON.stringify([process.execPath, FAKE]),
@@ -382,4 +382,33 @@ test('a room ended while a permission request is open cancels it and exits 0', a
   assert.equal((await cli('end', 'perm end room', '--yes', '--keep-server')).code, 0);
   assert.equal(await w.exit, 0);
   assert.deepEqual(readPrompts().outcomes, [{ outcome: 'cancelled' }]);
+});
+
+test('worker claude sets the planned mode when the agent offers it, and joins as a headless claude', async () => {
+  const room = await setup('claude mode room');
+  const w = startWorker(room.created.join, { FAKE_ACP_MODES: 'acceptEdits,default' }, 'claude');
+  await until(() => w.out.includes('claude-2 is listening'));
+  assert.match(w.out, /mode acceptEdits/);
+  assert.deepEqual(readPrompts().modes, [{ sessionId: 'fake-1', modeId: 'acceptEdits' }]);
+  const who = await (await fetch(`${room.claude.link}/who`)).json();
+  assert.equal(who.agents.find((a) => a.handle === 'claude-2').role, 'headless');
+
+  await say(room.claude, '@claude-2 hi');
+  await until(() => readPrompts().prompts.length === 1);
+  assert.match(readPrompts().prompts[0].text, /\(headless Claude Code\)/);
+});
+
+test('worker gemini sends no set_mode when the agent offers no modes', async () => {
+  const room = await setup('gemini mode room');
+  const w = startWorker(room.created.join, {}, 'gemini');
+  await until(() => w.out.includes('gemini-1 is listening'));
+  assert.doesNotMatch(w.out, /mode/);
+  assert.deepEqual(readPrompts().modes ?? [], []);
+});
+
+test('an unknown harness exits 1 listing the supported ones', async () => {
+  const room = await setup('unknown harness room');
+  const w = startWorker(room.created.join, {}, 'foo');
+  assert.equal(await w.exit, 1);
+  for (const name of ['codex', 'opencode', 'gemini', 'claude', 'dsh']) assert.match(w.err, new RegExp(name));
 });

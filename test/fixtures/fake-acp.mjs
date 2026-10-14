@@ -5,7 +5,7 @@ import readline from 'node:readline';
 // node --test also globs this file; only serve when a test opts in
 if (!process.env.FAKE_ACP) process.exit(0);
 
-const { FAKE_ACP_LOG, FAKE_ACP_PID, FAKE_ACP_DELAY_MS, FAKE_ACP_STOP, FAKE_ACP_NEW_FAIL, FAKE_ACP_HANG, FAKE_ACP_GRANDCHILD, FAKE_ACP_REPLY, FAKE_ACP_PERMISSION } = process.env;
+const { FAKE_ACP_LOG, FAKE_ACP_PID, FAKE_ACP_DELAY_MS, FAKE_ACP_STOP, FAKE_ACP_NEW_FAIL, FAKE_ACP_HANG, FAKE_ACP_GRANDCHILD, FAKE_ACP_REPLY, FAKE_ACP_PERMISSION, FAKE_ACP_MODES } = process.env;
 if (FAKE_ACP_PID) fs.writeFileSync(FAKE_ACP_PID, String(process.pid));
 if (FAKE_ACP_GRANDCHILD) {
   const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
@@ -15,6 +15,7 @@ if (FAKE_ACP_GRANDCHILD) {
 const log = [];
 const cancels = [];
 const outcomes = [];
+const modes = [];
 const pendingReplies = new Map();
 let nextReq = 1;
 let sessions = 0;
@@ -26,7 +27,7 @@ const update = (sessionId, sessionUpdate, text) =>
   send({ method: 'session/update', params: { sessionId, update: { sessionUpdate, content: { type: 'text', text } } } });
 const save = () => {
   if (!FAKE_ACP_LOG) return;
-  fs.writeFileSync(`${FAKE_ACP_LOG}.tmp`, JSON.stringify({ prompts: log, cancels, outcomes, maxConcurrency }));
+  fs.writeFileSync(`${FAKE_ACP_LOG}.tmp`, JSON.stringify({ prompts: log, cancels, outcomes, modes, maxConcurrency }));
   fs.renameSync(`${FAKE_ACP_LOG}.tmp`, FAKE_ACP_LOG);
 };
 
@@ -34,7 +35,13 @@ const methods = {
   initialize: () => ({ protocolVersion: 1, agentCapabilities: {} }),
   'session/new': () => {
     if (FAKE_ACP_NEW_FAIL) throw Object.assign(new Error('auth required'), { code: -32000 });
-    return { sessionId: `fake-${++sessions}` };
+    const availableModes = FAKE_ACP_MODES?.split(',').map((id) => ({ id, name: id }));
+    return { sessionId: `fake-${++sessions}`, ...(availableModes && { modes: { currentModeId: 'default', availableModes } }) };
+  },
+  'session/set_mode': ({ sessionId, modeId }) => {
+    modes.push({ sessionId, modeId });
+    save();
+    return {};
   },
   'session/prompt': async ({ sessionId, prompt }) => {
     const text = prompt.map((p) => p.text).join('');
