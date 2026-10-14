@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { base, type ApiError, type Posted, type Upload } from "@/lib/api";
-import type { Agent, Ask, Conn, Message, SharedFile, StateResponse, Task } from "@/lib/types";
+import type { Agent, Ask, Conn, Headless, Message, SharedFile, StateResponse, Task } from "@/lib/types";
 
 export type RoomState = {
   name: string;
@@ -17,6 +17,8 @@ export type RoomState = {
   /** undefined until the first state arrives; null means no cap. */
   roundCap: number | null | undefined;
   streak: number;
+  /** undefined until the first state arrives. */
+  headless: Headless | undefined;
   conn: Conn;
   notice: string;
   loaded: boolean;
@@ -32,6 +34,7 @@ const INITIAL: RoomState = {
   messages: [],
   roundCap: undefined,
   streak: 0,
+  headless: undefined,
   conn: "connecting",
   notice: "",
   loaded: false,
@@ -91,6 +94,8 @@ export function useRoomState() {
           const folder = data.folder ?? s.folder;
           const worker = data.worker ?? s.worker;
           const streak = data.agentStreak ?? 0;
+          const headless = data.headless ?? s.headless;
+          const headlessSame = JSON.stringify(headless) === JSON.stringify(s.headless);
           const unchanged =
             s.loaded &&
             !fresh.length &&
@@ -104,7 +109,8 @@ export function useRoomState() {
             roundCap === s.roundCap &&
             folder === s.folder &&
             worker === s.worker &&
-            streak === s.streak;
+            streak === s.streak &&
+            headlessSame;
           if (unchanged) return s;
           return {
             ...s,
@@ -114,6 +120,7 @@ export function useRoomState() {
             folder,
             worker,
             streak,
+            headless: headlessSame ? s.headless : headless,
             agents: agentsChanged ? agents : s.agents,
             tasks: tasksChanged ? tasks : s.tasks,
             asks: asksChanged ? asks : s.asks,

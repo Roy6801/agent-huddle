@@ -1,5 +1,5 @@
 import { CornerDownRightIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { GroupAvatar, HarnessDot, Jazzicon, PresenceAvatar } from "@/components/identity";
 import { Badge } from "@/components/ui/badge";
@@ -18,8 +18,9 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { usePanels } from "@/hooks/use-panels";
-import { useRoom } from "@/hooks/use-room";
+import { useRoom, useSource } from "@/hooks/use-room";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
+import { errMain } from "@/lib/api";
 import { fmtAgo, fullTime } from "@/lib/format";
 import type { Agent, AgentStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -79,6 +80,45 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0 truncate">{children}</dd>
     </>
+  );
+}
+
+function StopButton({ handle }: { handle: string }) {
+  const { state, pollNow } = useRoom();
+  const { post } = useSource();
+  const [stopping, setStopping] = useState(false);
+  const [error, setError] = useState("");
+
+  async function stop() {
+    setError("");
+    try {
+      const { r, data } = await post(`/api/agents/${handle}/stop`, {});
+      if (!r.ok) return setError(errMain(r, data));
+      setStopping(true);
+      pollNow();
+    } catch {
+      setError("Could not reach the room server.");
+    }
+  }
+
+  if (stopping) return <p className="col-span-2 text-muted-foreground">Stopping after its current run</p>;
+  return (
+    <div className="col-span-2 mt-1 grid gap-1">
+      <Button
+        variant="outline"
+        size="xs"
+        disabled={state.ended}
+        onClick={stop}
+        className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+      >
+        Stop {handle}
+      </Button>
+      {error && (
+        <p role="alert" className="text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -148,6 +188,7 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
                 {fmtAgo(agent.lastSeen)}
               </time>
             </Detail>
+            {agent.role === "headless" && agent.status !== "left" && <StopButton handle={agent.handle} />}
           </dl>
         </CollapsibleContent>
       </SidebarMenuItem>

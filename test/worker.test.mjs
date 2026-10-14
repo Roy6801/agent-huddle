@@ -412,3 +412,91 @@ test('an unknown harness exits 1 listing the supported ones', async () => {
   assert.equal(await w.exit, 1);
   for (const name of ['codex', 'opencode', 'gemini', 'claude', 'dsh']) assert.match(w.err, new RegExp(name));
 });
+
+const settings = (room, body) => fetch(`${room.created.page}/api/settings`, json(body));
+
+test('headless budgets validate, show in the state and the agent view, and note only real changes', async () => {
+  const room = await setup('budget room');
+  const first = await (await fetch(`${room.created.page}/api/state`)).json();
+  assert.deepEqual(first.headless, { wakesPerHour: 20, runMinutes: 10, idleMinutes: 60 });
+  for (const bad of [{ wakesPerHour: 0 }, { wakesPerHour: 121 }, { runMinutes: 1.5 }, { idleMinutes: 4 }, { idleMinutes: 1441 }, { runMinutes: '5' }, {}]) {
+    assert.equal((await settings(room, bad)).status, 400, JSON.stringify(bad));
+  }
+  assert.equal((await settings(room, { wakesPerHour: 5, runMinutes: 2, idleMinutes: 30 })).status, 200);
+  assert.equal((await settings(room, { wakesPerHour: 5 })).status, 200);
+  const next = await (await fetch(`${room.created.page}/api/state`)).json();
+  assert.deepEqual(next.headless, { wakesPerHour: 5, runMinutes: 2, idleMinutes: 30 });
+  assert.equal(next.messages.filter((m) => m.text === 'you set headless budgets: 5 wakes/h, 2 min/run, stop after 30 min idle').length, 1);
+  assert.deepEqual((await (await fetch(`${room.claude.link}/me`)).json()).headless, next.headless);
+  assert.equal((await settings(room, { roundCap: 7 })).status, 200);
+  assert.equal((await (await fetch(`${room.created.page}/api/state`)).json()).roundCap, 7);
+});
+
+test('the human stops a listening worker, which leaves and exits 0', async () => {
+  const room = await setup('stop room');
+  const w = startWorker(room.created.join);
+  await until(() => w.out.includes('codex-1 is listening'));
+  assert.equal((await fetch(`${room.created.page}/api/agents/nobody/stop`, json({}))).status, 404);
+  assert.equal((await fetch(`${room.created.page}/api/agents/claude-1/stop`, json({}))).status, 409);
+  assert.equal((await fetch(`${room.claude.link}/api/agents/codex-1/stop`, json({}))).status, 404);
+  assert.equal((await fetch(`${room.created.page}/api/agents/codex-1/stop`, json({}))).status, 200);
+  assert.equal(await w.exit, 0);
+  assert.match(w.out, /codex-1 stopped by @you/);
+  const who = await (await fetch(`${room.claude.link}/who`)).json();
+  assert.equal(who.agents.find((a) => a.handle === 'codex-1').status, 'left');
+  const texts = (await state(room)).map((m) => m.text);
+  assert.ok(texts.includes('you asked codex-1 to stop'));
+  assert.equal((await fetch(`${room.created.page}/api/agents/codex-1/stop`, json({}))).status, 404);
+});
+
+test('a stop asked during a run lets the run finish and its reply post first', async () => {
+  const room = await setup('stop run room');
+  const w = startWorker(room.created.join, { FAKE_ACP_DELAY_MS: '1200' });
+  await until(() => w.out.includes('codex-1 is listening'));
+  await say(room.claude, '@codex-1 work');
+  await until(() => w.out.includes('running on'));
+  await fetch(`${room.created.page}/api/agents/codex-1/stop`, json({}));
+  assert.equal(await w.exit, 0);
+  assert.equal((await codexPosts(room)).filter((m) => m.text.startsWith('echo(')).length, 1);
+  assert.match(w.out, /replied/);
+});
+
+test('wakes per hour from the env: a second mention waits for the window, with one note', async () => {
+  const room = await setup('wake env room');
+  const w = startWorker(room.created.join, { AGENT_HUDDLE_WAKES_PER_HOUR: '1', AGENT_HUDDLE_WAKE_WINDOW_MS: '1500' });
+  await until(() => w.out.includes('codex-1 is listening'));
+  await say(room.claude, '@codex-1 one');
+  await until(async () => (await codexPosts(room)).length === 1);
+  await say(room.claude, '@codex-1 two');
+  const note = await until(async () => (await codexPosts(room)).find((m) => m.text.includes('wake')));
+  assert.match(note.text, /^@you codex-1 used its 1 wake this hour; next wake at \d\d:\d\d$/);
+  await until(async () => (await codexPosts(room)).length === 3);
+  assert.equal(readPrompts().prompts.length, 2);
+  assert.equal((await codexPosts(room)).filter((m) => m.text.includes('wake')).length, 1);
+  w.proc.kill('SIGTERM');
+  await w.exit;
+});
+
+test('wakes per hour from the room settings when the env is unset', async () => {
+  const room = await setup('wake room settings');
+  await settings(room, { wakesPerHour: 1 });
+  const w = startWorker(room.created.join, { AGENT_HUDDLE_WAKE_WINDOW_MS: '60000' });
+  await until(() => w.out.includes('codex-1 is listening'));
+  await say(room.claude, '@codex-1 one');
+  await until(async () => (await codexPosts(room)).length === 1);
+  await say(room.claude, '@codex-1 two');
+  await until(async () => (await codexPosts(room)).some((m) => m.text.includes('used its 1 wake')));
+  await sleep(500);
+  assert.equal(readPrompts().prompts.length, 1);
+  w.proc.kill('SIGTERM');
+  await w.exit;
+});
+
+test('a worker idle past its limit leaves and exits 0 without being mentioned', async () => {
+  const room = await setup('idle room');
+  const w = startWorker(room.created.join, { AGENT_HUDDLE_IDLE_MS: '800' });
+  assert.equal(await w.exit, 0);
+  assert.match(w.out, /codex-1 stopped after \d+ min idle/);
+  const who = await (await fetch(`${room.claude.link}/who`)).json();
+  assert.equal(who.agents.find((a) => a.handle === 'codex-1').status, 'left');
+});

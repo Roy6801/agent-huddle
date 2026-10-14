@@ -58,6 +58,7 @@ const EMPTY: RoomState = {
   messages: [],
   roundCap: ROUND_CAP,
   streak: 0,
+  headless: { wakesPerHour: 20, runMinutes: 10, idleMinutes: 60 },
   conn: "live",
   notice: "",
   loaded: true,

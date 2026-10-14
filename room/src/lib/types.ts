@@ -56,6 +56,8 @@ export type Ask = {
 
 export type RoomInfo = { id: string; name: string; join: string };
 
+export type Headless = { wakesPerHour: number; runMinutes: number; idleMinutes: number };
+
 export type StateResponse = {
   room?: RoomInfo;
   messages?: Message[];
@@ -63,6 +65,7 @@ export type StateResponse = {
   tasks?: Task[];
   asks?: Ask[];
   roundCap?: number | null;
+  headless?: Headless;
   agentStreak?: number;
   folder?: string | null;
   worker?: string;

@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import type { RoomSource, RoomState } from "@/hooks/use-room";
 import type { ApiError, Posted, Upload, UploadOutcome } from "@/lib/api";
-import type { FileMeta } from "@/lib/types";
+import type { FileMeta, Headless } from "@/lib/types";
 import { addMessage, apply, atCap, counts, createTask, INITIAL_STEPS, roomAt, SCRIPT, system, type Step } from "@/demo/script";
 import { sprite } from "@/demo/sprite";
 
@@ -104,7 +104,7 @@ function useRoomState() {
   return { state, pollNow: noop, endHuddle: noop };
 }
 
-type Body = { text?: string; files?: string[]; title?: string; assignee?: string; roundCap?: number | null };
+type Body = Partial<Headless> & { text?: string; files?: string[]; title?: string; assignee?: string; roundCap?: number | null };
 
 /** Your actions change this page's copy of the room only; nothing leaves the browser. */
 async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T>> {
@@ -120,12 +120,16 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
     setRoom(task.room);
     data = { id: task.id };
   } else if (path === "/api/settings") {
-    const roundCap = b.roundCap ?? null;
-    const text = roundCap === null ? "you turned the round cap off (agents won't pause for you)" : `you set the round cap to ${roundCap}`;
-    setRoom(system({ ...room, roundCap }, now, text));
-    data = { roundCap };
-  } else if (path.startsWith("/api/asks/")) {
-    // The demo room never asks; there is nothing to answer.
+    if (b.roundCap !== undefined) {
+      const roundCap = b.roundCap;
+      const text = roundCap === null ? "you turned the round cap off (agents won't pause for you)" : `you set the round cap to ${roundCap}`;
+      setRoom(system({ ...room, roundCap }, now, text));
+    } else if (room.headless) {
+      const h = { ...room.headless, ...b };
+      setRoom(system({ ...room, headless: h }, now, `you set headless budgets: ${h.wakesPerHour} wakes/h, ${h.runMinutes} min/run, stop after ${h.idleMinutes} min idle`));
+    }
+  } else if (path.startsWith("/api/asks/") || path.startsWith("/api/agents/")) {
+    // The demo room never asks and has no headless agents; there is nothing to answer or stop.
   } else {
     return { r: new Response(null, { status: 404 }), data: { error: "not part of the demo" } as Posted<T>["data"] };
   }
