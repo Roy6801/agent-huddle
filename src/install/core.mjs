@@ -12,9 +12,11 @@ export const SKILL_FILES = [
 export const AGENTS = [
   { key: 'claude', label: 'Claude Code' },
   { key: 'codex', label: 'Codex' },
-  { key: 'agy', label: 'Antigravity' },
+  { key: 'agy', label: 'Antigravity CLI' },
+  { key: 'agy-app', label: 'Antigravity app' },
   { key: 'gemini', label: 'Gemini CLI' },
   { key: 'opencode', label: 'opencode' },
+  { key: 'dsh', label: 'DeepSeek Harness' },
   { key: 'other', label: 'Other' },
 ];
 export const DEFAULT_BASE_URL = 'https://agent-huddle.vercel.app';
@@ -69,32 +71,129 @@ export function expandPath(input, env = process.env) {
   return path.resolve(s);
 }
 
-export function onPath(binary, env = process.env) {
-  for (const dir of (env.PATH || '').split(path.delimiter)) {
-    if (!dir) continue;
-    const file = path.join(dir, binary);
-    try {
-      if (!fs.statSync(file).isFile()) continue;
-      fs.accessSync(file, fs.constants.X_OK);
-      return true;
-    } catch {}
-  }
-  return false;
+// Folders that hold macOS desktop apps. AGENT_HUDDLE_APP_DIRS overrides them (tests).
+export function appDirs(env = process.env) {
+  if (env.AGENT_HUDDLE_APP_DIRS !== undefined) return env.AGENT_HUDDLE_APP_DIRS.split(path.delimiter).filter(Boolean);
+  return ['/Applications', path.join(locations(env).home, 'Applications')];
 }
 
-function fixedAgents(env) {
+const isExecutable = (file) => {
+  try {
+    if (!fs.statSync(file).isFile()) return false;
+    fs.accessSync(file, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// Full path of binary on PATH, or ''.
+export function which(binary, env = process.env) {
+  for (const dir of (env.PATH || '').split(path.delimiter)) {
+    if (dir && isExecutable(path.join(dir, binary))) return path.join(dir, binary);
+  }
+  return '';
+}
+
+export function onPath(binary, env = process.env) {
+  return Boolean(which(binary, env));
+}
+
+// Every harness we detect. bins: where a usable CLI may be, best first (the PATH name, then fixed
+// installs and copies bundled in desktop apps), so a launcher can take the first that exists.
+// signals: folders or apps that prove the harness is installed. skills: the folder it reads; Codex
+// and DeepSeek Harness read the shared copy. Claude Code's folders come from claudeDirs, and its
+// signals are the desktop app. Mirrored in skills/agent-huddle/huddle.mjs (harnesses).
+export function harnesses(env = process.env) {
   const { home, shared } = locations(env);
+  const at = (...p) => path.join(home, ...p);
+  const cli = (name) => ({ name, label: `${name} on PATH` });
+  const file = (p, label = tilde(p, env)) => ({ file: p, label });
+  const app = (name, label, ...inside) => appDirs(env).map((dir) => file(path.join(dir, `${name}.app`, ...inside), label));
   return [
-    { agent: 'codex', signal: path.join(home, '.codex'), path: shared },
-    { agent: 'agy', signal: path.join(home, '.gemini', 'antigravity-cli'), path: path.join(home, '.gemini', 'antigravity-cli', 'skills') },
-    { agent: 'gemini', signal: path.join(home, '.gemini', 'settings.json'), path: path.join(home, '.gemini', 'skills') },
-    { agent: 'opencode', signal: path.join(home, '.config', 'opencode'), path: path.join(home, '.config', 'opencode', 'skills') },
+    {
+      agent: 'claude',
+      bins: [cli('claude')],
+      signals: app('Claude', 'Claude desktop app'),
+      skills: '',
+    },
+    {
+      agent: 'codex',
+      bins: [
+        cli('codex'),
+        ...app('ChatGPT', 'ChatGPT app', 'Contents', 'Resources', 'codex-cli', 'bin', 'codex'),
+        ...app('Codex', 'Codex app', 'Contents', 'Resources', 'codex-cli', 'bin', 'codex'),
+      ],
+      signals: [file(at('.codex'))],
+      skills: shared,
+    },
+    {
+      agent: 'agy',
+      bins: [cli('agy'), file(at('.local', 'bin', 'agy'))],
+      signals: [file(at('.gemini', 'antigravity-cli'))],
+      skills: at('.gemini', 'antigravity-cli', 'skills'),
+    },
+    {
+      agent: 'agy-app',
+      bins: [],
+      signals: app('Antigravity', 'Antigravity app'),
+      skills: at('.gemini', 'config', 'skills'),
+    },
+    {
+      agent: 'gemini',
+      bins: [cli('gemini')],
+      signals: [file(at('.gemini', 'settings.json'))],
+      skills: at('.gemini', 'skills'),
+    },
+    {
+      agent: 'opencode',
+      bins: [
+        cli('opencode'),
+        file(at('.opencode', 'bin', 'opencode')),
+        ...app('OpenCode', 'OpenCode app', 'Contents', 'Resources', 'opencode-cli'),
+      ],
+      signals: [file(at('.config', 'opencode')), file(at('.local', 'share', 'opencode'))],
+      skills: at('.config', 'opencode', 'skills'),
+    },
+    {
+      agent: 'dsh',
+      bins: [cli('dsh'), ...app('DeepSeek Harness', 'DeepSeek Harness app', 'Contents', 'Resources', 'runtime', 'cli', 'bin', 'dsh')],
+      signals: [file(at('.dsh'))],
+      skills: shared,
+    },
   ];
+}
+
+const harness = (agent, env) => harnesses(env).find((h) => h.agent === agent);
+
+// The binaries of a harness that exist, as { file, label }, one per real file.
+export function foundBins(h, env = process.env) {
+  const seen = new Set();
+  const found = [];
+  for (const bin of h.bins) {
+    const file = bin.name ? which(bin.name, env) : isExecutable(bin.file) ? bin.file : '';
+    if (!file || seen.has(fs.realpathSync(file))) continue;
+    seen.add(fs.realpathSync(file));
+    found.push({ file, label: bin.label });
+  }
+  return found;
+}
+
+// How a harness was found ('' when it was not): its binaries, else its first signal.
+export function foundBy(h, env = process.env) {
+  const bins = [...new Set(foundBins(h, env).map((b) => b.label))];
+  if (bins.length) return bins.join(', ');
+  return h.signals.find((s) => fs.existsSync(s.file))?.label ?? '';
+}
+
+function notFound(h) {
+  const labels = [...new Set([h.bins[0], ...h.signals].filter(Boolean).map((s) => s.label))].slice(0, 2);
+  return `not found (${labels.map((label) => `no ${label}`).join(', ')})`;
 }
 
 export function defaultPath(agent, env = process.env) {
   if (agent === 'claude') return path.join(env.CLAUDE_CONFIG_DIR || path.join(locations(env).home, '.claude'), 'skills');
-  return fixedAgents(env).find((a) => a.agent === agent)?.path ?? '';
+  return harness(agent, env)?.skills ?? '';
 }
 
 function makeRow(agent, p, extra = {}) {
@@ -120,13 +219,18 @@ export function customRow(agent, p) {
 }
 
 // Claude Code config dirs, deduplicated by resolved path. A dir is idle when it exists but has no
-// projects/ (Claude Code keeps session transcripts there); $CLAUDE_CONFIG_DIR is never idle.
+// projects/ (Claude Code keeps session transcripts there); $CLAUDE_CONFIG_DIR is never idle, and
+// neither is ~/.claude when the Claude desktop app is installed: the app reads ~/.claude whatever
+// CLAUDE_CONFIG_DIR says.
 export function claudeDirs(env = process.env) {
   const { home } = locations(env);
+  const desktop = foundBy({ bins: [], signals: harness('claude', env).signals }, env);
   const candidates = [];
   if (env.CLAUDE_CONFIG_DIR) candidates.push({ dir: env.CLAUDE_CONFIG_DIR, reason: 'CLAUDE_CONFIG_DIR', pinned: true });
   const dotClaude = path.join(home, '.claude');
-  if (isDir(dotClaude)) candidates.push({ dir: dotClaude, reason: 'folder exists' });
+  if (isDir(dotClaude)) {
+    candidates.push({ dir: dotClaude, reason: desktop ? `folder exists, ${desktop} reads it` : 'folder exists', pinned: Boolean(desktop) });
+  }
   let names = [];
   try {
     names = fs.readdirSync(home).sort();
@@ -136,11 +240,12 @@ export function claudeDirs(env = process.env) {
       candidates.push({ dir: path.join(home, name), reason: 'has settings.json' });
     }
   }
-  // claude on PATH without ~/.claude: plain `claude` creates it on first run. Preselected only when
-  // there is no other config dir, so installing never recreates a folder the user does not use.
-  if (!isDir(dotClaude) && !env.CLAUDE_CONFIG_DIR && onPath('claude', env)) {
+  // claude on PATH or the desktop app without ~/.claude: either creates it on first use. Preselected
+  // only when there is no other config dir, so installing never recreates a folder the user does not use.
+  const via = desktop ? `${desktop} reads it` : !env.CLAUDE_CONFIG_DIR && onPath('claude', env) ? 'claude on PATH' : '';
+  if (!isDir(dotClaude) && via) {
     const alone = !candidates.length;
-    candidates.push({ dir: dotClaude, reason: alone ? 'claude on PATH' : 'claude on PATH, not created yet', idle: !alone });
+    candidates.push({ dir: dotClaude, reason: alone ? via : `${via}, not created yet`, idle: !alone });
   }
   const seen = new Set();
   const dirs = [];
@@ -154,7 +259,8 @@ export function claudeDirs(env = process.env) {
   return dirs;
 }
 
-// One row per agent (one per Claude config dir). The Codex row is the shared copy.
+// One row per agent (one per Claude config dir). The Codex row is the shared copy; the DeepSeek
+// Harness row reads it too, so it is never a target of its own.
 export function detect(env = process.env) {
   const rows = [];
   const dirs = claudeDirs(env);
@@ -167,16 +273,27 @@ export function detect(env = process.env) {
     const dir = env.CLAUDE_CONFIG_DIR || path.join(locations(env).home, '.claude');
     rows.push(makeRow('claude', path.join(dir, 'skills'), { detail: `not found (no claude on PATH, no ${tilde(dir, env)})` }));
   }
-  for (const { agent, signal, path: p } of fixedAgents(env)) {
-    let reason = '';
-    if (onPath(agent, env)) reason = `${agent} on PATH`;
-    else if (fs.existsSync(signal)) reason = tilde(signal, env);
-    const found = Boolean(reason);
-    const detail = found ? reason : `not found (no ${agent} on PATH, no ${tilde(signal, env)})`;
-    const shared = agent === 'codex';
-    rows.push(makeRow(agent, p, { found, selected: found || shared, shared, detail }));
+  const { shared } = locations(env);
+  for (const h of harnesses(env)) {
+    if (h.agent === 'claude') continue;
+    const how = foundBy(h, env);
+    const reads = h.skills === shared;
+    const codex = h.agent === 'codex';
+    const detail = how ? `${how}${reads && !codex ? ' (reads the shared copy)' : ''}` : notFound(h);
+    rows.push(makeRow(h.agent, h.skills, { found: Boolean(how), selected: codex || (Boolean(how) && !reads), shared: reads, detail }));
   }
   return rows;
+}
+
+// The row that stands for the shared copy (Codex reads it), always installed.
+export const sharedRow = (rows) => rows.find((r) => r.shared && r.agent === 'codex');
+
+// One line naming detected agents that are not among the saved targets, or ''.
+export function newAgentsLine(rows, env = process.env) {
+  const fresh = rows.filter((r) => r.isNew);
+  if (!fresh.length) return '';
+  const names = fresh.map((r) => `${r.label} (--dir ${r.agent === 'claude' ? `claude=${tilde(r.path, env)}` : r.agent})`);
+  return `Found since last install, not added: ${names.join(', ')}. To add them, rerun install.sh without --yes, or pass --dir for every agent you want, saved ones included.`;
 }
 
 // Saved targets, or null when there is no install.json. Throws when it cannot be read.
@@ -244,10 +361,14 @@ function applyDir(rows, spec, env) {
   const eq = spec.indexOf('=');
   const agent = eq < 0 ? spec : spec.slice(0, eq);
   const given = eq < 0 ? '' : spec.slice(eq + 1);
-  if (!knownAgent(agent)) throw new Error(`--dir: unknown agent '${agent}' (use claude, codex, agy, gemini, opencode or other)`);
-  if (agent === 'codex') {
-    if (given) throw new Error(`--dir: Codex reads the shared copy at ${tilde(locations(env).shared, env)}; give no path`);
-    rows.find((r) => r.shared).hint = true;
+  if (!knownAgent(agent)) {
+    const keys = AGENTS.map((a) => a.key);
+    throw new Error(`--dir: unknown agent '${agent}' (use ${keys.slice(0, -1).join(', ')} or ${keys.at(-1)})`);
+  }
+  const reader = rows.find((r) => r.agent === agent && r.shared);
+  if (reader) {
+    if (given) throw new Error(`--dir: ${reader.label} reads the shared copy at ${tilde(locations(env).shared, env)}; give no path`);
+    reader.hint = true;
     return '';
   }
   let p;
@@ -394,9 +515,10 @@ export function saveTargets(rows, env = process.env, date = new Date()) {
 // Next steps for the agents that were installed.
 export function nextSteps(rows) {
   const on = (agent) => rows.some((r) => r.agent === agent && r.selected && !r.shared);
+  const reads = (agent) => on(agent) || rows.some((r) => r.agent === agent && r.shared && (r.found || r.hint));
   const lines = [];
   if (on('claude')) lines.push('Claude Code: /huddle-start "my room"');
-  if (on('codex') || rows.some((r) => r.shared && (r.found || r.hint))) {
+  if (reads('codex')) {
     lines.push(
       'Codex: $huddle-start "my room". Its sandbox blocks localhost by default; approve network',
       'access when Codex asks, or add this to ~/.codex/config.toml:',
@@ -404,7 +526,7 @@ export function nextSteps(rows) {
       '  network_access = true',
     );
   }
-  const others = ['agy', 'gemini', 'opencode', 'other'].filter(on).map(labelOf);
+  const others = ['agy', 'agy-app', 'gemini', 'opencode', 'dsh', 'other'].filter(reads).map(labelOf);
   if (others.length) lines.push(`${others.join(', ')}: ask "start a huddle"`);
   return lines;
 }

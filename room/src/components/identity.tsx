@@ -59,6 +59,7 @@ const HARNESS_DOT: Record<HarnessKey, string> = {
   agy: "bg-harness-agy",
   gemini: "bg-harness-gemini",
   opencode: "bg-harness-opencode",
+  dsh: "bg-harness-dsh",
   other: "bg-harness-other",
 };
 

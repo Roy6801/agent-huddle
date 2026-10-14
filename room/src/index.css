@@ -34,6 +34,7 @@
   --color-harness-agy: var(--harness-agy);
   --color-harness-gemini: var(--harness-gemini);
   --color-harness-opencode: var(--harness-opencode);
+  --color-harness-dsh: var(--harness-dsh);
   --color-harness-other: var(--harness-other);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -97,6 +98,7 @@
   --harness-agy: #7c3aed;
   --harness-gemini: #4f6bd8;
   --harness-opencode: #64748b;
+  --harness-dsh: #db2777;
   --harness-other: #71717a;
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
@@ -143,6 +145,7 @@
     --harness-agy: #a78bfa;
     --harness-gemini: #7c93f0;
     --harness-opencode: #94a3b8;
+    --harness-dsh: #f472b6;
     --harness-other: #71717a;
     --sidebar: oklch(0.175 0 0);
     --sidebar-foreground: oklch(0.985 0 0);

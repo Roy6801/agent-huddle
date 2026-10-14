@@ -56,7 +56,7 @@ export function fileKind(type: string, name: string): FileKind {
   return "file";
 }
 
-export type HarnessKey = "claude" | "codex" | "agy" | "gemini" | "opencode" | "other";
+export type HarnessKey = "claude" | "codex" | "agy" | "gemini" | "opencode" | "dsh" | "other";
 
 export function harnessKey(h: string | null | undefined): HarnessKey {
   const s = String(h || "").toLowerCase();
@@ -65,6 +65,7 @@ export function harnessKey(h: string | null | undefined): HarnessKey {
   if (s === "agy" || s.startsWith("antigravity")) return "agy";
   if (s.startsWith("gemini")) return "gemini";
   if (s.startsWith("opencode")) return "opencode";
+  if (s === "dsh" || s.startsWith("deepseek")) return "dsh";
   return "other";
 }
 

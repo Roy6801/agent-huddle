@@ -10,8 +10,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  SKILLS, SKILL_FILES, applyDirs, applyPlan, applySaved, buildPlan, customRow, detect, expandPath, loadSaved, nextSteps,
-  pathError, planLines, saveTargets, stageSkills, uninstallPlan,
+  SKILLS, SKILL_FILES, applyDirs, applyPlan, applySaved, buildPlan, customRow, detect, expandPath, loadSaved, newAgentsLine,
+  nextSteps, pathError, planLines, saveTargets, stageSkills, uninstallPlan,
 } from '../src/install/core.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -32,7 +32,13 @@ function makeBin(agents = []) {
 }
 
 function envFor(home, { agents = [], env = {} } = {}) {
-  return { HOME: home, PATH: `${makeBin(agents)}:/usr/bin:/bin`, AGENT_HUDDLE_NO_TTY: '1', ...env };
+  return {
+    HOME: home,
+    PATH: `${makeBin(agents)}:/usr/bin:/bin`,
+    AGENT_HUDDLE_APP_DIRS: join(home, 'Applications'),
+    AGENT_HUDDLE_NO_TTY: '1',
+    ...env,
+  };
 }
 
 function mkdirs(home, ...dirs) {
@@ -155,14 +161,18 @@ test('detect: claude on PATH without a config dir, nothing at all, and the other
     `claude x ${join(home, '.claude', 'skills')}`,
     `codex x ${join(home, '.agents', 'skills')}`,
     `agy - ${join(home, '.gemini', 'antigravity-cli', 'skills')}`,
+    `agy-app - ${join(home, '.gemini', 'config', 'skills')}`,
     `gemini x ${join(home, '.gemini', 'skills')}`,
     `opencode x ${join(home, '.config', 'opencode', 'skills')}`,
+    `dsh - ${join(home, '.agents', 'skills')}`,
   ]);
   assert.equal(rows[0].detail, '~/.claude (claude on PATH)');
   assert.equal(rows[1].shared, true);
   assert.equal(rows[1].found, false);
-  assert.equal(rows[3].detail, '~/.gemini/settings.json');
-  assert.equal(rows[4].detail, 'opencode on PATH');
+  assert.equal(rows[3].detail, 'not found (no Antigravity app)');
+  assert.equal(rows[4].detail, '~/.gemini/settings.json');
+  assert.equal(rows[5].detail, 'opencode on PATH');
+  assert.equal(rows[6].detail, 'not found (no dsh on PATH, no ~/.dsh)');
 
   const custom = tmp();
   claudeDir(custom, '.claude-work');
@@ -195,14 +205,109 @@ test('saved targets win; detected agents not in them are new and unchecked', () 
     `claude - ${join(home, '.claude-idle', 'skills')}`,
     `codex x ${join(home, '.agents', 'skills')}`,
     `agy - ${join(home, '.gemini', 'antigravity-cli', 'skills')}`,
+    `agy-app - ${join(home, '.gemini', 'config', 'skills')}`,
     `gemini x ${join(home, 'g', 'skills')}`,
     `opencode - ${join(home, '.config', 'opencode', 'skills')}`,
+    `dsh - ${join(home, '.agents', 'skills')}`,
     `claude x ${join(home, 'work', 'skills')}`,
   ]);
   const isNew = rows.filter((r) => r.isNew).map((r) => r.path);
   assert.deepEqual(isNew, [join(home, '.claude', 'skills'), join(home, '.config', 'opencode', 'skills')]);
-  assert.equal(rows[6].custom, true);
-  assert.equal(rows[6].added, true);
+  assert.equal(rows[8].custom, true);
+  assert.equal(rows[8].added, true);
+});
+
+// A desktop app under the fake ~/Applications, with an executable at `inside` when given.
+function fakeApp(home, name, inside = '') {
+  const app = join(home, 'Applications', `${name}.app`);
+  mkdirSync(app, { recursive: true });
+  if (inside) {
+    touch(home, join('Applications', `${name}.app`, inside), '#!/bin/sh\n');
+    chmodSync(join(app, inside), 0o755);
+  }
+}
+
+test('detect: desktop apps count; Antigravity CLI and app are separate; ~/.gemini alone is neither', () => {
+  const home = tmp();
+  mkdirs(home, '.gemini');
+  const bare = detect(envFor(home));
+  assert.ok(['agy', 'agy-app', 'gemini'].every((agent) => !bare.find((r) => r.agent === agent).found));
+
+  fakeApp(home, 'ChatGPT', 'Contents/Resources/codex-cli/bin/codex');
+  fakeApp(home, 'Antigravity');
+  fakeApp(home, 'DeepSeek Harness', 'Contents/Resources/runtime/cli/bin/dsh');
+  mkdirs(home, '.local/share/opencode', '.gemini/antigravity-cli');
+  const rows = detect(envFor(home));
+  const row = (agent) => rows.find((r) => r.agent === agent);
+  assert.equal(row('codex').detail, 'ChatGPT app');
+  assert.equal(row('agy').detail, '~/.gemini/antigravity-cli');
+  assert.equal(row('agy-app').detail, 'Antigravity app');
+  assert.equal(row('agy-app').path, join(home, '.gemini', 'config', 'skills'));
+  assert.equal(row('opencode').detail, '~/.local/share/opencode');
+  assert.equal(row('dsh').detail, 'DeepSeek Harness app (reads the shared copy)');
+  assert.deepEqual(summary(rows.filter((r) => r.found && r.agent !== 'claude')), [
+    `codex x ${join(home, '.agents', 'skills')}`,
+    `agy x ${join(home, '.gemini', 'antigravity-cli', 'skills')}`,
+    `agy-app x ${join(home, '.gemini', 'config', 'skills')}`,
+    `opencode x ${join(home, '.config', 'opencode', 'skills')}`,
+    `dsh - ${join(home, '.agents', 'skills')}`,
+  ]);
+  assert.ok(row('dsh').shared);
+  assert.ok(nextSteps(rows).includes('Antigravity CLI, Antigravity app, opencode, DeepSeek Harness: ask "start a huddle"'));
+  assert.deepEqual(buildPlan(rows, envFor(home)).actions.filter((a) => a.target === join(home, '.agents', 'skills') && a.kind !== 'copy'), []);
+
+  const cli = tmp();
+  touch(cli, '.local/bin/agy', '#!/bin/sh\n');
+  chmodSync(join(cli, '.local/bin/agy'), 0o755);
+  touch(cli, '.opencode/bin/opencode', '#!/bin/sh\n');
+  chmodSync(join(cli, '.opencode/bin/opencode'), 0o755);
+  const fixed = detect(envFor(cli, { agents: ['dsh'] }));
+  assert.equal(fixed.find((r) => r.agent === 'agy').detail, '~/.local/bin/agy');
+  assert.equal(fixed.find((r) => r.agent === 'opencode').detail, '~/.opencode/bin/opencode');
+  assert.equal(fixed.find((r) => r.agent === 'dsh').detail, 'dsh on PATH (reads the shared copy)');
+});
+
+test('detect: with the Claude desktop app, ~/.claude is preselected even without sessions', () => {
+  const home = tmp();
+  mkdirs(home, '.claude');
+  fakeApp(home, 'Claude');
+  const rows = detect(envFor(home)).filter((r) => r.agent === 'claude');
+  assert.deepEqual(summary(rows), [`claude x ${join(home, '.claude', 'skills')}`]);
+  assert.equal(rows[0].detail, '~/.claude (folder exists, Claude desktop app reads it)');
+
+  const pinned = tmp();
+  claudeDir(pinned, '.claude-personal');
+  fakeApp(pinned, 'Claude');
+  const env = envFor(pinned, { env: { CLAUDE_CONFIG_DIR: join(pinned, '.claude-personal') } });
+  const offered = detect(env).filter((r) => r.agent === 'claude');
+  assert.deepEqual(summary(offered), [
+    `claude x ${join(pinned, '.claude-personal', 'skills')}`,
+    `claude - ${join(pinned, '.claude', 'skills')}`,
+  ]);
+  assert.equal(offered[1].detail, '~/.claude (Claude desktop app reads it, not created yet)');
+});
+
+test('saved targets from older versions still match; new agents get one line naming them', () => {
+  const home = tmp();
+  mkdirs(home, '.gemini/antigravity-cli', '.dsh');
+  fakeApp(home, 'Antigravity');
+  claudeDir(home, '.claude-work');
+  const env = envFor(home);
+  const rows = applySaved(detect(env), [
+    { agent: 'codex', path: join(home, '.agents', 'skills'), custom: false },
+    { agent: 'agy', path: join(home, '.gemini', 'antigravity-cli', 'skills'), custom: false },
+  ], env);
+  assert.deepEqual(summary(rows.filter((r) => r.selected)), [
+    `codex x ${join(home, '.agents', 'skills')}`,
+    `agy x ${join(home, '.gemini', 'antigravity-cli', 'skills')}`,
+  ]);
+  assert.equal(rows.some((r) => r.added), false);
+  assert.equal(
+    newAgentsLine(rows, env),
+    'Found since last install, not added: Claude Code (--dir claude=~/.claude-work/skills), Antigravity app (--dir agy-app). ' +
+      'To add them, rerun install.sh without --yes, or pass --dir for every agent you want, saved ones included.',
+  );
+  assert.equal(newAgentsLine(detect(env), env), '');
 });
 
 test('loadSaved skips invalid targets and maps unknown agents to other', () => {
@@ -269,10 +374,19 @@ test('applyDirs sets exactly the given targets and rejects bad specs', () => {
     ['other=~/afile', /~\/afile is a file/],
     ['other=~/.agents/skills', /that is the shared copy itself/],
     ['codex=~/x', /Codex reads the shared copy/],
+    ['dsh=~/x', /DeepSeek Harness reads the shared copy/],
     ['other=$NOPE_UNSET/x', /could not expand '.*' \(\$NOPE_UNSET is not set\)/],
   ]) {
     assert.throws(() => applyDirs(detect(env), [spec], env), msg, spec);
   }
+
+  const apps = detect(env);
+  applyDirs(apps, ['agy-app', 'dsh'], env);
+  assert.deepEqual(apps.filter((r) => r.selected).map((r) => `${r.agent} ${r.path}`), [
+    `codex ${join(home, '.agents', 'skills')}`,
+    `agy-app ${join(home, '.gemini', 'config', 'skills')}`,
+  ]);
+  assert.ok(nextSteps(apps).includes('Antigravity app, DeepSeek Harness: ask "start a huddle"'));
 });
 
 test('buildPlan links, creates, keeps, replaces and backs up, and writes nothing', () => {
@@ -383,8 +497,9 @@ test('--yes first run installs the shared copy and links every detected agent in
   assert.match(r.stdout, /✓ Claude Code\s+~\/\.claude-work \(has settings\.json\)/);
   assert.match(r.stdout, /✓ Claude Code\s+~\/\.claude-idle \(has settings\.json, no sessions here\)/);
   assert.match(r.stdout, /✓ Codex\s+codex on PATH/);
-  assert.match(r.stdout, /- Antigravity\s+not found/);
-  assert.match(r.stdout, /The shared copy ~\/\.agents\/skills is always installed \(Codex reads it directly\)\./);
+  assert.match(r.stdout, /- Antigravity CLI\s+not found/);
+  assert.match(r.stdout, /The shared copy ~\/\.agents\/skills is always installed \(Codex and DeepSeek Harness read it directly\)\./);
+  assert.doesNotMatch(r.stdout, /since last install/);
   assert.match(r.stdout, /Plan:\n\s+copy 5 skills → ~\/\.agents\/skills \(shared copy\)/);
   assert.match(r.stdout, /link 5 skills → ~\/\.config\/opencode\/skills \(create folder\)/);
   assert.match(r.stdout, /Claude Code: \/huddle-start "my room"/);
@@ -538,6 +653,28 @@ test('rerun with --yes keeps the saved targets', () => {
   touch(home, '.agent-huddle/install.json', '{broken');
   const broken = run(src, home, { args: ['--dry-run'] });
   assert.match(broken.stdout, /! Could not read ~\/\.agent-huddle\/install\.json; using detected agents/);
+});
+
+test('--yes with saved targets names agents found since, without installing them', () => {
+  const src = makeSource();
+  const home = tmp();
+  claudeDir(home, '.claude');
+  assert.equal(run(src, home, { args: ['--yes'] }).status, 0);
+  mkdirs(home, '.dsh');
+  fakeApp(home, 'Antigravity');
+  const r = run(src, home, { args: ['--yes'] });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /✓ DeepSeek Harness ~\/\.dsh \(reads the shared copy\)/);
+  assert.match(
+    r.stdout,
+    /\n! Found since last install, not added: Antigravity app \(--dir agy-app\)\. To add them, rerun install\.sh without --yes, or pass --dir for every agent you want, saved ones included\.\n/,
+  );
+  assert.equal(existsSync(join(home, '.gemini', 'config')), false);
+  assert.deepEqual(targets(home), [
+    `claude ${join(home, '.claude', 'skills')} false`,
+    `codex ${join(home, '.agents', 'skills')} false`,
+  ]);
+  assert.match(r.stdout, /DeepSeek Harness: ask "start a huddle"/);
 });
 
 test('--uninstall needs --yes without a terminal and removes only our files', () => {

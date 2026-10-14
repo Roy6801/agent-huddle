@@ -6,12 +6,13 @@ import * as p from '@clack/prompts';
 import { determineAgent } from '@vercel/detect-agent';
 import {
   AGENTS, DEFAULT_BASE_URL, SKILLS, applyDirs, applyPlan, applySaved, buildPlan, claudeWarning, customRow, detect,
-  expandPath, labelOf, loadSaved, locations, nextSteps, pathError, planLines, saveTargets, stageSkills, tilde,
-  uninstall, uninstallPlan,
+  expandPath, labelOf, loadSaved, locations, newAgentsLine, nextSteps, pathError, planLines, saveTargets, sharedRow,
+  stageSkills, tilde, uninstall, uninstallPlan,
 } from './core.mjs';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const INVITE_LINE = 'No skill in some agent? Paste the invite that /huddle-start prints instead.';
+const WIDTH = Math.max(...AGENTS.map((a) => a.label.length));
 
 const USAGE = `Usage: install.sh [--yes] [--dir agent[=path]]... [--dry-run] [--uninstall] [--help]
        node install.mjs [same options]
@@ -21,14 +22,16 @@ In a terminal it asks which agents to install for; otherwise it prints the plan 
 with --yes or --dir.
 
   --yes, -y            Install without prompts: the saved targets, else the detected agents.
-  --dir agent[=path]   Install for exactly these agents (repeatable). Agents: claude, codex, agy,
-                       gemini, opencode, other. Without a path the agent's default folder is used.
+  --dir agent[=path]   Install for exactly these agents (repeatable). Agents: claude, codex,
+                       agy (Antigravity CLI), agy-app (Antigravity app), gemini, opencode, dsh
+                       (DeepSeek Harness), other. Without a path the agent's default folder is used.
   --dry-run            Print the plan and exit.
   --uninstall          Remove our links, the shared skill folders and the saved targets
                        (asks first in a terminal; otherwise needs --yes).
   --help, -h           Show this help.
 
 Env: AGENT_HUDDLE_BASE_URL (download source), AGENT_HUDDLE_HOME (where install.json lives),
+AGENT_HUDDLE_APP_DIRS (where desktop apps are; default /Applications and ~/Applications),
 AGENT_HUDDLE_NO_TTY=1 (install.sh never reads answers from /dev/tty; for tests and CI).`;
 
 function parseArgs(argv) {
@@ -66,11 +69,11 @@ function rowHint(row) {
 function detectedLines(rows) {
   return rows
     .filter((r) => !r.added)
-    .map((r) => `${r.found ? '✓' : '-'} ${r.label.padEnd(12)} ${r.detail}`);
+    .map((r) => `${r.found ? '✓' : '-'} ${r.label.padEnd(WIDTH)} ${r.detail}`);
 }
 
 function sharedLine(env) {
-  return `The shared copy ${tilde(locations(env).shared, env)} is always installed (Codex reads it directly).`;
+  return `The shared copy ${tilde(locations(env).shared, env)} is always installed (Codex and DeepSeek Harness read it directly).`;
 }
 
 // Applies --dir or the saved targets to the detected rows. Returns warning lines.
@@ -108,6 +111,8 @@ async function runPlain(opts, env, agent) {
   for (const line of detectedLines(rows)) console.log(`  ${line}`);
   console.log(`  ${sharedLine(env)}`);
   for (const w of warnings) console.log(`! ${w}`);
+  const fresh = newAgentsLine(rows, env);
+  if (fresh) console.log(`! ${fresh}`);
   const plan = buildPlan(rows, env);
   console.log('\nPlan:');
   for (const line of planLines(plan, env)) console.log(`  ${line}`);
@@ -148,7 +153,7 @@ function folderOptions(rows, env) {
   return rows
     .map((row, index) => ({ row, index }))
     .filter(({ row }) => !row.shared)
-    .map(({ row, index }) => ({ value: index, label: `${row.label.padEnd(12)} ${tilde(row.path, env)}`, hint: rowHint(row) }));
+    .map(({ row, index }) => ({ value: index, label: `${row.label.padEnd(WIDTH)} ${tilde(row.path, env)}`, hint: rowHint(row) }));
 }
 
 // Asks for a folder until it is valid and any Claude warning is accepted. Returns the expanded path.
@@ -197,11 +202,11 @@ async function addFolder(rows, env) {
 }
 
 async function chooseTargets(rows, env) {
-  const shared = rows.findIndex((row) => row.shared);
+  const shared = rows.indexOf(sharedRow(rows));
   const options = folderOptions(rows, env);
   if (shared >= 0) {
     const row = rows[shared];
-    options.unshift({ value: shared, label: `${row.label.padEnd(12)} ${tilde(row.path, env)}`, hint: 'shared copy, always installed' });
+    options.unshift({ value: shared, label: `${row.label.padEnd(WIDTH)} ${tilde(row.path, env)}`, hint: 'shared copy, always installed' });
   }
   const picked = await ask(
     p.multiselect({

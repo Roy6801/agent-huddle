@@ -72,7 +72,8 @@ function makeEnv() {
   const home = path.join(root, 'home');
   const bin = path.join(root, 'bin');
   const huddleHome = path.join(root, 'state');
-  for (const dir of [home, bin, huddleHome]) fs.mkdirSync(dir, { recursive: true });
+  const apps = path.join(root, 'Applications');
+  for (const dir of [home, bin, huddleHome, apps]) fs.mkdirSync(dir, { recursive: true });
   const stub = (name) => {
     fs.writeFileSync(path.join(bin, name), '#!/bin/sh\n', { mode: 0o755 });
   };
@@ -89,6 +90,7 @@ function makeEnv() {
       HOME: home,
       AGENT_HUDDLE_HOME: huddleHome,
       AGENT_HUDDLE_PORT: String(port),
+      AGENT_HUDDLE_APP_DIRS: apps,
     };
     return new Promise((resolve) => {
       execFile(process.execPath, [CLI, 'doctor'], { env }, (error, stdout, stderr) =>
@@ -96,7 +98,7 @@ function makeEnv() {
       );
     });
   };
-  return { root, home, bin, huddleHome, stub, installSkills, run, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
+  return { root, home, bin, huddleHome, apps, stub, installSkills, run, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
 }
 
 test('doctor: found agent with skills installed prints a check', async () => {
@@ -113,7 +115,7 @@ test('doctor: found agent missing skills prints the install hint', async () => {
   const t = makeEnv();
   t.stub('codex');
   const { stdout } = await t.run();
-  assert.match(stdout, /! Codex: skills not installed at .*\.agents\/skills; run: curl -fsSL https:\/\/agent-huddle\.vercel\.app\/install\.sh \| bash/);
+  assert.match(stdout, /! Codex: found \(codex on PATH\), skills not installed at .*\.agents\/skills; run: curl -fsSL https:\/\/agent-huddle\.vercel\.app\/install\.sh \| bash/);
   t.cleanup();
 });
 
@@ -121,7 +123,7 @@ test('doctor: detects by directory signal without a binary', async () => {
   const t = makeEnv();
   fs.mkdirSync(path.join(t.home, '.config', 'opencode'), { recursive: true });
   const { stdout } = await t.run();
-  assert.match(stdout, /! opencode: skills not installed at .*opencode\/skills/);
+  assert.match(stdout, /! opencode: found \(~\/\.config\/opencode\), skills not installed at .*opencode\/skills/);
   t.cleanup();
 });
 
@@ -130,9 +132,11 @@ test('doctor: agents that are not found say so', async () => {
   const { stdout } = await t.run();
   assert.match(stdout, /- Claude Code: not found/);
   assert.match(stdout, /- Codex: not found/);
-  assert.match(stdout, /- Antigravity: not found/);
+  assert.match(stdout, /- Antigravity CLI: not found/);
+  assert.match(stdout, /- Antigravity app: not found/);
   assert.match(stdout, /- Gemini CLI: not found/);
   assert.match(stdout, /- opencode: not found/);
+  assert.match(stdout, /- DeepSeek Harness: not found/);
   t.cleanup();
 });
 
@@ -148,7 +152,7 @@ test('doctor: lists extra Claude config dirs and custom targets from install.jso
     JSON.stringify({ version: 1, targets: [{ agent: 'other', path: custom, custom: true }] }),
   );
   const { stdout } = await t.run();
-  assert.match(stdout, /! Claude Code: skills not installed at .*\.claude-work\/skills/);
+  assert.match(stdout, /! Claude Code: found, skills not installed at .*\.claude-work\/skills/);
   assert.ok(stdout.includes(`✓ Other: found, skills installed at ${custom}`));
   t.cleanup();
 });
@@ -169,7 +173,7 @@ test('doctor: skips Claude dirs without sessions unless they are saved targets',
     JSON.stringify({ version: 1, targets: [{ agent: 'claude', path: path.join(idle, 'skills'), custom: false }] }),
   );
   out = (await t.run()).stdout;
-  assert.match(out, /! Claude Code: skills not installed at .*\.claude-old\/skills/);
+  assert.match(out, /! Claude Code: found, skills not installed at .*\.claude-old\/skills/);
   assert.doesNotMatch(out, /\.claude-old has no sessions/);
   t.cleanup();
 });
@@ -204,5 +208,93 @@ test('doctor: agent warnings do not change the exit code', async () => {
   const warned = await t.run();
   assert.match(warned.stdout, /! Claude Code/);
   assert.equal(warned.code, plain.code);
+  t.cleanup();
+});
+
+test('doctor: Codex bundled in the ChatGPT app counts and says which variant was found', async () => {
+  const t = makeEnv();
+  const codex = path.join(t.apps, 'ChatGPT.app', 'Contents', 'Resources', 'codex-cli', 'bin', 'codex');
+  fs.mkdirSync(path.dirname(codex), { recursive: true });
+  fs.writeFileSync(codex, '#!/bin/sh\n', { mode: 0o755 });
+  let out = (await t.run()).stdout;
+  assert.match(out, /! Codex: found \(ChatGPT app\), skills not installed at .*\.agents\/skills/);
+  t.stub('codex');
+  out = (await t.run()).stdout;
+  assert.match(out, /! Codex: found \(codex on PATH, ChatGPT app\)/);
+  t.cleanup();
+});
+
+test('doctor: DeepSeek Harness reads the shared copy and shows its version without booting a profile', async () => {
+  const t = makeEnv();
+  const app = path.join(t.apps, 'DeepSeek Harness.app', 'Contents');
+  const dsh = path.join(app, 'Resources', 'runtime', 'cli', 'bin', 'dsh');
+  fs.mkdirSync(path.dirname(dsh), { recursive: true });
+  const ran = path.join(t.root, 'ran');
+  fs.writeFileSync(dsh, `#!/bin/sh\ntouch ${ran}\n`, { mode: 0o755 });
+  fs.writeFileSync(
+    path.join(app, 'Info.plist'),
+    '<?xml version="1.0"?>\n<plist><dict>\n  <key>CFBundleShortVersionString</key>\n  <string>0.2.0-rc.2</string>\n</dict></plist>\n',
+  );
+  let out = (await t.run()).stdout;
+  assert.match(out, /! DeepSeek Harness: found \(DeepSeek Harness app, version 0\.2\.0-rc\.2\), reads the shared copy at .*\.agents\/skills, which is missing skills/);
+  assert.equal(fs.existsSync(ran), false, 'the app-bundled dsh is not run');
+  t.installSkills(path.join(t.home, '.agents', 'skills'));
+  out = (await t.run()).stdout;
+  assert.match(out, /✓ DeepSeek Harness: found \(DeepSeek Harness app, version 0\.2\.0-rc\.2\), reads the shared copy at .*\.agents\/skills\n/);
+  assert.match(out, /- Codex: not found/);
+  t.cleanup();
+
+  const cli = makeEnv();
+  const args = path.join(cli.root, 'args');
+  fs.writeFileSync(path.join(cli.bin, 'dsh'), `#!/bin/sh\necho "$@" > ${args}\necho 0.2.1-alpha.2\n`, { mode: 0o755 });
+  out = (await cli.run()).stdout;
+  assert.match(out, /DeepSeek Harness: found \(dsh on PATH, version 0\.2\.1-alpha\.2\)/);
+  assert.equal(fs.readFileSync(args, 'utf8'), '--version\n');
+  cli.cleanup();
+});
+
+test('doctor: Antigravity CLI and app are separate rows; ~/.gemini alone is neither', async () => {
+  const t = makeEnv();
+  fs.mkdirSync(path.join(t.home, '.gemini'), { recursive: true });
+  let out = (await t.run()).stdout;
+  assert.match(out, /- Antigravity CLI: not found/);
+  assert.match(out, /- Antigravity app: not found/);
+  assert.match(out, /- Gemini CLI: not found/);
+
+  fs.mkdirSync(path.join(t.home, '.gemini', 'antigravity'), { recursive: true });
+  out = (await t.run()).stdout;
+  assert.match(out, /- Antigravity app: not found/, 'a leftover ~/.gemini/antigravity is not the app');
+
+  fs.mkdirSync(path.join(t.apps, 'Antigravity.app'), { recursive: true });
+  t.stub('agy');
+  out = (await t.run()).stdout;
+  assert.match(out, /! Antigravity CLI: found \(agy on PATH\), skills not installed at .*\.gemini\/antigravity-cli\/skills/);
+  assert.match(out, /! Antigravity app: found \(Antigravity app\), skills not installed at .*\.gemini\/config\/skills/);
+  t.cleanup();
+});
+
+test('doctor: with the Claude desktop app, ~/.claude is checked even without sessions', async () => {
+  const t = makeEnv();
+  fs.mkdirSync(path.join(t.home, '.claude'), { recursive: true });
+  fs.mkdirSync(path.join(t.apps, 'Claude.app'), { recursive: true });
+  const out = (await t.run()).stdout;
+  assert.match(
+    out,
+    /! Claude Code: found \(Claude desktop app reads it, whatever CLAUDE_CONFIG_DIR says\), skills not installed at .*\.claude\/skills/,
+  );
+  assert.doesNotMatch(out, /has no sessions, skipped/);
+  t.cleanup();
+});
+
+test('doctor: without ~/.claude, the desktop app does not count it when another config dir exists', async () => {
+  const t = makeEnv();
+  fs.mkdirSync(path.join(t.apps, 'Claude.app'), { recursive: true });
+  const work = path.join(t.home, '.claude-work');
+  fs.mkdirSync(path.join(work, 'projects'), { recursive: true });
+  fs.writeFileSync(path.join(work, 'settings.json'), '{}');
+  const out = (await t.run()).stdout;
+  assert.ok(
+    out.includes(`  - Claude Code: ${path.join(t.home, '.claude')} not created yet (Claude desktop app reads it, whatever CLAUDE_CONFIG_DIR says), skipped`),
+  );
   t.cleanup();
 });

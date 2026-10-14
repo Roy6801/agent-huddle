@@ -1619,9 +1619,11 @@ var SKILL_FILES = [
 var AGENTS = [
   { key: "claude", label: "Claude Code" },
   { key: "codex", label: "Codex" },
-  { key: "agy", label: "Antigravity" },
+  { key: "agy", label: "Antigravity CLI" },
+  { key: "agy-app", label: "Antigravity app" },
   { key: "gemini", label: "Gemini CLI" },
   { key: "opencode", label: "opencode" },
+  { key: "dsh", label: "DeepSeek Harness" },
   { key: "other", label: "Other" }
 ];
 var DEFAULT_BASE_URL = "https://agent-huddle.vercel.app";
@@ -1666,31 +1668,111 @@ function expandPath(input, env = process.env) {
   });
   return path.resolve(s);
 }
-function onPath(binary, env = process.env) {
-  for (const dir of (env.PATH || "").split(path.delimiter)) {
-    if (!dir) continue;
-    const file = path.join(dir, binary);
-    try {
-      if (!fs.statSync(file).isFile()) continue;
-      fs.accessSync(file, fs.constants.X_OK);
-      return true;
-    } catch {
-    }
-  }
-  return false;
+function appDirs(env = process.env) {
+  if (env.AGENT_HUDDLE_APP_DIRS !== void 0) return env.AGENT_HUDDLE_APP_DIRS.split(path.delimiter).filter(Boolean);
+  return ["/Applications", path.join(locations(env).home, "Applications")];
 }
-function fixedAgents(env) {
+var isExecutable = (file) => {
+  try {
+    if (!fs.statSync(file).isFile()) return false;
+    fs.accessSync(file, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+};
+function which(binary, env = process.env) {
+  for (const dir of (env.PATH || "").split(path.delimiter)) {
+    if (dir && isExecutable(path.join(dir, binary))) return path.join(dir, binary);
+  }
+  return "";
+}
+function onPath(binary, env = process.env) {
+  return Boolean(which(binary, env));
+}
+function harnesses(env = process.env) {
   const { home, shared } = locations(env);
+  const at = (...p) => path.join(home, ...p);
+  const cli = (name) => ({ name, label: `${name} on PATH` });
+  const file = (p, label = tilde(p, env)) => ({ file: p, label });
+  const app = (name, label, ...inside) => appDirs(env).map((dir) => file(path.join(dir, `${name}.app`, ...inside), label));
   return [
-    { agent: "codex", signal: path.join(home, ".codex"), path: shared },
-    { agent: "agy", signal: path.join(home, ".gemini", "antigravity-cli"), path: path.join(home, ".gemini", "antigravity-cli", "skills") },
-    { agent: "gemini", signal: path.join(home, ".gemini", "settings.json"), path: path.join(home, ".gemini", "skills") },
-    { agent: "opencode", signal: path.join(home, ".config", "opencode"), path: path.join(home, ".config", "opencode", "skills") }
+    {
+      agent: "claude",
+      bins: [cli("claude")],
+      signals: app("Claude", "Claude desktop app"),
+      skills: ""
+    },
+    {
+      agent: "codex",
+      bins: [
+        cli("codex"),
+        ...app("ChatGPT", "ChatGPT app", "Contents", "Resources", "codex-cli", "bin", "codex"),
+        ...app("Codex", "Codex app", "Contents", "Resources", "codex-cli", "bin", "codex")
+      ],
+      signals: [file(at(".codex"))],
+      skills: shared
+    },
+    {
+      agent: "agy",
+      bins: [cli("agy"), file(at(".local", "bin", "agy"))],
+      signals: [file(at(".gemini", "antigravity-cli"))],
+      skills: at(".gemini", "antigravity-cli", "skills")
+    },
+    {
+      agent: "agy-app",
+      bins: [],
+      signals: app("Antigravity", "Antigravity app"),
+      skills: at(".gemini", "config", "skills")
+    },
+    {
+      agent: "gemini",
+      bins: [cli("gemini")],
+      signals: [file(at(".gemini", "settings.json"))],
+      skills: at(".gemini", "skills")
+    },
+    {
+      agent: "opencode",
+      bins: [
+        cli("opencode"),
+        file(at(".opencode", "bin", "opencode")),
+        ...app("OpenCode", "OpenCode app", "Contents", "Resources", "opencode-cli")
+      ],
+      signals: [file(at(".config", "opencode")), file(at(".local", "share", "opencode"))],
+      skills: at(".config", "opencode", "skills")
+    },
+    {
+      agent: "dsh",
+      bins: [cli("dsh"), ...app("DeepSeek Harness", "DeepSeek Harness app", "Contents", "Resources", "runtime", "cli", "bin", "dsh")],
+      signals: [file(at(".dsh"))],
+      skills: shared
+    }
   ];
+}
+var harness = (agent, env) => harnesses(env).find((h2) => h2.agent === agent);
+function foundBins(h2, env = process.env) {
+  const seen = /* @__PURE__ */ new Set();
+  const found = [];
+  for (const bin of h2.bins) {
+    const file = bin.name ? which(bin.name, env) : isExecutable(bin.file) ? bin.file : "";
+    if (!file || seen.has(fs.realpathSync(file))) continue;
+    seen.add(fs.realpathSync(file));
+    found.push({ file, label: bin.label });
+  }
+  return found;
+}
+function foundBy(h2, env = process.env) {
+  const bins = [...new Set(foundBins(h2, env).map((b) => b.label))];
+  if (bins.length) return bins.join(", ");
+  return h2.signals.find((s) => fs.existsSync(s.file))?.label ?? "";
+}
+function notFound(h2) {
+  const labels = [...new Set([h2.bins[0], ...h2.signals].filter(Boolean).map((s) => s.label))].slice(0, 2);
+  return `not found (${labels.map((label) => `no ${label}`).join(", ")})`;
 }
 function defaultPath(agent, env = process.env) {
   if (agent === "claude") return path.join(env.CLAUDE_CONFIG_DIR || path.join(locations(env).home, ".claude"), "skills");
-  return fixedAgents(env).find((a2) => a2.agent === agent)?.path ?? "";
+  return harness(agent, env)?.skills ?? "";
 }
 function makeRow(agent, p, extra = {}) {
   return {
@@ -1714,10 +1796,13 @@ function customRow(agent, p) {
 }
 function claudeDirs(env = process.env) {
   const { home } = locations(env);
+  const desktop = foundBy({ bins: [], signals: harness("claude", env).signals }, env);
   const candidates = [];
   if (env.CLAUDE_CONFIG_DIR) candidates.push({ dir: env.CLAUDE_CONFIG_DIR, reason: "CLAUDE_CONFIG_DIR", pinned: true });
   const dotClaude = path.join(home, ".claude");
-  if (isDir(dotClaude)) candidates.push({ dir: dotClaude, reason: "folder exists" });
+  if (isDir(dotClaude)) {
+    candidates.push({ dir: dotClaude, reason: desktop ? `folder exists, ${desktop} reads it` : "folder exists", pinned: Boolean(desktop) });
+  }
   let names = [];
   try {
     names = fs.readdirSync(home).sort();
@@ -1728,9 +1813,10 @@ function claudeDirs(env = process.env) {
       candidates.push({ dir: path.join(home, name), reason: "has settings.json" });
     }
   }
-  if (!isDir(dotClaude) && !env.CLAUDE_CONFIG_DIR && onPath("claude", env)) {
+  const via = desktop ? `${desktop} reads it` : !env.CLAUDE_CONFIG_DIR && onPath("claude", env) ? "claude on PATH" : "";
+  if (!isDir(dotClaude) && via) {
     const alone = !candidates.length;
-    candidates.push({ dir: dotClaude, reason: alone ? "claude on PATH" : "claude on PATH, not created yet", idle: !alone });
+    candidates.push({ dir: dotClaude, reason: alone ? via : `${via}, not created yet`, idle: !alone });
   }
   const seen = /* @__PURE__ */ new Set();
   const dirs = [];
@@ -1755,16 +1841,23 @@ function detect(env = process.env) {
     const dir = env.CLAUDE_CONFIG_DIR || path.join(locations(env).home, ".claude");
     rows.push(makeRow("claude", path.join(dir, "skills"), { detail: `not found (no claude on PATH, no ${tilde(dir, env)})` }));
   }
-  for (const { agent, signal, path: p } of fixedAgents(env)) {
-    let reason = "";
-    if (onPath(agent, env)) reason = `${agent} on PATH`;
-    else if (fs.existsSync(signal)) reason = tilde(signal, env);
-    const found = Boolean(reason);
-    const detail = found ? reason : `not found (no ${agent} on PATH, no ${tilde(signal, env)})`;
-    const shared = agent === "codex";
-    rows.push(makeRow(agent, p, { found, selected: found || shared, shared, detail }));
+  const { shared } = locations(env);
+  for (const h2 of harnesses(env)) {
+    if (h2.agent === "claude") continue;
+    const how = foundBy(h2, env);
+    const reads = h2.skills === shared;
+    const codex = h2.agent === "codex";
+    const detail = how ? `${how}${reads && !codex ? " (reads the shared copy)" : ""}` : notFound(h2);
+    rows.push(makeRow(h2.agent, h2.skills, { found: Boolean(how), selected: codex || Boolean(how) && !reads, shared: reads, detail }));
   }
   return rows;
+}
+var sharedRow = (rows) => rows.find((r2) => r2.shared && r2.agent === "codex");
+function newAgentsLine(rows, env = process.env) {
+  const fresh = rows.filter((r2) => r2.isNew);
+  if (!fresh.length) return "";
+  const names = fresh.map((r2) => `${r2.label} (--dir ${r2.agent === "claude" ? `claude=${tilde(r2.path, env)}` : r2.agent})`);
+  return `Found since last install, not added: ${names.join(", ")}. To add them, rerun install.sh without --yes, or pass --dir for every agent you want, saved ones included.`;
 }
 function loadSaved(env = process.env) {
   const file = locations(env).saved;
@@ -1821,10 +1914,14 @@ function applyDir(rows, spec, env) {
   const eq = spec.indexOf("=");
   const agent = eq < 0 ? spec : spec.slice(0, eq);
   const given = eq < 0 ? "" : spec.slice(eq + 1);
-  if (!knownAgent(agent)) throw new Error(`--dir: unknown agent '${agent}' (use claude, codex, agy, gemini, opencode or other)`);
-  if (agent === "codex") {
-    if (given) throw new Error(`--dir: Codex reads the shared copy at ${tilde(locations(env).shared, env)}; give no path`);
-    rows.find((r2) => r2.shared).hint = true;
+  if (!knownAgent(agent)) {
+    const keys = AGENTS.map((a2) => a2.key);
+    throw new Error(`--dir: unknown agent '${agent}' (use ${keys.slice(0, -1).join(", ")} or ${keys.at(-1)})`);
+  }
+  const reader = rows.find((r2) => r2.agent === agent && r2.shared);
+  if (reader) {
+    if (given) throw new Error(`--dir: ${reader.label} reads the shared copy at ${tilde(locations(env).shared, env)}; give no path`);
+    reader.hint = true;
     return "";
   }
   let p;
@@ -1954,9 +2051,10 @@ function saveTargets(rows, env = process.env, date = /* @__PURE__ */ new Date())
 }
 function nextSteps(rows) {
   const on = (agent) => rows.some((r2) => r2.agent === agent && r2.selected && !r2.shared);
+  const reads = (agent) => on(agent) || rows.some((r2) => r2.agent === agent && r2.shared && (r2.found || r2.hint));
   const lines = [];
   if (on("claude")) lines.push('Claude Code: /huddle-start "my room"');
-  if (on("codex") || rows.some((r2) => r2.shared && (r2.found || r2.hint))) {
+  if (reads("codex")) {
     lines.push(
       'Codex: $huddle-start "my room". Its sandbox blocks localhost by default; approve network',
       "access when Codex asks, or add this to ~/.codex/config.toml:",
@@ -1964,7 +2062,7 @@ function nextSteps(rows) {
       "  network_access = true"
     );
   }
-  const others = ["agy", "gemini", "opencode", "other"].filter(on).map(labelOf);
+  const others = ["agy", "agy-app", "gemini", "opencode", "dsh", "other"].filter(reads).map(labelOf);
   if (others.length) lines.push(`${others.join(", ")}: ask "start a huddle"`);
   return lines;
 }
@@ -2025,6 +2123,7 @@ async function download(url) {
 // src/install/cli.mjs
 var SCRIPT_DIR = path2.dirname(fileURLToPath(import.meta.url));
 var INVITE_LINE = "No skill in some agent? Paste the invite that /huddle-start prints instead.";
+var WIDTH = Math.max(...AGENTS.map((a2) => a2.label.length));
 var USAGE = `Usage: install.sh [--yes] [--dir agent[=path]]... [--dry-run] [--uninstall] [--help]
        node install.mjs [same options]
 
@@ -2033,14 +2132,16 @@ In a terminal it asks which agents to install for; otherwise it prints the plan 
 with --yes or --dir.
 
   --yes, -y            Install without prompts: the saved targets, else the detected agents.
-  --dir agent[=path]   Install for exactly these agents (repeatable). Agents: claude, codex, agy,
-                       gemini, opencode, other. Without a path the agent's default folder is used.
+  --dir agent[=path]   Install for exactly these agents (repeatable). Agents: claude, codex,
+                       agy (Antigravity CLI), agy-app (Antigravity app), gemini, opencode, dsh
+                       (DeepSeek Harness), other. Without a path the agent's default folder is used.
   --dry-run            Print the plan and exit.
   --uninstall          Remove our links, the shared skill folders and the saved targets
                        (asks first in a terminal; otherwise needs --yes).
   --help, -h           Show this help.
 
 Env: AGENT_HUDDLE_BASE_URL (download source), AGENT_HUDDLE_HOME (where install.json lives),
+AGENT_HUDDLE_APP_DIRS (where desktop apps are; default /Applications and ~/Applications),
 AGENT_HUDDLE_NO_TTY=1 (install.sh never reads answers from /dev/tty; for tests and CI).`;
 function parseArgs(argv) {
   const opts = { yes: false, dirs: [], dryRun: false, uninstall: false, help: false };
@@ -2071,10 +2172,10 @@ function rowHint(row) {
   return notes.join(", ") || void 0;
 }
 function detectedLines(rows) {
-  return rows.filter((r2) => !r2.added).map((r2) => `${r2.found ? "\u2713" : "-"} ${r2.label.padEnd(12)} ${r2.detail}`);
+  return rows.filter((r2) => !r2.added).map((r2) => `${r2.found ? "\u2713" : "-"} ${r2.label.padEnd(WIDTH)} ${r2.detail}`);
 }
 function sharedLine(env) {
-  return `The shared copy ${tilde(locations(env).shared, env)} is always installed (Codex reads it directly).`;
+  return `The shared copy ${tilde(locations(env).shared, env)} is always installed (Codex and DeepSeek Harness read it directly).`;
 }
 function prepareRows(rows, opts, env) {
   if (opts.dirs.length) return applyDirs(rows, opts.dirs, env);
@@ -2107,6 +2208,8 @@ async function runPlain(opts, env, agent) {
   for (const line of detectedLines(rows)) console.log(`  ${line}`);
   console.log(`  ${sharedLine(env)}`);
   for (const w of warnings) console.log(`! ${w}`);
+  const fresh = newAgentsLine(rows, env);
+  if (fresh) console.log(`! ${fresh}`);
   const plan = buildPlan(rows, env);
   console.log("\nPlan:");
   for (const line of planLines(plan, env)) console.log(`  ${line}`);
@@ -2146,7 +2249,7 @@ async function ask(prompt) {
   return value;
 }
 function folderOptions(rows, env) {
-  return rows.map((row, index) => ({ row, index })).filter(({ row }) => !row.shared).map(({ row, index }) => ({ value: index, label: `${row.label.padEnd(12)} ${tilde(row.path, env)}`, hint: rowHint(row) }));
+  return rows.map((row, index) => ({ row, index })).filter(({ row }) => !row.shared).map(({ row, index }) => ({ value: index, label: `${row.label.padEnd(WIDTH)} ${tilde(row.path, env)}`, hint: rowHint(row) }));
 }
 async function askFolder(rows, agent, skip, initialValue, env) {
   let value = initialValue;
@@ -2190,11 +2293,11 @@ async function addFolder(rows, env) {
   log.step(`${row.label} \u2192 ${tilde(folder, env)} (custom)`);
 }
 async function chooseTargets(rows, env) {
-  const shared = rows.findIndex((row) => row.shared);
+  const shared = rows.indexOf(sharedRow(rows));
   const options = folderOptions(rows, env);
   if (shared >= 0) {
     const row = rows[shared];
-    options.unshift({ value: shared, label: `${row.label.padEnd(12)} ${tilde(row.path, env)}`, hint: "shared copy, always installed" });
+    options.unshift({ value: shared, label: `${row.label.padEnd(WIDTH)} ${tilde(row.path, env)}`, hint: "shared copy, always installed" });
   }
   const picked = await ask(
     multiselect({
