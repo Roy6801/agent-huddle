@@ -48,7 +48,7 @@ async function until(fn, ms = 5000) {
 const readPrompts = () => (fs.existsSync(promptLog) ? JSON.parse(fs.readFileSync(promptLog, 'utf8')) : { prompts: [], cancels: [] });
 
 async function setup(name, ...newArgs) {
-  env ??= { ...process.env, AGENT_HUDDLE_HOME: home, AGENT_HUDDLE_PORT: String(await freePort()), AGENT_HUDDLE_QUIET_MS: '1500' };
+  env ??= { ...process.env, AGENT_HUDDLE_HOME: home, AGENT_HUDDLE_PORT: String(await freePort()), AGENT_HUDDLE_QUIET_MS: '1500', AGENT_HUDDLE_ASK_MS: '3000' };
   fs.rmSync(promptLog, { force: true });
   const created = JSON.parse((await cli('new', name, ...newArgs)).stdout);
   const claude = await (await fetch(`${created.join}/join`, json({ harness: 'claude' }))).json();
@@ -312,4 +312,46 @@ test('a reply over the server limit is truncated with a marker', async () => {
   });
   assert.equal(post.text.length, 8000);
   assert.ok(post.text.endsWith('… (truncated)'));
+});
+
+const asks = async (room) => (await (await fetch(`${room.created.page}/api/state`)).json()).asks;
+const answerAsk = (room, n, optionId) => fetch(`${room.created.page}/api/asks/${n}`, json({ optionId }));
+
+test('a permission request waits for the human and passes the chosen option to the agent', async () => {
+  const room = await setup('perm room');
+  const w = startWorker(room.created.join, { FAKE_ACP_PERMISSION: '1' });
+  await until(() => w.out.includes('codex-1 is listening'));
+  await say(room.claude, '@codex-1 write it');
+  const [ask] = await until(async () => (await asks(room)).length && asks(room));
+  assert.equal(ask.title, 'Write ../outside.txt');
+  assert.deepEqual(ask.options.map((o) => [o.optionId, o.name]), [['allow_once', 'Allow once'], ['allow_for_session', 'Always'], ['decline', 'Deny']]);
+  assert.deepEqual(readPrompts().outcomes, []);
+  assert.equal((await answerAsk(room, 1, 'allow_for_session')).status, 200);
+  await until(() => readPrompts().outcomes?.length);
+  assert.deepEqual(readPrompts().outcomes, [{ outcome: 'selected', optionId: 'allow_for_session' }]);
+  await until(async () => (await codexPosts(room)).some((m) => m.text.includes('[allow_for_session]')));
+  assert.match(w.out, /chose allow_for_session/);
+});
+
+test('an unanswered permission request times out and the agent is declined', async () => {
+  const room = await setup('perm timeout room');
+  const w = startWorker(room.created.join, { FAKE_ACP_PERMISSION: '1' });
+  await until(() => w.out.includes('codex-1 is listening'));
+  await say(room.claude, '@codex-1 write it');
+  await until(() => readPrompts().outcomes?.length, 15000);
+  assert.deepEqual(readPrompts().outcomes, [{ outcome: 'selected', optionId: 'decline' }]);
+  assert.equal((await asks(room))[0].status, 'timeout');
+  await until(async () => (await codexPosts(room)).some((m) => m.text.includes('[decline]')));
+});
+
+test('SIGTERM while a permission request is open cancels the ask and exits 0', async () => {
+  const room = await setup('perm stop room');
+  const w = startWorker(room.created.join, { FAKE_ACP_PERMISSION: '1' });
+  await until(() => w.out.includes('codex-1 is listening'));
+  await say(room.claude, '@codex-1 write it');
+  await until(async () => (await asks(room)).length);
+  w.proc.kill('SIGTERM');
+  assert.equal(await w.exit, 0);
+  assert.equal((await asks(room))[0].status, 'cancelled');
+  assert.equal((await codexPosts(room)).length, 0);
 });

@@ -1466,6 +1466,43 @@ async function runWorker(args) {
     ac.abort();
   };
   const nap = (ms) => Promise.race([sleep(ms), aborted]);
+  const ASK_LABELS = { allow_once: 'Allow once', allow_always: 'Always', reject_once: 'Deny', reject_always: 'Deny' };
+  // the wait for the human counts toward AGENT_HUDDLE_RUN_MS
+  async function askHuman({ toolCall: call = {}, options = [] }) {
+    const cancelled = { outcome: { outcome: 'cancelled' } };
+    const paths = (call.locations ?? []).map((l) => l.path).filter(Boolean);
+    const command = call.rawInput?.command;
+    const title = String(call.title || [call.kind, paths[0]].filter(Boolean).join(' ') || 'run an action').slice(0, 300);
+    const detail = [paths.length && `paths: ${paths.join(', ')}`, command && `command: ${[command].flat().join(' ')}`].filter(Boolean).join('\n').slice(0, 2000);
+    const known = options.filter((o) => ASK_LABELS[o.kind]);
+    const picked = ['allow_once', 'allow_always', 'reject_once'].map((k) => known.find((o) => o.kind === k)).filter(Boolean);
+    if (!picked.some((o) => o.kind === 'reject_once')) {
+      const reject = known.find((o) => o.kind === 'reject_always');
+      if (reject) picked.push(reject);
+    }
+    const deny = options.find((o) => o.kind === 'reject_once');
+    const fallback = deny ? { outcome: { outcome: 'selected', optionId: deny.optionId } } : cancelled;
+    if (signal.aborted) return cancelled;
+    try {
+      const body = { title, ...(detail && { detail }), options: picked.map((o) => ({ optionId: o.optionId, kind: o.kind, name: ASK_LABELS[o.kind] })) };
+      const res = await fetch(`${me.link}/asks`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body), signal });
+      if (!res.ok) throw new Error(`ask rejected (${res.status})`);
+      const { id } = await res.json();
+      console.log(`asked @you: ${title}`);
+      for (;;) {
+        const got = await fetch(`${me.link}/asks/${id}?wait=25`, { signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]) });
+        if (!got.ok) throw new Error(`ask lookup failed (${got.status})`);
+        const ask = await got.json();
+        if (ask.status === 'open') continue;
+        console.log(`@you ${ask.status === 'answered' ? `chose ${ask.answer.optionId}` : ask.status}: ${title}`);
+        return ask.status === 'answered' ? { outcome: { outcome: 'selected', optionId: ask.answer.optionId } } : fallback;
+      }
+    } catch (err) {
+      if (signal.aborted) return cancelled;
+      console.log(`ask failed (${err.message}); denied`);
+      return fallback;
+    }
+  }
   const acp = acpClient(argv, {
     cwd: folder,
     env: { INITIAL_AGENT_MODE: 'workspace-write' },
@@ -1478,9 +1515,7 @@ async function runWorker(args) {
     },
     onRequest(method, params) {
       if (method !== 'session/request_permission') throw Object.assign(new Error(`method not found: ${method}`), { code: -32601 });
-      const deny = params.options?.find((o) => o.kind === 'reject_once');
-      console.log(`denied a permission request${params.toolCall?.title ? ` (${params.toolCall.title})` : ''}`);
-      return { outcome: deny ? { outcome: 'selected', optionId: deny.optionId } : { outcome: 'cancelled' } };
+      return askHuman(params);
     },
   });
   for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => (signal.aborted ? process.exit(1) : abort(0, 'worker stopped')));
