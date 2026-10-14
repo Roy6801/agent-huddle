@@ -15,6 +15,10 @@ const MAX_MESSAGES = 2000;
 const MAX_TEXT = 8000;
 const MAX_NAME = 200;
 const MAX_TITLE = 200;
+const MAX_ASK_TITLE = 300;
+const MAX_ASK_DETAIL = 2000;
+const ASK_KINDS = new Set(['allow_once', 'allow_always', 'reject_once', 'reject_always']);
+const ASK_ANSWERS = { allow_once: 'allowed once', allow_always: 'always allowed', reject_once: 'denied', reject_always: 'always denied' };
 const MAX_DEPTH = 3;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_ROOM_BYTES = 200 * 1024 * 1024;
@@ -118,6 +122,7 @@ export function createHuddle(opts = {}) {
     idleMs = 900000,
     quietMs = 30000,
     serverIdleMs = 1800000,
+    askMs = 600000,
     roundCap = 10,
     onIdle,
     onStop,
@@ -192,6 +197,8 @@ export function createHuddle(opts = {}) {
       messages: [],
       nextMsgId: 1,
       tasks: [],
+      asks: [],
+      askWaiters: new Set(),
       files: new Map(),
       fileBytes: 0,
       agentStreak: 0,
@@ -211,6 +218,11 @@ export function createHuddle(opts = {}) {
       }
       agent.waiters.clear();
     }
+    for (const w of s.askWaiters) {
+      clearTimeout(w.timer);
+      sendJson(w.res, 410, { error: 'room ended' });
+    }
+    s.askWaiters.clear();
     s.files.clear();
     s.fileBytes = 0;
     s.tombstone = setTimeout(() => rooms.delete(s.id), tombstoneMs);
@@ -393,8 +405,75 @@ export function createHuddle(opts = {}) {
         released.push(t.id);
       }
     }
+    for (const a of s.asks) {
+      if (a.status === 'open' && a.by === agent.handle) settleAsk(s, a, 'cancelled');
+    }
     system(s, `${agent.handle} left${reason ? ` (${reason})` : ''}${releasedText(released)}`);
     return released;
+  }
+
+  // ---- asks ----
+
+  function settleAsk(s, ask, status) {
+    ask.status = status;
+    for (const w of s.askWaiters) {
+      if (w.ask !== ask) continue;
+      clearTimeout(w.timer);
+      sendJson(w.res, 200, ask);
+      s.askWaiters.delete(w);
+    }
+  }
+
+  function createAsk(s, agent, body) {
+    const title = cleanText(body.title, MAX_ASK_TITLE, 'title');
+    const detail = body.detail === undefined || body.detail === null ? null : cleanText(body.detail, MAX_ASK_DETAIL, 'detail');
+    if (!Array.isArray(body.options) || body.options.length < 1 || body.options.length > 6) {
+      throw new HttpError(400, 'options must be a list of 1-6 choices');
+    }
+    const options = body.options.map((o) => {
+      if (o === null || typeof o !== 'object' || Array.isArray(o)) throw new HttpError(400, 'each option must be an object');
+      if (!ASK_KINDS.has(o.kind)) throw new HttpError(400, `kind must be one of ${[...ASK_KINDS].join(', ')}`, { valid: [...ASK_KINDS] });
+      return { optionId: cleanText(o.optionId, 100, 'optionId'), kind: o.kind, name: cleanText(o.name, 60, 'name') };
+    });
+    if (new Set(options.map((o) => o.optionId)).size !== options.length) throw new HttpError(400, 'optionId must be unique');
+    const ask = { id: s.asks.length + 1, by: agent.handle, title, detail, options, status: 'open', at: new Date().toISOString() };
+    s.asks.push(ask);
+    system(s, `${agent.handle} asks: ${title}`, { toYou: true });
+    return ask;
+  }
+
+  function getAsk(s, agent, n) {
+    const ask = s.asks[Number(n) - 1];
+    if (!ask || ask.by !== agent.handle) throw new HttpError(404, `no ask #${n}`);
+    return ask;
+  }
+
+  function answerAsk(s, n, body) {
+    const ask = s.asks[Number(n) - 1];
+    if (!ask) throw new HttpError(404, `no ask #${n}`);
+    if (ask.status !== 'open') throw new HttpError(409, `ask is ${ask.status}`);
+    const option = ask.options.find((o) => o.optionId === body.optionId);
+    if (!option) throw new HttpError(400, 'optionId is not one of the options', { valid: ask.options.map((o) => o.optionId) });
+    ask.answer = { optionId: option.optionId, kind: option.kind };
+    ask.answeredAt = new Date().toISOString();
+    settleAsk(s, ask, 'answered');
+    system(s, `you ${ASK_ANSWERS[option.kind]}: ${ask.title}`);
+    return ask;
+  }
+
+  function waitForAsk(s, agent, ask, res, seconds) {
+    const waiter = { res, ask };
+    waiter.timer = setTimeout(() => {
+      s.askWaiters.delete(waiter);
+      agent.lastSeen = Date.now();
+      sendJson(res, 200, ask);
+    }, seconds * 1000);
+    s.askWaiters.add(waiter);
+    res.on('close', () => {
+      clearTimeout(waiter.timer);
+      s.askWaiters.delete(waiter);
+      agent.lastSeen = Date.now();
+    });
   }
 
   function countAgentRound(s) {
@@ -828,9 +907,15 @@ How the room works:
     const ok = (obj) => sendJson(res, 200, obj);
     const taskMatch = /^tasks\/(\d+)\/(claim|done|release)$/.exec(key);
     const fileMatch = /^files\/([\w-]+)$/.exec(key);
+    const askMatch = /^asks\/(\d+)$/.exec(key);
 
     if (method === 'GET') {
       if (fileMatch) return sendFile(res, getFile(s, fileMatch[1]));
+      if (askMatch) {
+        const ask = getAsk(s, agent, askMatch[1]);
+        if (ask.status !== 'open') return ok(ask);
+        return waitForAsk(s, agent, ask, res, clampWait(url.searchParams.get('wait')));
+      }
       switch (key) {
         case '':
           return sendText(res, 200, agentProtocol(s, agent, base));
@@ -884,6 +969,8 @@ How the room works:
           return ok(spawnChild(s, agent, body, base));
         case 'tasks':
           return ok(createTask(s, agent.handle, body));
+        case 'asks':
+          return ok(createAsk(s, agent, body));
         case 'leave': {
           const released = agent.status === 'left' ? [] : leaveAgent(s, agent);
           return ok({ ok: true, released });
@@ -900,6 +987,7 @@ How the room works:
     const body = method === 'POST' && !upload ? await readBody(req) : {};
     s.humanSeen = Date.now();
     const fileMatch = /^api\/files\/([\w-]+)$/.exec(key);
+    const askMatch = /^api\/asks\/(\d+)$/.exec(key);
 
     if (method === 'GET' && key === '') {
       let html;
@@ -918,6 +1006,7 @@ How the room works:
         messages,
         ...whoView(s),
         tasks: s.tasks,
+        asks: s.asks,
         roundCap: s.roundCap,
         agentStreak: s.agentStreak,
       });
@@ -925,6 +1014,7 @@ How the room works:
     if (method === 'POST' && key === 'api/post') return sendJson(res, 200, postFromHuman(s, body));
     if (method === 'POST' && key === 'api/settings') return sendJson(res, 200, setRoundCap(s, body));
     if (method === 'POST' && key === 'api/tasks') return sendJson(res, 200, createTask(s, 'you', body));
+    if (method === 'POST' && askMatch) return sendJson(res, 200, answerAsk(s, askMatch[1], body));
     if (method === 'GET' && key === 'api/files') return sendJson(res, 200, fileList(s));
     if (method === 'GET' && fileMatch) return sendFile(res, getFile(s, fileMatch[1]));
     if (upload) {
@@ -943,6 +1033,13 @@ How the room works:
     const now = Date.now();
     let waiting = false;
     for (const s of liveRooms()) {
+      if (s.askWaiters.size) waiting = true;
+      for (const ask of s.asks) {
+        if (ask.status === 'open' && now - Date.parse(ask.at) > askMs) {
+          settleAsk(s, ask, 'timeout');
+          system(s, `${ask.title} timed out — denied`);
+        }
+      }
       for (const agent of s.agents.values()) {
         if (agent.waiters.size) waiting = true;
         else if (agent.status !== 'left' && now - agent.lastSeen > idleMs) leaveAgent(s, agent, 'idle');
@@ -954,7 +1051,7 @@ How the room works:
     }
   }
 
-  const interval = Math.max(25, Math.min(30000, Math.min(idleMs, serverIdleMs) / 4));
+  const interval = Math.max(25, Math.min(30000, Math.min(idleMs, serverIdleMs, askMs) / 4));
   const timer = setInterval(sweep, interval);
   timer.unref();
 
@@ -972,6 +1069,11 @@ How the room works:
     clearInterval(timer);
     for (const s of rooms.values()) {
       clearTimeout(s.tombstone);
+      for (const w of s.askWaiters) {
+        clearTimeout(w.timer);
+        w.res.writeHead(204).end();
+      }
+      s.askWaiters.clear();
       for (const agent of s.agents.values()) {
         for (const w of agent.waiters) {
           clearTimeout(w.timer);
@@ -1077,6 +1179,7 @@ async function serve() {
     idleMs: num('AGENT_HUDDLE_IDLE_MS', 900000),
     quietMs: num('AGENT_HUDDLE_QUIET_MS', 30000),
     serverIdleMs: num('AGENT_HUDDLE_SERVER_IDLE_MS', 1800000),
+    askMs: num('AGENT_HUDDLE_ASK_MS', 600000),
     roundCap: num('AGENT_HUDDLE_ROUND_CAP', 10),
     maxFileBytes: num('AGENT_HUDDLE_MAX_FILE', MAX_FILE_BYTES),
     adminToken,
