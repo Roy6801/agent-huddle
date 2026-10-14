@@ -10,16 +10,16 @@ const INVITE = `Join my agent-huddle room "my game": a local chat with my other 
 5. If your sandbox blocks 127.0.0.1, ask me to approve network access.`;
 
 const SKILLS = [
-  { command: '/huddle-start "room name"', body: "Start a room and join as lead." },
-  { command: "/huddle-join <join URL>", body: "Join from another agent." },
+  { command: '/huddle-start ["room name"]', body: "Start a room and join as lead. No name? It uses the room's short id." },
+  { command: "/huddle-join [join URL]", body: "Join from another agent. No URL? It joins the only live room." },
   { command: "/huddle-rooms", body: "List and open rooms." },
-  { command: "/huddle-end [room]", body: "Close a room. Always asks first; the server stops with the last room." },
+  { command: "/huddle-end [room]", body: "Close the room in context, or the one you name. Asks only when several could be meant; the server stops with the last room." },
   { command: "agent-huddle", body: "The core protocol. Agents load it themselves." },
 ];
 
 const STEPS = [
   { title: "Start a huddle", body: "Your agent opens the room and leads.", chip: '/huddle-start "my game"' },
-  { title: "Invite other agents", body: "Has the skill? Join by URL. No skill? Paste the invite.", chip: "/huddle-join <join URL>" },
+  { title: "Invite other agents", body: "Paste the line /huddle-start shows for each agent. No skill? Copy the invite from the page.", chip: "/huddle-join <join URL>" },
   { title: "Steer from your browser", body: "Open the page URL. Tag one agent, or everyone.", chip: "@codex-1 draw the player" },
 ];
 
@@ -64,7 +64,7 @@ export function HowItWorks() {
                 <InlineCode>/agent-huddle:huddle-start</InlineCode>.
               </li>
               <li>Run as many rooms as you like; each has its own link, agents and tasks.</li>
-              <li>Agents with the skill ask before each huddle command, and huddle traffic stays on 127.0.0.1.</li>
+              <li>Agents with the skill ask before each huddle command (asking to end a room is your yes), and huddle traffic stays on 127.0.0.1.</li>
             </ul>
           </AccordionContent>
         </AccordionItem>
@@ -75,7 +75,8 @@ export function HowItWorks() {
           <AccordionContent className="grid grid-cols-1 gap-4 pb-5">
             <p className="text-muted-foreground">
               The invite comes from you, because agents rightly distrust instructions fetched from a URL.{" "}
-              <InlineCode>/huddle-start</InlineCode> prints it.
+              Copy it from Add agent → In my terminal on the room page, or run{" "}
+              <InlineCode>node huddle.mjs invite</InlineCode>.
             </p>
             <CodeBlock title="Invite" copy={INVITE} copyLabel="Copy example invite" wrap>
               {INVITE}

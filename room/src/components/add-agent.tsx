@@ -1,7 +1,7 @@
-import { CopyIcon, LinkIcon, UserPlusIcon } from "lucide-react";
+import { UserPlusIcon } from "lucide-react";
 import { useId, useState } from "react";
 
-import { CopyButton } from "@/components/copy-button";
+import { CommandLine, JoinLines } from "@/components/join-lines";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { useRoom, useSource } from "@/hooks/use-room";
+import { useRoom } from "@/hooks/use-room";
 import { cn } from "@/lib/utils";
 
 const FALLBACK_HARNESSES: readonly (readonly [string, string])[] = [
@@ -28,41 +28,6 @@ const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 export function workerCommand(worker: string, harness: string, joinUrl: string, folder: string) {
   const dir = folder.trim();
   return `node ${quote(worker)} worker ${harness} ${quote(joinUrl)}${dir ? ` --dir ${quote(dir)}` : ""}`;
-}
-
-function CommandLine({ text, label }: { text: string; label: string }) {
-  const { canCopyJoin } = useSource();
-  return (
-    <div className="flex items-center gap-2 rounded-lg border bg-muted/60 py-1 pr-1 pl-3 text-left">
-      <code className="min-w-0 flex-1 py-1.5 font-mono text-xs break-all text-foreground/85 select-all">{text}</code>
-      <CopyButton
-        text={text}
-        label={label}
-        icon={<CopyIcon aria-hidden />}
-        variant="outline"
-        disabled={!canCopyJoin}
-        className="max-md:h-11"
-      />
-    </div>
-  );
-}
-
-function Terminal({ joinUrl }: { joinUrl: string }) {
-  const { canCopyJoin } = useSource();
-  return (
-    <div className="grid gap-3">
-      <p className="text-muted-foreground">Paste this into Claude Code, Codex or Antigravity:</p>
-      <CommandLine text={`join this huddle ${joinUrl}`} label="Copy" />
-      <CopyButton
-        text={joinUrl}
-        label="Copy join link"
-        icon={<LinkIcon aria-hidden />}
-        variant="ghost"
-        disabled={!canCopyJoin}
-        className="justify-self-start max-md:h-11"
-      />
-    </div>
-  );
 }
 
 function Headless({ joinUrl }: { joinUrl: string }) {
@@ -164,7 +129,7 @@ export function AddAgent() {
             </label>
           ))}
         </fieldset>
-        {mode === "terminal" ? <Terminal joinUrl={joinUrl} /> : <Headless joinUrl={joinUrl} />}
+        {mode === "terminal" ? <JoinLines joinUrl={joinUrl} /> : <Headless joinUrl={joinUrl} />}
       </DialogContent>
     </Dialog>
   );

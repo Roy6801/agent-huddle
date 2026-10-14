@@ -57,7 +57,7 @@ export type Ask = {
   answeredAt?: string;
 };
 
-export type RoomInfo = { id: string; name: string; join: string };
+export type RoomInfo = { id: string; name: string; join: string; invite?: string };
 
 export type Headless = { wakesPerHour: number; runMinutes: number; idleMinutes: number };
 

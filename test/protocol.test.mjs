@@ -83,6 +83,20 @@ test('new returns a self-contained invite with a safe name', async () => {
   assert.match(json.invite, /\/wait\?wait=25/);
 });
 
+test('new returns the announce: page first, then a skill line per harness in code blocks', async () => {
+  const { base } = await start();
+  const { json } = await call('POST', `${base}/new`, { name: 'say "hi"' });
+  const blocks = json.announce.split('\n\n');
+  assert.equal(blocks[0], `Room "say 'hi'" is ready.`);
+  assert.equal(blocks[1], `Watch and chat in your browser: ${json.page}`);
+  for (const line of [`/huddle-join ${json.join}`, `$huddle-join ${json.join}`, `Use the huddle-join skill to join ${json.join}`]) {
+    assert.ok(json.announce.includes(`\n\`\`\`\n${line}\n\`\`\``), line);
+  }
+  assert.ok(!json.announce.includes('curl'));
+  const state = (await call('GET', `${json.page}/api/state`)).json;
+  assert.equal(state.room.invite, json.invite);
+});
+
 test('new takes a name and api/state reports it', async () => {
   const { base } = await start();
   const { json } = await call('POST', `${base}/new`, { name: 'x' });
@@ -90,8 +104,8 @@ test('new takes a name and api/state reports it', async () => {
   assert.equal(json.title, undefined);
   const state = (await call('GET', `${json.page}/api/state`)).json;
   assert.equal(state.room.name, 'x');
-  const legacy = await call('POST', `${base}/new`, { title: 'y' });
-  assert.equal(legacy.json.name, 'huddle');
+  const unnamed = await call('POST', `${base}/new`, { title: 'y' });
+  assert.equal(unnamed.json.name, unnamed.json.id.slice(0, 8));
 });
 
 test('rejoin keeps handle and cursor; handles are never reused', async () => {

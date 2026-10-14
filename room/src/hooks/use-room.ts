@@ -6,6 +6,8 @@ import type { Agent, Ask, Conn, Headless, Message, SharedFile, StateResponse, Ta
 export type RoomState = {
   name: string;
   joinUrl: string;
+  /** Self-contained invite for agents without the skill. */
+  invite?: string;
   /** Where the room was created; suggested for headless agents. */
   folder?: string | null;
   /** Absolute path of the server's huddle.mjs, for the headless command. */
@@ -92,6 +94,7 @@ export function useRoomState() {
         setState((s) => {
           const name = data.room?.name ?? s.name;
           const joinUrl = data.room?.join ?? s.joinUrl;
+          const invite = data.room?.invite ?? s.invite;
           const roundCap = data.roundCap === null || typeof data.roundCap === "number" ? data.roundCap : s.roundCap;
           const folder = data.folder ?? s.folder;
           const worker = data.worker ?? s.worker;
@@ -110,6 +113,7 @@ export function useRoomState() {
             !s.notice &&
             name === s.name &&
             joinUrl === s.joinUrl &&
+            invite === s.invite &&
             roundCap === s.roundCap &&
             folder === s.folder &&
             worker === s.worker &&
@@ -121,6 +125,7 @@ export function useRoomState() {
             ...s,
             name,
             joinUrl,
+            invite,
             roundCap,
             folder,
             worker,

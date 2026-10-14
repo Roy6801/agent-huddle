@@ -57,14 +57,18 @@ afterEach(async () => {
   }
 });
 
-test('end without a room exits 1 and lists live rooms', async () => {
+test('end without a room targets the only live room, and lists rooms when there are several', async () => {
   const ctx = await setup();
   const room = await newRoom(ctx, 'demo run');
+  const one = await cli(ctx, 'end');
+  assert.equal(one.code, 1);
+  assert.match(one.stdout, new RegExp(`Would end room:\\n  "demo run" \\(${room.id.slice(0, 8)}`));
+  const other = await newRoom(ctx, 'second');
   const res = await cli(ctx, 'end');
   assert.equal(res.code, 1);
   assert.match(res.stderr, /Usage: node huddle\.mjs end/);
-  assert.match(res.stderr, new RegExp(`demo run  ${room.id.slice(0, 8)}`));
-  assert.equal((await live(ctx)).length, 1);
+  assert.match(res.stderr, new RegExp(`second  ${other.id.slice(0, 8)}`));
+  assert.equal((await live(ctx)).length, 2);
 });
 
 test('end without --yes and without a TTY ends nothing', async () => {

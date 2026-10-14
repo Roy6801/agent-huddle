@@ -8,7 +8,7 @@ import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 const THIS_FILE = fileURLToPath(import.meta.url);
 const BODY_LIMIT = 64 * 1024;
 const MAX_MESSAGES = 2000;
@@ -207,10 +207,12 @@ export function createHuddle(opts = {}) {
 
   // ---- room state ----
 
+  // A room without a name is called by its short id, the one `ls` shows.
   function createRoom(name, cap = roundCap, folder = null) {
+    const id = newToken();
     const s = {
-      id: newToken(),
-      name,
+      id,
+      name: name ?? id.slice(0, 8),
       createdAt: new Date().toISOString(),
       ended: false,
       tombstone: null,
@@ -895,7 +897,7 @@ How the room works:
     }
     if (method === 'POST' && parts.length === 1 && parts[0] === 'new') {
       const body = await readBody(req);
-      let name = 'huddle';
+      let name = null;
       if (body.name !== undefined && body.name !== null) name = cleanText(body.name, MAX_NAME, 'name');
       const cap = body.roundCap === undefined ? roundCap : parseRoundCap(body.roundCap);
       const s = createRoom(name, cap, parseFolder(body.folder));
@@ -905,6 +907,7 @@ How the room works:
         join: `${base}/s/${s.id}`,
         page: `${base}/s/${s.id}/h/${s.humanToken}`,
         invite: inviteText(s.name, `${base}/s/${s.id}`),
+        announce: announceText(s.name, `${base}/s/${s.id}`, `${base}/s/${s.id}/h/${s.humanToken}`),
       });
     }
     if (parts[0] === 'admin') return adminRoute(req, res, method, parts, base);
@@ -1073,7 +1076,7 @@ How the room works:
       const since = parseInt(url.searchParams.get('since'), 10) || 0;
       const messages = s.messages.filter((m) => m.id > since).slice(0, 500);
       return sendJson(res, 200, {
-        room: { id: s.id, name: s.name, join: `${base}/s/${s.id}` },
+        room: { id: s.id, name: s.name, join: `${base}/s/${s.id}`, invite: inviteText(s.name, `${base}/s/${s.id}`) },
         messages,
         ...whoView(s),
         tasks: s.tasks,
@@ -1833,6 +1836,28 @@ async function runWorker(args) {
   process.exit(ending.code);
 }
 
+// The line to paste into each agent that has the skill. Mirrored in room/src/lib/join-lines.ts.
+export function joinLines(join) {
+  return [
+    ['Claude Code', `/huddle-join ${join}`],
+    ['Codex', `$huddle-join ${join}`],
+    ['Others (opencode, DeepSeek Harness, Gemini CLI, Antigravity)', `Use the huddle-join skill to join ${join}`],
+  ];
+}
+
+// What the starting agent shows the user, verbatim, right after `new`.
+export function announceText(name, join, page) {
+  const safeName = name.replace(/\s+/g, ' ').replace(/["`]/g, "'").trim();
+  const lines = joinLines(join).map(([label, line]) => `${label}\n\`\`\`\n${line}\n\`\`\``);
+  return [
+    `Room "${safeName}" is ready.`,
+    `Watch and chat in your browser: ${page}`,
+    'Bring in agents: paste the line for each one.',
+    ...lines,
+    'An agent without the skill? On the page, Add agent → In my terminal gives a paste-in invite.',
+  ].join('\n\n');
+}
+
 function inviteText(name, join) {
   const safeName = name.replace(/\s+/g, ' ').replace(/["`]/g, "'").trim();
   return `Join my agent-huddle room "${safeName}": a local chat with my other coding agents on this machine (127.0.0.1 only).
@@ -2319,7 +2344,9 @@ function formatTable(rooms) {
   return out.join('\n');
 }
 
+// A room by id, id prefix, name, name prefix, or any of its URLs (join, page, agent link).
 function resolveRoom(rooms, query) {
+  query = query.match(/\/s\/([A-Za-z0-9_-]+)/)?.[1] ?? query;
   const q = query.toLowerCase();
   const byId = rooms.filter((s) => s.id === query);
   const byIdPrefix = query.length >= 4 ? rooms.filter((s) => s.id.startsWith(query)) : [];
@@ -2392,7 +2419,7 @@ async function endRoom(args) {
   const all = args.includes('--all') || query.toLowerCase() === 'all';
   const ctx = await adminContext(true);
   const { rooms } = await admin(ctx, 'GET', 'rooms');
-  if (!query && !all) {
+  if (!query && !all && rooms.length !== 1) {
     console.error('Usage: node huddle.mjs end <room> | all | --all [--yes] [--keep-server]');
     console.error(rooms.length ? `Live rooms:\n${formatRoomList(rooms)}` : 'No live rooms.');
     process.exit(1);
@@ -2400,7 +2427,7 @@ async function endRoom(args) {
   if (!args.includes('--all') && query.toLowerCase() === 'all' && rooms.some((s) => s.name.toLowerCase() === 'all')) {
     throw new Error('A live room is named "all". Use --all to end every room, or pass the room id.');
   }
-  const targets = all ? rooms : [resolveRoom(rooms, query)];
+  const targets = all ? rooms : query ? [resolveRoom(rooms, query)] : rooms;
   if (!targets.length) return console.log('No live rooms.');
   const describe = (s) => `"${s.name}" (${id8(s)}, ${s.agents.total} agents)`;
   if (!args.includes('--yes')) {

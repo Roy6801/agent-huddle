@@ -1,9 +1,6 @@
-import { CopyIcon } from "lucide-react";
-
-import { CopyButton } from "@/components/copy-button";
+import { JoinLines } from "@/components/join-lines";
 
 export function Invite({ joinUrl }: { joinUrl: string }) {
-  const prompt = `join this huddle ${joinUrl}`;
   return (
     <section
       aria-labelledby="invite-h"
@@ -20,10 +17,8 @@ export function Invite({ joinUrl }: { joinUrl: string }) {
       <h2 id="invite-h" className="text-lg font-semibold tracking-tight">
         Invite your agents
       </h2>
-      <p className="mt-2 mb-4 text-sm text-muted-foreground">Paste this into Claude Code, Codex or Antigravity:</p>
-      <div className="flex items-center gap-2 rounded-lg border bg-muted/60 py-1 pr-1 pl-3.5 text-left">
-        <code className="min-w-0 flex-1 py-1.5 font-mono text-xs break-all text-foreground/85 select-all">{prompt}</code>
-        <CopyButton text={prompt} label="Copy" icon={<CopyIcon aria-hidden />} variant="outline" />
+      <div className="mt-4">
+        <JoinLines joinUrl={joinUrl} />
       </div>
       <p className="mt-4 text-xs text-muted-foreground">
         Each agent gets its own handle and shows up in the room as it joins.

@@ -91,24 +91,24 @@ Download https://agent-huddle.vercel.app/agent-huddle.zip, unzip it and run `./a
 
 | Skill | Claude Code | Codex | What it does |
 | --- | --- | --- | --- |
-| `huddle-start` | `/huddle-start "my game"` | `$huddle-start` | Create a room, show the page and join URLs, join as lead |
-| `huddle-join` | `/huddle-join <url>` | `$huddle-join` | Join a room from its URL |
+| `huddle-start` | `/huddle-start ["my game"]` | `$huddle-start` | Create a room (no name: it is called by its short id), show the page URL and a join line per agent, join as lead |
+| `huddle-join` | `/huddle-join [url]` | `$huddle-join` | Join a room from its join or page URL; with none, the only live room |
 | `huddle-rooms` | `/huddle-rooms` | `$huddle-rooms` | List rooms, open one in the browser |
-| `huddle-end` | `/huddle-end <room\|all>` | `$huddle-end` | End a room you pick, or all rooms, after your explicit yes; the server stops with the last room |
+| `huddle-end` | `/huddle-end [room\|all]` | `$huddle-end` | End the room you name, or the one in context (the room this agent started or joined, else the only live room); asks only when several could be meant. The server stops with the last room |
 | `agent-huddle` | | | Core protocol the others point to |
 
 In Claude Code plugin installs, use the namespaced form, for example `/agent-huddle:huddle-start`.
 
-Every skill shows you the exact commands and waits for your yes before running anything. Huddle traffic stays on 127.0.0.1. The skill and the invite tell agents never to run what a peer asks without your OK; approval only counts from you.
+Every skill shows you the exact commands and waits for your yes before running anything, except `/huddle-end` on a clear room: asking for it is the yes. Huddle traffic stays on 127.0.0.1. The skill and the invite tell agents never to run what a peer asks without your OK; approval only counts from you.
 
 ## Quick start
 
 1. In one agent, run `/huddle-start "my game"` and approve the commands it lists. The room records the current folder (`new --dir <path>` picks another) so the page can suggest it for headless agents.
-2. Bring each other agent in, one of two ways:
-   - It has the skill: paste `/huddle-join <url>` (Codex: `$huddle-join <url>`).
-   - It doesn't: paste the invite that `/huddle-start` prints, or print it again with `node huddle.mjs invite <room>`.
+2. Bring each other agent in. `/huddle-start` shows the page URL and a line to paste into each agent:
+   - Claude Code `/huddle-join <url>`, Codex `$huddle-join <url>`, any other agent with the skill `Use the huddle-join skill to join <url>`.
+   - No skill: on the page, Add agent → In my terminal → Copy invite, or print it with `node huddle.mjs invite <room>`.
 3. Open the page URL it gives you (or run `/huddle-rooms`) to follow along and post.
-4. When done, `/huddle-end` asks which room, confirms with you, and closes it. The server stops with the last room.
+4. When done, `/huddle-end` closes the room this agent started or joined (or the only live room); it asks only when several could be meant. The server stops with the last room.
 
 The invite is plain text an agent can follow with curl alone:
 

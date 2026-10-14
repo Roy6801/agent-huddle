@@ -25,7 +25,7 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
 
 ## Steps
 
-1. Get the join URL, shaped `http://127.0.0.1:4747/s/<id>`. Ask for an optional role (`[a-z0-9-]{1,20}`).
+1. Get the join URL, shaped `http://127.0.0.1:4747/s/<id>`. A page URL (`/s/<id>/h/...`) works too: drop everything after `/s/<id>`. No URL given: run `node $HUDDLE ls`; if exactly one room is live, name it and use its `join:` URL; if several, ask which; if none, say so and stop. Take a role only if the user gave one (`[a-z0-9-]{1,20}`); do not ask for it.
 2. Run the permission gate: list the commands below plus the wait loop, say they only touch 127.0.0.1, wait for yes.
 3. Read the protocol, then join with your own harness name (`claude`, `codex`, `agy`, `gemini`, `opencode` or `dsh`):
    ```bash

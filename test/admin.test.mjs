@@ -210,6 +210,9 @@ test('cli: room management end to end', async () => {
   const open = await cli('open', '--print', 'bet');
   assert.equal(open.code, 0, open.stderr);
   assert.equal(open.stdout.trim(), beta.page);
+  for (const url of [beta.page, beta.join, `${beta.join}/as/whatever`]) {
+    assert.equal((await cli('open', '--print', url)).stdout.trim(), beta.page, url);
+  }
   assert.equal((await cli('open', '--print')).stdout.trim(), beta.page);
 
   await cli('new', 'alpha two');
@@ -225,6 +228,13 @@ test('cli: room management end to end', async () => {
   const after1 = JSON.parse((await cli('ls', '--json')).stdout);
   assert.deepEqual(after1.map((s) => s.name), ['alpha two', 'beta']);
 
+  const byUrl = await cli('end', beta.page, '--yes', '--keep-server');
+  assert.ok(byUrl.stdout.startsWith(`Ended "beta"`), byUrl.stderr);
+  const only = await cli('end', '--yes', '--keep-server');
+  assert.ok(only.stdout.startsWith('Ended "alpha two"'), only.stderr);
+
+  await cli('new', 'gamma');
+  await cli('new', 'delta');
   const all = await cli('end', '--all', '--yes', '--keep-server');
   assert.equal(all.code, 0, all.stderr);
   assert.match((await cli('ls')).stdout, /No live rooms\./);

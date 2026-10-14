@@ -30,7 +30,7 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
    ```bash
    node $HUDDLE ls
    ```
-3. Offer to open a room's page in the browser (a room is an id, id prefix or name):
+3. Offer to open a room's page in the browser. A room is an id, id prefix, name or any room URL; with none given, use the room you started or joined in this conversation, else the only live room, else ask:
    ```bash
    node $HUDDLE open <room>
    node $HUDDLE open --print <room>   # only print the URL
