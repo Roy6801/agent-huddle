@@ -50,6 +50,8 @@ const HISTORY_GAP = 40_000;
 const EMPTY: RoomState = {
   name: "moonhop",
   joinUrl: "http://127.0.0.1:4747/s/moonhop",
+  folder: "/Users/you/code/moonhop",
+  worker: "/Users/you/.claude/skills/agent-huddle/huddle.mjs",
   agents: [],
   tasks: [],
   asks: [],

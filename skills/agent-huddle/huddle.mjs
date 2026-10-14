@@ -117,6 +117,14 @@ function parseRoundCap(v) {
   throw new HttpError(400, 'roundCap must be a whole number from 1 to 50, or "off"');
 }
 
+function parseFolder(v) {
+  if (v === undefined || v === null) return null;
+  if (typeof v !== 'string' || v.length > 1024 || !path.isAbsolute(v)) {
+    throw new HttpError(400, 'folder must be an absolute path of at most 1024 characters');
+  }
+  return v;
+}
+
 export function createHuddle(opts = {}) {
   const {
     idleMs = 900000,
@@ -183,7 +191,7 @@ export function createHuddle(opts = {}) {
 
   // ---- room state ----
 
-  function createRoom(name, cap = roundCap) {
+  function createRoom(name, cap = roundCap, folder = null) {
     const s = {
       id: newToken(),
       name,
@@ -203,6 +211,7 @@ export function createHuddle(opts = {}) {
       fileBytes: 0,
       agentStreak: 0,
       roundCap: cap,
+      folder,
       humanSeen: 0,
     };
     rooms.set(s.id, s);
@@ -835,7 +844,7 @@ How the room works:
       let name = 'huddle';
       if (body.name !== undefined && body.name !== null) name = cleanText(body.name, MAX_NAME, 'name');
       const cap = body.roundCap === undefined ? roundCap : parseRoundCap(body.roundCap);
-      const s = createRoom(name, cap);
+      const s = createRoom(name, cap, parseFolder(body.folder));
       return sendJson(res, 200, {
         id: s.id,
         name: s.name,
@@ -1010,6 +1019,8 @@ How the room works:
         asks: s.asks,
         roundCap: s.roundCap,
         agentStreak: s.agentStreak,
+        folder: s.folder,
+        worker: THIS_FILE,
       });
     }
     if (method === 'POST' && key === 'api/post') return sendJson(res, 200, postFromHuman(s, body));
@@ -1705,7 +1716,14 @@ function inviteText(name, join) {
 async function newRoom(args) {
   const words = [];
   let roundCap;
+  let dir = process.cwd();
   for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--dir' || args[i].startsWith('--dir=')) {
+      const value = args[i] === '--dir' ? args[++i] : args[i].slice(6);
+      if (!value) throw new Error('--dir needs a folder path');
+      dir = path.resolve(value);
+      continue;
+    }
     let raw;
     if (args[i] === '--round-cap') raw = args[++i];
     else if (args[i].startsWith('--round-cap=')) raw = args[i].slice(12);
@@ -1723,7 +1741,7 @@ async function newRoom(args) {
   const res = await fetch(`${base}/new`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ ...(name && { name }), ...(roundCap !== undefined && { roundCap }) }),
+    body: JSON.stringify({ ...(name && { name }), ...(roundCap !== undefined && { roundCap }), folder: dir }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `request failed (${res.status})`);
@@ -2283,8 +2301,11 @@ const COMMANDS = {
   new: {
     group: 'Rooms',
     summary: 'create a room (starts the server if needed), print join and page URLs',
-    usage: 'new [name] [--round-cap N|off]',
-    options: ['--round-cap N|off  agent posts in a row before the room pauses (1-50, default 10)'],
+    usage: 'new [name] [--round-cap N|off] [--dir <path>]',
+    options: [
+      '--round-cap N|off  agent posts in a row before the room pauses (1-50, default 10)',
+      '--dir <path>  folder the page suggests for headless agents (default: current directory)',
+    ],
     example: 'node huddle.mjs new "api redesign"',
   },
   ls: {

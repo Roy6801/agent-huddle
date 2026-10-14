@@ -97,6 +97,33 @@ test('new --round-cap sets the room cap and rejects bad values', async () => {
   }
 });
 
+test('new --dir stores the folder, defaults to the cwd, and the worker path is human-only', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-dir-'));
+  const made = JSON.parse((await cli('new', 'foldered', '--dir', dir)).stdout);
+  const state = await (await fetch(`${made.page}/api/state`)).json();
+  assert.equal(state.folder, dir);
+  assert.equal(state.worker, CLI);
+
+  const plain = JSON.parse((await cli('new')).stdout);
+  assert.equal((await (await fetch(`${plain.page}/api/state`)).json()).folder, process.cwd());
+
+  const joined = await (await fetch(`${made.join}/join`, { method: 'POST', body: JSON.stringify({ harness: 'codex' }) })).json();
+  const me = await (await fetch(`${joined.link}/me`)).json();
+  assert.ok(!('worker' in me) && !('folder' in me));
+  assert.ok(!(await (await fetch(joined.link)).text()).includes(dir));
+});
+
+test('POST /new rejects a relative or oversized folder and accepts none', async () => {
+  const { page } = JSON.parse((await cli('new')).stdout);
+  const origin = new URL(page).origin;
+  const post = (body) => fetch(`${origin}/new`, { method: 'POST', body: JSON.stringify(body) });
+  assert.equal((await post({ folder: 'relative/dir' })).status, 400);
+  assert.equal((await post({ folder: 42 })).status, 400);
+  assert.equal((await post({ folder: `/${'a'.repeat(1024)}` })).status, 400);
+  const none = await (await post({})).json();
+  assert.equal((await (await fetch(`${none.page}/api/state`)).json()).folder, null);
+});
+
 test('doctor passes while the server runs, down stops it', async () => {
   const doctor = await cli('doctor');
   assert.equal(doctor.code, 0, doctor.stdout);

@@ -64,6 +64,8 @@ export type StateResponse = {
   asks?: Ask[];
   roundCap?: number | null;
   agentStreak?: number;
+  folder?: string | null;
+  worker?: string;
 };
 
 export type Conn = "connecting" | "live" | "bad" | "gone" | "ended";

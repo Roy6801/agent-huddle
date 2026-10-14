@@ -6,6 +6,10 @@ import type { Agent, Ask, Conn, Message, SharedFile, StateResponse, Task } from 
 export type RoomState = {
   name: string;
   joinUrl: string;
+  /** Where the room was created; suggested for headless agents. */
+  folder?: string | null;
+  /** Absolute path of the server's huddle.mjs, for the headless command. */
+  worker?: string;
   agents: Agent[];
   tasks: Task[];
   asks: Ask[];
@@ -84,6 +88,8 @@ export function useRoomState() {
           const name = data.room?.name ?? s.name;
           const joinUrl = data.room?.join ?? s.joinUrl;
           const roundCap = data.roundCap === null || typeof data.roundCap === "number" ? data.roundCap : s.roundCap;
+          const folder = data.folder ?? s.folder;
+          const worker = data.worker ?? s.worker;
           const streak = data.agentStreak ?? 0;
           const unchanged =
             s.loaded &&
@@ -96,6 +102,8 @@ export function useRoomState() {
             name === s.name &&
             joinUrl === s.joinUrl &&
             roundCap === s.roundCap &&
+            folder === s.folder &&
+            worker === s.worker &&
             streak === s.streak;
           if (unchanged) return s;
           return {
@@ -103,6 +111,8 @@ export function useRoomState() {
             name,
             joinUrl,
             roundCap,
+            folder,
+            worker,
             streak,
             agents: agentsChanged ? agents : s.agents,
             tasks: tasksChanged ? tasks : s.tasks,

@@ -1,7 +1,6 @@
 import {
   CircleStopIcon,
   KeyboardIcon,
-  LinkIcon,
   ListChecksIcon,
   PanelLeftIcon,
   PanelRightIcon,
@@ -9,13 +8,13 @@ import {
 } from "lucide-react";
 
 import { AgentStack } from "@/components/agents-panel";
-import { CopyButton } from "@/components/copy-button";
+import { AddAgent } from "@/components/add-agent";
 import { CapRing, capText } from "@/components/round-cap";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
 import { usePanels } from "@/hooks/use-panels";
-import { useRoom, useSource } from "@/hooks/use-room";
+import { useRoom } from "@/hooks/use-room";
 import { isMac, MOD } from "@/lib/keyboard";
 import type { Conn } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -107,7 +106,6 @@ export function Header({
   onShowShortcuts: () => void;
 }) {
   const { state, atCap } = useRoom();
-  const { canCopyJoin } = useSource();
   const { openBoard } = usePanels();
   const board = useSidebar();
   const boardOpen = board.isMobile ? board.openMobile : board.open;
@@ -165,17 +163,7 @@ export function Header({
         )}
         <Connection conn={conn} className="hidden md:inline-flex" />
         <BoardButton expanded={boardOpen} className="md:hidden" />
-        <CopyButton
-          text={joinUrl}
-          label="Copy join link"
-          title={joinUrl ? `Copy join link: ${joinUrl}` : undefined}
-          icon={<LinkIcon aria-hidden />}
-          labelClassName="sr-only md:@xl:not-sr-only"
-          variant="outline"
-          size="sm"
-          disabled={ended || !joinUrl || !canCopyJoin}
-          className="max-md:size-11 max-md:border-transparent max-md:bg-transparent max-md:px-0 max-md:dark:border-transparent max-md:dark:bg-transparent"
-        />
+        <AddAgent />
         <Button
           variant="ghost"
           size="icon-sm"
