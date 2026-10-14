@@ -197,16 +197,25 @@ async function addFolder(rows, env) {
 }
 
 async function chooseTargets(rows, env) {
+  const shared = rows.findIndex((row) => row.shared);
   const options = folderOptions(rows, env);
+  if (shared >= 0) {
+    const row = rows[shared];
+    options.unshift({ value: shared, label: `${row.label.padEnd(12)} ${tilde(row.path, env)}`, hint: 'shared copy, always installed' });
+  }
   const picked = await ask(
     p.multiselect({
       message: 'Install the skills for',
       options,
-      initialValues: options.filter((o) => rows[o.value].selected).map((o) => o.value),
+      initialValues: options.filter((o) => rows[o.value].selected || o.value === shared).map((o) => o.value),
       required: false,
     }),
   );
   for (const o of options) rows[o.value].selected = picked.includes(o.value);
+  if (shared >= 0 && !rows[shared].selected) {
+    rows[shared].selected = true;
+    p.log.warn(`Codex reads the shared copy ${tilde(rows[shared].path, env)}, so it is always installed.`);
+  }
   for (;;) {
     const choice = await ask(
       p.select({

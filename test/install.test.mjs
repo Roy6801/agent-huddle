@@ -164,6 +164,13 @@ test('detect: claude on PATH without a config dir, nothing at all, and the other
   assert.equal(rows[3].detail, '~/.gemini/settings.json');
   assert.equal(rows[4].detail, 'opencode on PATH');
 
+  const custom = tmp();
+  claudeDir(custom, '.claude-work');
+  const withCustom = detect(envFor(custom, { agents: ['claude'] }));
+  assert.deepEqual(summary(withCustom.filter((r) => r.agent === 'claude')), [
+    `claude x ${join(custom, '.claude-work', 'skills')}`,
+  ]);
+
   const none = detect(envFor(tmp()));
   assert.equal(none[0].found, false);
   assert.equal(none[0].selected, false);

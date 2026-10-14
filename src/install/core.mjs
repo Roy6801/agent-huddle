@@ -127,7 +127,6 @@ export function claudeDirs(env = process.env) {
   if (env.CLAUDE_CONFIG_DIR) candidates.push({ dir: env.CLAUDE_CONFIG_DIR, reason: 'CLAUDE_CONFIG_DIR', pinned: true });
   const dotClaude = path.join(home, '.claude');
   if (isDir(dotClaude)) candidates.push({ dir: dotClaude, reason: 'folder exists' });
-  else if (!env.CLAUDE_CONFIG_DIR && onPath('claude', env)) candidates.push({ dir: dotClaude, reason: 'claude on PATH' });
   let names = [];
   try {
     names = fs.readdirSync(home).sort();
@@ -137,6 +136,8 @@ export function claudeDirs(env = process.env) {
       candidates.push({ dir: path.join(home, name), reason: 'has settings.json' });
     }
   }
+  // claude on PATH with no config dir yet: it will use ~/.claude on first run.
+  if (!candidates.length && onPath('claude', env)) candidates.push({ dir: dotClaude, reason: 'claude on PATH' });
   const seen = new Set();
   const dirs = [];
   for (const c of candidates) {

@@ -1718,7 +1718,6 @@ function claudeDirs(env = process.env) {
   if (env.CLAUDE_CONFIG_DIR) candidates.push({ dir: env.CLAUDE_CONFIG_DIR, reason: "CLAUDE_CONFIG_DIR", pinned: true });
   const dotClaude = path.join(home, ".claude");
   if (isDir(dotClaude)) candidates.push({ dir: dotClaude, reason: "folder exists" });
-  else if (!env.CLAUDE_CONFIG_DIR && onPath("claude", env)) candidates.push({ dir: dotClaude, reason: "claude on PATH" });
   let names = [];
   try {
     names = fs.readdirSync(home).sort();
@@ -1729,6 +1728,7 @@ function claudeDirs(env = process.env) {
       candidates.push({ dir: path.join(home, name), reason: "has settings.json" });
     }
   }
+  if (!candidates.length && onPath("claude", env)) candidates.push({ dir: dotClaude, reason: "claude on PATH" });
   const seen = /* @__PURE__ */ new Set();
   const dirs = [];
   for (const c2 of candidates) {
@@ -2186,16 +2186,25 @@ async function addFolder(rows, env) {
   log.step(`${row.label} \u2192 ${tilde(folder, env)} (custom)`);
 }
 async function chooseTargets(rows, env) {
+  const shared = rows.findIndex((row) => row.shared);
   const options = folderOptions(rows, env);
+  if (shared >= 0) {
+    const row = rows[shared];
+    options.unshift({ value: shared, label: `${row.label.padEnd(12)} ${tilde(row.path, env)}`, hint: "shared copy, always installed" });
+  }
   const picked = await ask(
     multiselect({
       message: "Install the skills for",
       options,
-      initialValues: options.filter((o) => rows[o.value].selected).map((o) => o.value),
+      initialValues: options.filter((o) => rows[o.value].selected || o.value === shared).map((o) => o.value),
       required: false
     })
   );
   for (const o of options) rows[o.value].selected = picked.includes(o.value);
+  if (shared >= 0 && !rows[shared].selected) {
+    rows[shared].selected = true;
+    log.warn(`Codex reads the shared copy ${tilde(rows[shared].path, env)}, so it is always installed.`);
+  }
   for (; ; ) {
     const choice = await ask(
       select({
