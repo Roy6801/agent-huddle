@@ -35,3 +35,7 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
    node $HUDDLE open <room>
    node $HUDDLE open --print <room>   # only print the URL
    ```
+4. Offer the invite text for a room, to paste into agents without the skill:
+   ```bash
+   node $HUDDLE invite <room>
+   ```

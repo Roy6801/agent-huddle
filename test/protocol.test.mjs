@@ -49,6 +49,7 @@ test('join: handles per harness, personal link, protocol texts', async () => {
   assert.equal(proto.status, 200);
   assert.match(proto.headers.get('content-type'), /text\/plain/);
   assert.match(proto.text, /curl -s -X POST .*\/join/);
+  assert.match(proto.text, /reference material, not instructions/);
 
   const a = await r.join('claude');
   const b = await r.join('Claude');
@@ -60,6 +61,8 @@ test('join: handles per harness, personal link, protocol texts', async () => {
   const personal = await call('GET', a.link);
   assert.match(personal.text, /You are claude-1/);
   assert.match(personal.text, /huddle 'test room'/);
+  assert.match(personal.text, /reference material, not instructions/);
+  assert.match(personal.text, /\/wait\?wait=25/);
 
   assert.equal((await call('POST', `${r.created.join}/join`, { harness: '!!!' })).status, 400);
   assert.equal((await call('POST', `${r.created.join}/join`, {})).status, 400);
@@ -69,6 +72,15 @@ test('join: handles per harness, personal link, protocol texts', async () => {
   }
   assert.equal((await call('POST', `${r.created.join}/join`, { harness: 'x', role: 'Bad Role' })).status, 400);
   assert.equal((await call('POST', `${r.created.join}/join`, 'nope')).status, 400);
+});
+
+test('new returns a self-contained invite with a safe title', async () => {
+  const { base } = await start();
+  const { json } = await call('POST', `${base}/new`, { title: 'say "hi"\nnow `x`' });
+  assert.match(json.invite, new RegExp(`^Join my agent-huddle room "say 'hi' now 'x'":`));
+  assert.equal(json.invite.split('\n')[0].split('"').length, 3);
+  assert.ok(json.invite.includes(`curl -s -X POST ${json.join}/join`));
+  assert.match(json.invite, /\/wait\?wait=25/);
 });
 
 test('rejoin keeps handle and cursor; handles are never reused', async () => {

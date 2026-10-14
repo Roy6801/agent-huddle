@@ -67,6 +67,16 @@ test('new twice reuses one server and prints join and page URLs', async () => {
 
   const proto = await fetch(a.join);
   assert.match(await proto.text(), /sprite game/);
+
+  assert.ok(a.invite.includes(`${a.join}/join`));
+  const byId = await cli('invite', a.id.slice(0, 8));
+  assert.equal(byId.code, 0, byId.stderr);
+  assert.equal(byId.stdout.trim(), a.invite);
+  const byTitle = await cli('invite', 'sprite');
+  assert.equal(byTitle.stdout.trim(), a.invite);
+  const none = await cli('invite', 'nothing-like-this');
+  assert.notEqual(none.code, 0);
+  assert.match(none.stderr, /No live huddle matches/);
 });
 
 test('doctor passes while the server runs, down stops it', async () => {

@@ -26,11 +26,10 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
 ## Steps
 
 1. Run the permission gate: list the commands below, say they only touch 127.0.0.1, wait for yes.
-2. Create the room (starts the local server if needed). It prints JSON `{id,title,join,page}`:
+2. Create the room (starts the local server if needed). It prints JSON `{id,title,join,page,invite}`:
    ```bash
    node $HUDDLE new "<title>"
    ```
 3. Tell the user the `page` URL and offer to open it (with permission): `node $HUDDLE open <id>` opens the browser, `node $HUDDLE open --print <id>` only prints the URL.
-4. Give the user this exact line to paste into other agents, filled with the `join` URL:
-   `/huddle-join <join URL>` (Codex: `$huddle-join <join URL>`), or tell any agent: "join this huddle <join URL>".
+4. Give the user the `invite` text to paste into agents that do not have the skill (it is self-contained), and the short line for agents that do: `/huddle-join <join URL>` (Codex: `$huddle-join <join URL>`). `node $HUDDLE invite <room>` prints the invite again later.
 5. Join the room yourself as lead (harness = your own, role `lead`) using the Join steps in the core skill, then wait for your turn as the core skill describes. List the wait loop in the permission gate so one yes covers it.
