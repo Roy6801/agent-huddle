@@ -1852,7 +1852,11 @@ function detect(env = process.env) {
   }
   return rows;
 }
-var sharedRow = (rows) => rows.find((r2) => r2.shared && r2.agent === "codex");
+function sharedReaders(rows) {
+  const names = [...new Set(rows.filter((r2) => r2.shared).map((r2) => r2.label))];
+  if (names.length < 2) return `${names[0] ?? "No agent"} reads`;
+  return `${names.slice(0, -1).join(", ")} and ${names.at(-1)} read`;
+}
 function newAgentsLine(rows, env = process.env) {
   const fresh = rows.filter((r2) => r2.isNew);
   if (!fresh.length) return "";
@@ -2174,8 +2178,8 @@ function rowHint(row) {
 function detectedLines(rows) {
   return rows.filter((r2) => !r2.added).map((r2) => `${r2.found ? "\u2713" : "-"} ${r2.label.padEnd(WIDTH)} ${r2.detail}`);
 }
-function sharedLine(env) {
-  return `The shared copy ${tilde(locations(env).shared, env)} is always installed (Codex and DeepSeek Harness read it directly).`;
+function sharedLine(rows, env) {
+  return `The shared copy ${tilde(locations(env).shared, env)} is always installed (${sharedReaders(rows)} it directly).`;
 }
 function prepareRows(rows, opts, env) {
   if (opts.dirs.length) return applyDirs(rows, opts.dirs, env);
@@ -2206,7 +2210,7 @@ async function runPlain(opts, env, agent) {
   }
   console.log("Agents:");
   for (const line of detectedLines(rows)) console.log(`  ${line}`);
-  console.log(`  ${sharedLine(env)}`);
+  console.log(`  ${sharedLine(rows, env)}`);
   for (const w of warnings) console.log(`! ${w}`);
   const fresh = newAgentsLine(rows, env);
   if (fresh) console.log(`! ${fresh}`);
@@ -2249,7 +2253,11 @@ async function ask(prompt) {
   return value;
 }
 function folderOptions(rows, env) {
-  return rows.map((row, index) => ({ row, index })).filter(({ row }) => !row.shared).map(({ row, index }) => ({ value: index, label: `${row.label.padEnd(WIDTH)} ${tilde(row.path, env)}`, hint: rowHint(row) }));
+  return rows.map((row, index) => ({ row, index })).sort((a2, b) => Number(b.row.shared) - Number(a2.row.shared)).map(({ row, index }) => ({
+    value: index,
+    label: `${row.label.padEnd(WIDTH)} ${tilde(row.path, env)}`,
+    hint: row.shared ? "shared copy, always installed" : rowHint(row)
+  }));
 }
 async function askFolder(rows, agent, skip, initialValue, env) {
   let value = initialValue;
@@ -2276,7 +2284,7 @@ async function askFolder(rows, agent, skip, initialValue, env) {
   }
 }
 async function editFolder(rows, env) {
-  const index = await ask(select({ message: "Edit which folder?", options: folderOptions(rows, env) }));
+  const index = await ask(select({ message: "Edit which folder?", options: folderOptions(rows, env).filter((o) => !rows[o.value].shared) }));
   const row = rows[index];
   const folder = await askFolder(rows, row.agent, index, tilde(row.path, env), env);
   if (folder === row.path) return;
@@ -2293,24 +2301,18 @@ async function addFolder(rows, env) {
   log.step(`${row.label} \u2192 ${tilde(folder, env)} (custom)`);
 }
 async function chooseTargets(rows, env) {
-  const shared = rows.indexOf(sharedRow(rows));
   const options = folderOptions(rows, env);
-  if (shared >= 0) {
-    const row = rows[shared];
-    options.unshift({ value: shared, label: `${row.label.padEnd(WIDTH)} ${tilde(row.path, env)}`, hint: "shared copy, always installed" });
-  }
   const picked = await ask(
     multiselect({
       message: "Install the skills for",
       options,
-      initialValues: options.filter((o) => rows[o.value].selected || o.value === shared).map((o) => o.value),
+      initialValues: options.filter((o) => rows[o.value].selected || rows[o.value].shared).map((o) => o.value),
       required: false
     })
   );
-  for (const o of options) rows[o.value].selected = picked.includes(o.value);
-  if (shared >= 0 && !rows[shared].selected) {
-    rows[shared].selected = true;
-    log.warn(`Codex reads the shared copy ${tilde(rows[shared].path, env)}, so it is always installed.`);
+  for (const o of options) if (!rows[o.value].shared) rows[o.value].selected = picked.includes(o.value);
+  if (options.some((o) => rows[o.value].shared && !picked.includes(o.value))) {
+    log.warn(`${sharedReaders(rows)} the shared copy ${tilde(locations(env).shared, env)}, so it is always installed.`);
   }
   for (; ; ) {
     const choice = await ask(
@@ -2343,7 +2345,7 @@ async function runInteractive(env) {
   spin.stop(`${SKILLS.length} skills ready`);
   const rows = detect(env);
   const warnings = prepareRows(rows, { dirs: [] }, env);
-  log.info(["Agents:", ...detectedLines(rows), sharedLine(env)].join("\n"));
+  log.info(["Agents:", ...detectedLines(rows), sharedLine(rows, env)].join("\n"));
   for (const w of warnings) log.warn(w);
   await chooseTargets(rows, env);
   const plan = buildPlan(rows, env);

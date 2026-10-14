@@ -6,7 +6,7 @@ import * as p from '@clack/prompts';
 import { determineAgent } from '@vercel/detect-agent';
 import {
   AGENTS, DEFAULT_BASE_URL, SKILLS, applyDirs, applyPlan, applySaved, buildPlan, claudeWarning, customRow, detect,
-  expandPath, labelOf, loadSaved, locations, newAgentsLine, nextSteps, pathError, planLines, saveTargets, sharedRow,
+  expandPath, labelOf, loadSaved, locations, newAgentsLine, nextSteps, pathError, planLines, saveTargets, sharedReaders,
   stageSkills, tilde, uninstall, uninstallPlan,
 } from './core.mjs';
 
@@ -72,8 +72,8 @@ function detectedLines(rows) {
     .map((r) => `${r.found ? '✓' : '-'} ${r.label.padEnd(WIDTH)} ${r.detail}`);
 }
 
-function sharedLine(env) {
-  return `The shared copy ${tilde(locations(env).shared, env)} is always installed (Codex and DeepSeek Harness read it directly).`;
+function sharedLine(rows, env) {
+  return `The shared copy ${tilde(locations(env).shared, env)} is always installed (${sharedReaders(rows)} it directly).`;
 }
 
 // Applies --dir or the saved targets to the detected rows. Returns warning lines.
@@ -109,7 +109,7 @@ async function runPlain(opts, env, agent) {
   }
   console.log('Agents:');
   for (const line of detectedLines(rows)) console.log(`  ${line}`);
-  console.log(`  ${sharedLine(env)}`);
+  console.log(`  ${sharedLine(rows, env)}`);
   for (const w of warnings) console.log(`! ${w}`);
   const fresh = newAgentsLine(rows, env);
   if (fresh) console.log(`! ${fresh}`);
@@ -149,11 +149,16 @@ async function ask(prompt) {
   return value;
 }
 
+// One option per agent and folder; agents that read the shared copy come first and stay checked.
 function folderOptions(rows, env) {
   return rows
     .map((row, index) => ({ row, index }))
-    .filter(({ row }) => !row.shared)
-    .map(({ row, index }) => ({ value: index, label: `${row.label.padEnd(WIDTH)} ${tilde(row.path, env)}`, hint: rowHint(row) }));
+    .sort((a, b) => Number(b.row.shared) - Number(a.row.shared))
+    .map(({ row, index }) => ({
+      value: index,
+      label: `${row.label.padEnd(WIDTH)} ${tilde(row.path, env)}`,
+      hint: row.shared ? 'shared copy, always installed' : rowHint(row),
+    }));
 }
 
 // Asks for a folder until it is valid and any Claude warning is accepted. Returns the expanded path.
@@ -183,7 +188,7 @@ async function askFolder(rows, agent, skip, initialValue, env) {
 }
 
 async function editFolder(rows, env) {
-  const index = await ask(p.select({ message: 'Edit which folder?', options: folderOptions(rows, env) }));
+  const index = await ask(p.select({ message: 'Edit which folder?', options: folderOptions(rows, env).filter((o) => !rows[o.value].shared) }));
   const row = rows[index];
   const folder = await askFolder(rows, row.agent, index, tilde(row.path, env), env);
   if (folder === row.path) return;
@@ -202,24 +207,18 @@ async function addFolder(rows, env) {
 }
 
 async function chooseTargets(rows, env) {
-  const shared = rows.indexOf(sharedRow(rows));
   const options = folderOptions(rows, env);
-  if (shared >= 0) {
-    const row = rows[shared];
-    options.unshift({ value: shared, label: `${row.label.padEnd(WIDTH)} ${tilde(row.path, env)}`, hint: 'shared copy, always installed' });
-  }
   const picked = await ask(
     p.multiselect({
       message: 'Install the skills for',
       options,
-      initialValues: options.filter((o) => rows[o.value].selected || o.value === shared).map((o) => o.value),
+      initialValues: options.filter((o) => rows[o.value].selected || rows[o.value].shared).map((o) => o.value),
       required: false,
     }),
   );
-  for (const o of options) rows[o.value].selected = picked.includes(o.value);
-  if (shared >= 0 && !rows[shared].selected) {
-    rows[shared].selected = true;
-    p.log.warn(`Codex reads the shared copy ${tilde(rows[shared].path, env)}, so it is always installed.`);
+  for (const o of options) if (!rows[o.value].shared) rows[o.value].selected = picked.includes(o.value);
+  if (options.some((o) => rows[o.value].shared && !picked.includes(o.value))) {
+    p.log.warn(`${sharedReaders(rows)} the shared copy ${tilde(locations(env).shared, env)}, so it is always installed.`);
   }
   for (;;) {
     const choice = await ask(
@@ -254,7 +253,7 @@ async function runInteractive(env) {
 
   const rows = detect(env);
   const warnings = prepareRows(rows, { dirs: [] }, env);
-  p.log.info(['Agents:', ...detectedLines(rows), sharedLine(env)].join('\n'));
+  p.log.info(['Agents:', ...detectedLines(rows), sharedLine(rows, env)].join('\n'));
   for (const w of warnings) p.log.warn(w);
 
   await chooseTargets(rows, env);

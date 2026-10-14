@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   SKILLS, SKILL_FILES, applyDirs, applyPlan, applySaved, buildPlan, customRow, detect, expandPath, loadSaved, newAgentsLine,
-  nextSteps, pathError, planLines, saveTargets, stageSkills, uninstallPlan,
+  nextSteps, pathError, planLines, saveTargets, sharedReaders, stageSkills, uninstallPlan,
 } from '../src/install/core.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -226,6 +226,13 @@ function fakeApp(home, name, inside = '') {
     chmodSync(join(app, inside), 0o755);
   }
 }
+
+test('sharedReaders names every agent whose skills folder is the shared copy', () => {
+  const rows = detect(envFor(tmp(), { agents: [] }));
+  assert.deepEqual(rows.filter((r) => r.shared).map((r) => r.agent), ['codex', 'dsh']);
+  assert.equal(sharedReaders(rows), 'Codex and DeepSeek Harness read');
+  assert.equal(sharedReaders(rows.filter((r) => r.agent !== 'dsh')), 'Codex reads');
+});
 
 test('detect: desktop apps count; Antigravity CLI and app are separate; ~/.gemini alone is neither', () => {
   const home = tmp();

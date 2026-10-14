@@ -259,8 +259,8 @@ export function claudeDirs(env = process.env) {
   return dirs;
 }
 
-// One row per agent (one per Claude config dir). The Codex row is the shared copy; the DeepSeek
-// Harness row reads it too, so it is never a target of its own.
+// One row per agent (one per Claude config dir). Rows of agents that read the shared copy are
+// marked shared: the copy is always installed, so they are never targets of their own.
 export function detect(env = process.env) {
   const rows = [];
   const dirs = claudeDirs(env);
@@ -285,8 +285,12 @@ export function detect(env = process.env) {
   return rows;
 }
 
-// The row that stands for the shared copy (Codex reads it), always installed.
-export const sharedRow = (rows) => rows.find((r) => r.shared && r.agent === 'codex');
+// The agents that read the shared copy, with the verb: "Codex and DeepSeek Harness read".
+export function sharedReaders(rows) {
+  const names = [...new Set(rows.filter((r) => r.shared).map((r) => r.label))];
+  if (names.length < 2) return `${names[0] ?? 'No agent'} reads`;
+  return `${names.slice(0, -1).join(', ')} and ${names.at(-1)} read`;
+}
 
 // One line naming detected agents that are not among the saved targets, or ''.
 export function newAgentsLine(rows, env = process.env) {
