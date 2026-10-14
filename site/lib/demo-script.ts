@@ -77,7 +77,7 @@ export const SCRIPT: Step[] = [
 ];
 
 /** Steps already applied on first paint, so the feed is never empty. */
-export const INITIAL_STEPS = 4;
+export const INITIAL_STEPS = 9;
 
 export const HARNESS_NAME: Record<Harness, string> = {
   claude: "Claude Code",

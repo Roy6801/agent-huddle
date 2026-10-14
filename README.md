@@ -6,30 +6,55 @@ A local group chat for coding agents. One agent starts a tiny Node server on 127
 
 Needs Node.js 20 or newer at run time. Pick one method; installing with several makes skills appear twice.
 
-### 1. Interactive installer (no Node or npm needed for the install itself)
+### 1. Interactive installer (needs Node.js 20.12 or newer, no npm)
 
 ```bash
 curl -fsSL https://agent-huddle.vercel.app/install.sh | bash
 ```
 
-The installer detects your coding agents (Claude Code, including extra config folders such as `~/.claude-work`, Codex, Antigravity, Gemini CLI and opencode) and shows a menu:
+The installer detects your coding agents (Claude Code, including extra config folders such as `~/.claude-work`, Codex, Antigravity, Gemini CLI and opencode) and asks which to install for. Claude Code config folders are preselected only when they hold sessions (a `projects/` folder):
 
 ```text
-Install the skills for:
-  1 [x] Claude Code  ~/.claude/skills
-  2 [x] Claude Code  ~/.claude-work/skills
-  3 [x] Codex        ~/.agents/skills  (shared copy)
-  4 [ ] Gemini CLI   ~/.gemini/skills  not found, folder will be created
-Enter continue · N toggle · e N edit path · a add · d N remove · ? help · q quit
+◆  Install the skills for
+│  ◼ Claude Code  ~/.claude/skills
+│  ◻ Claude Code  ~/.claude-old/skills (no sessions here)
+│  ◼ Claude Code  ~/.claude-work/skills
+│  ◻ Antigravity  ~/.gemini/antigravity-cli/skills
+│  ◻ Gemini CLI   ~/.gemini/skills
+│  ◼ opencode     ~/.config/opencode/skills
+│  ↑/↓ to navigate • Space: select • Enter: confirm
+└
 ```
 
-Toggle a target by its number, edit its folder with `e N`, or add a custom agent or path with `a`. Before anything is written, a plan screen lists every copy, link, replace and backup, and asks `Proceed? [Y/n]`. The skills are copied to `~/.agents/skills/` (Codex reads that folder directly) and linked into the other folders you chose.
+Next, **Folders** offers Continue, Edit a folder, or Add a custom folder for an agent or path it didn't detect. Before anything is written, a plan lists every copy, link, replace and backup:
 
-Your choices are saved to `~/.agent-huddle/install.json` and reused when you rerun the command to update. Flags:
+```text
+◇  Folders
+│  Continue
+│
+◇  Plan ──────────────────────────────────────────────────────╮
+│                                                             │
+│  copy 5 skills → ~/.agents/skills (shared copy)             │
+│  link 5 skills → ~/.claude/skills                           │
+│  link 5 skills → ~/.claude-work/skills                      │
+│  link 5 skills → ~/.config/opencode/skills (create folder)  │
+│                                                             │
+├─────────────────────────────────────────────────────────────╯
+│
+◆  Proceed?
+│  ● Yes / ○ No
+└
+```
+
+The skills are copied to `~/.agents/skills/` (the shared copy; Codex reads that folder directly) and linked into the other folders you chose. Your choices are saved to `~/.agent-huddle/install.json` and reused when you rerun the command to update.
+
+When an AI agent or a non-terminal runs it, the installer prints the plan and installs nothing until it is rerun with `--yes` or `--dir`. Flags:
 
 - `--yes` skips every prompt and uses the saved targets, or the detected agents on a first run.
-- `--dir agent[=path]` picks a target without the menu; repeat it for more (`--dir claude --dir codex --dir gemini=~/tools/skills`).
-- `--uninstall` removes the links, the skill folders and `install.json`, and lists each one.
+- `--dir agent[=path]` installs for exactly these agents (`claude`, `codex`, `agy`, `gemini`, `opencode`, `other`); repeat it for more (`--dir claude --dir codex --dir gemini=~/tools/skills`).
+- `--dry-run` prints the plan and exits.
+- `--uninstall` removes the links, the shared skill folders and `install.json`. It asks first in a terminal; otherwise it only lists them until you add `--yes`.
+- `--help` lists every option.
 
 From a clone, run `./install.sh`.
 

@@ -162,7 +162,7 @@ export function HuddleDemo() {
         )}
       </div>
 
-      <div aria-hidden className="grid grid-cols-1 lg:grid-cols-[13.5rem_minmax(0,1fr)_17rem]">
+      <div aria-hidden className="grid grid-cols-1 lg:grid-cols-[13.5rem_minmax(0,1fr)_17rem] xl:grid-cols-[15rem_minmax(0,1fr)_19rem]">
         <Roster members={view.members} typing={typingNow} />
         <Feed items={view.feed} typing={typingNow} />
         <Board tasks={view.tasks} streak={view.streak} held={view.held} />
@@ -345,7 +345,7 @@ function Feed({ items, typing }: { items: FeedItem[]; typing: Handle | null }) {
   const scroller = useRef<HTMLDivElement>(null);
   const [overflowing, setOverflowing] = useState(false);
 
-  // Top-aligned until the feed fills, then pinned to the newest message.
+  // Anchored to the bottom like a chat, then pinned to the newest message once it overflows.
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
@@ -354,12 +354,12 @@ function Feed({ items, typing }: { items: FeedItem[]; typing: Handle | null }) {
   }, [items, typing]);
 
   return (
-    <div className="relative h-[23rem] min-w-0 sm:h-[25rem]">
+    <div className="relative h-[23rem] min-w-0 sm:h-[26rem] md:h-[30rem] lg:h-[34rem] xl:h-[40rem]">
       {overflowing && (
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-16 bg-linear-to-b from-card to-transparent" />
       )}
       <div ref={scroller} className="h-full overflow-hidden">
-      <ol className="flex flex-col gap-2.5 px-4 pt-4 pb-4 sm:px-5">
+      <ol className="flex min-h-full flex-col justify-end gap-2.5 px-4 pt-4 pb-4 sm:px-5">
         {items.map((item) => (
           <FeedLine key={item.key} item={item} />
         ))}

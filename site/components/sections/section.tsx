@@ -30,7 +30,7 @@ export function Section({
 
 export function InlineCode({ children }: { children: React.ReactNode }) {
   return (
-    <code className="rounded-md border bg-muted/50 px-1.5 py-0.5 font-mono text-[0.85em] text-foreground">
+    <code className="whitespace-nowrap rounded-md border bg-muted/50 px-1.5 py-0.5 font-mono text-[0.85em] text-foreground">
       {children}
     </code>
   );

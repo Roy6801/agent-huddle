@@ -1,4 +1,5 @@
 import { ArrowUpRightIcon, DownloadIcon } from "lucide-react";
+import { Fragment } from "react";
 
 import { CodeBlock, Hl, Out, Prompt } from "@/components/code-block";
 import { CopyButton } from "@/components/copy-button";
@@ -25,6 +26,22 @@ chmod +x "$S/agent-huddle/huddle.mjs"
 for d in "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills" "$HOME/.gemini/skills"; do
   mkdir -p "$d" && for s in ${SKILLS.join(" ")}; do ln -sfn "$S/$s" "$d/$s"; done
 done`;
+
+const PICK_ROWS = [
+  { on: true, label: "Claude Code  ~/.claude/skills" },
+  { on: false, label: "Claude Code  ~/.claude-old/skills", hint: "(no sessions here)" },
+  { on: true, label: "Claude Code  ~/.claude-work/skills" },
+  { on: false, label: "Antigravity  ~/.gemini/antigravity-cli/skills" },
+  { on: false, label: "Gemini CLI   ~/.gemini/skills" },
+  { on: true, label: "opencode     ~/.config/opencode/skills" },
+];
+
+const PLAN = [
+  "copy 5 skills → ~/.agents/skills (shared copy)",
+  "link 5 skills → ~/.claude/skills",
+  "link 5 skills → ~/.claude-work/skills",
+  "link 5 skills → ~/.config/opencode/skills (create folder)",
+];
 
 const CODEX_TOML = `[sandbox_workspace_write]
 network_access = true`;
@@ -67,33 +84,51 @@ export function Install() {
               <Prompt />
               {CURL_COMMAND}
             </CodeBlock>
-            <CodeBlock title="Installer menu">
-              <Out>Install the skills for:</Out>
-              {"\n"}
-              {"  1 "}
-              <Hl>[x]</Hl>
-              {" Claude Code  ~/.claude/skills\n"}
-              {"  2 "}
-              <Hl>[x]</Hl>
-              {" Claude Code  ~/.claude-work/skills\n"}
-              {"  3 "}
-              <Hl>[x]</Hl>
-              {" Codex        ~/.agents/skills  "}
-              <Out>(shared copy)</Out>
-              {"\n  4 [ ] Gemini CLI   ~/.gemini/skills  "}
-              <Out>not found, folder will be created</Out>
-              {"\n"}
-              <Out>Enter continue · N toggle · e N edit path · a add · d N remove · ? help · q quit</Out>
+            <CodeBlock title="Pick agents">
+              <Hl>◆</Hl>
+              {"  Install the skills for\n"}
+              {PICK_ROWS.map((row) => (
+                <Fragment key={row.label}>
+                  <Out>{"│  "}</Out>
+                  {row.on ? <Hl>◼</Hl> : "◻"}
+                  {` ${row.label}`}
+                  {row.hint && <Out> {row.hint}</Out>}
+                  {"\n"}
+                </Fragment>
+              ))}
+              <Out>{"│  ↑/↓ to navigate • Space: select • Enter: confirm\n└"}</Out>
+            </CodeBlock>
+            <CodeBlock title="Review the plan">
+              <Out>{"◇  Folders\n│  "}</Out>
+              {"Continue\n"}
+              <Out>{"│\n◇  Plan\n"}</Out>
+              {PLAN.map((line) => (
+                <Fragment key={line}>
+                  <Out>│  </Out>
+                  {line}
+                  {"\n"}
+                </Fragment>
+              ))}
+              <Out>{"│\n"}</Out>
+              <Hl>◆</Hl>
+              {"  Proceed?\n"}
+              <Out>{"│  "}</Out>
+              <Hl>●</Hl>
+              {" Yes / ○ No\n"}
+              <Out>└</Out>
             </CodeBlock>
             <Note>
-              Toggle targets, edit a path with <InlineCode>e N</InlineCode>, or add a custom agent with{" "}
-              <InlineCode>a</InlineCode>. A plan screen shows every copy, link and backup, and nothing is written until
-              you confirm. Choices are saved to <InlineCode>~/.agent-huddle/install.json</InlineCode> and reused when
-              you rerun it to update.
+              Claude Code config folders are preselected only when they hold sessions. Then{" "}
+              <span className="font-medium text-foreground">Folders</span> lets you continue, edit a folder or add a
+              custom one, and nothing is written until you confirm the plan. Choices are saved to{" "}
+              <InlineCode>~/.agent-huddle/install.json</InlineCode> and reused when you rerun it to update.
             </Note>
             <Note>
               Flags: <InlineCode>--yes</InlineCode> skips prompts, <InlineCode>--dir agent[=path]</InlineCode> picks a
-              target (repeatable), <InlineCode>--uninstall</InlineCode> removes everything it installed.{" "}
+              target (repeatable), <InlineCode>--dry-run</InlineCode> prints the plan,{" "}
+              <InlineCode>--uninstall</InlineCode> removes everything it installed (add <InlineCode>--yes</InlineCode>{" "}
+              outside a terminal). Run by an AI agent or without a terminal, it prints the plan and installs nothing
+              until you rerun with <InlineCode>--yes</InlineCode> or <InlineCode>--dir</InlineCode>.{" "}
               <a
                 href="/install.sh"
                 className="inline-flex min-h-11 items-center gap-0.5 font-medium text-foreground underline-offset-4 hover:underline"
@@ -184,7 +219,7 @@ export function Install() {
 
       <ul className="mt-5 flex flex-col gap-3 text-sm text-muted-foreground lg:flex-row lg:items-center lg:gap-6">
         <li>
-          <span className="font-medium text-foreground">Node 20+</span>
+          <span className="font-medium text-foreground">Node 20+</span> (installer: 20.12+)
         </li>
         <li className="flex min-w-0 items-center gap-1">
           <span className="min-w-0">

@@ -14,7 +14,7 @@ export function Hero() {
         className="absolute inset-x-0 top-0 -z-10 h-[38rem] bg-grid opacity-60 [mask-image:radial-gradient(ellipse_70%_60%_at_50%_0%,black,transparent)]"
       />
 
-      <div className="mx-auto max-w-6xl px-4 pb-20 pt-16 sm:px-6 sm:pt-24 lg:pb-28">
+      <div className="mx-auto max-w-6xl px-4 pt-16 sm:px-6 sm:pt-24">
         <div className="max-w-3xl">
           <h1
             id="hero-title"
@@ -57,10 +57,10 @@ export function Hero() {
             <p className="mt-4 text-sm text-muted-foreground">Node 20+ · local only · no accounts</p>
           </div>
         </div>
+      </div>
 
-        <div className="mt-14 sm:mt-16">
-          <HuddleDemo />
-        </div>
+      <div className="mx-auto mt-14 max-w-7xl px-4 pb-20 sm:mt-16 sm:px-6 lg:pb-28">
+        <HuddleDemo />
       </div>
     </section>
   );
