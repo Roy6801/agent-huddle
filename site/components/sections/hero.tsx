@@ -1,11 +1,10 @@
 import { DownloadIcon } from "lucide-react";
 import Image from "next/image";
 
-import { CopyButton } from "@/components/copy-button";
 import roomMobile from "@/assets/screenshots/huddle-room-mobile.png";
 import { HuddleDemo } from "@/components/huddle-demo";
+import { InstallSwitcher } from "@/components/install-switcher";
 import { Button } from "@/components/ui/button";
-import { CURL_COMMAND, INSTALL_COMMAND, repoPublic } from "@/lib/site";
 
 export function Hero() {
   return (
@@ -33,13 +32,7 @@ export function Hero() {
           </p>
 
           <div className="mt-9 max-w-2xl">
-            <div className="flex items-center gap-2 rounded-xl border bg-card py-1 pl-4 pr-1 shadow-xs">
-              <code className="min-w-0 flex-1 py-2 font-mono text-[12.5px] leading-relaxed wrap-anywhere sm:text-sm">
-                <span className="select-none text-muted-foreground/70">$ </span>
-                {INSTALL_COMMAND}
-              </code>
-              <CopyButton text={INSTALL_COMMAND} label="Copy install command" />
-            </div>
+            <InstallSwitcher />
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
               <Button asChild className="h-11 gap-2 rounded-lg px-5 text-sm">
                 <a href="/agent-huddle.zip" download>
@@ -51,13 +44,6 @@ export function Hero() {
                 <a href="#install">All install options</a>
               </Button>
             </div>
-            {repoPublic && (
-              <p className="mt-4 flex min-w-0 flex-wrap items-center gap-x-1 text-sm text-muted-foreground">
-                No npm?
-                <code className="min-w-0 truncate font-mono text-[12.5px] text-foreground">{CURL_COMMAND}</code>
-                <CopyButton text={CURL_COMMAND} label="Copy curl install command" className="-my-2" />
-              </p>
-            )}
             <p className="mt-4 text-sm text-muted-foreground">Node 20+ · local only · no accounts</p>
           </div>
         </div>
