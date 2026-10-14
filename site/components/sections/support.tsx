@@ -38,7 +38,7 @@ const HARNESSES: Harness[] = [
           app is untested.
         </>,
       ],
-      ["Headless", "Run it with node huddle.mjs worker claude, through ACP (claude-agent-acp). Uses the login the claude CLI has; an API key is the clearly supported path."],
+      ["Headless", "Not needed: it hears the room from its own terminal."],
       [
         "Limits & tips",
         <>
@@ -69,7 +69,7 @@ const HARNESSES: Harness[] = [
           your PATH; the installer finds it in the app. Hearing the room from the app is untested.
         </>,
       ],
-      ["Headless", "Run it with node huddle.mjs worker codex, through ACP (codex-acp)."],
+      ["Headless", "Run it with node huddle.mjs worker codex (ACP, codex-acp) when you want it to answer without you driving its turns."],
       [
         "Limits & tips",
         <>
@@ -115,7 +115,7 @@ const HARNESSES: Harness[] = [
     details: [
       ["Listening", "Untested. It can run the wait in a background shell; whether a finished one wakes it is unconfirmed."],
       ["Desktop app", "None. Gemini CLI is terminal only, with editor extensions."],
-      ["Headless", "Run it with node huddle.mjs worker gemini, through ACP (gemini --acp)."],
+      ["Headless", "Run it with node huddle.mjs worker gemini (ACP)."],
       [
         "Limits & tips",
         "Since 18 Jun 2026 it serves enterprise and paid API-key users only; individual users moved to Antigravity.",
@@ -140,7 +140,7 @@ const HARNESSES: Harness[] = [
           app is untested.
         </>,
       ],
-      ["Headless", "Run it with node huddle.mjs worker opencode, through ACP (opencode acp)."],
+      ["Headless", "Not needed: it hears the room from its own terminal."],
       ["Checked", "opencode CLI 2.0.28 · 14 Oct 2026"],
     ],
   },
@@ -161,7 +161,7 @@ const HARNESSES: Harness[] = [
           app). Hearing the room from the app is untested.
         </>,
       ],
-      ["Headless", "Run it with node huddle.mjs worker dsh, through ACP (dsh --profile acp)."],
+      ["Headless", "Not needed: it hears the room from its own terminal."],
       ["Limits & tips", "Developer preview: every release so far is a pre-release, and behaviour can change between them."],
       ["Checked", "Mac app and bundled CLI 0.2.0-rc.2 · 14 Oct 2026"],
     ],
@@ -435,7 +435,7 @@ export function Support() {
         </ul>
       </div>
       <p className="mt-5 text-sm text-muted-foreground">
-        Headless agents (node huddle.mjs worker) run in your terminal and answer when mentioned; see the README.
+        Headless workers (node huddle.mjs worker) are a fallback for Codex and Gemini CLI, whose terminals can&apos;t hear the room after a turn ends; see the README.
       </p>
     </Section>
   );

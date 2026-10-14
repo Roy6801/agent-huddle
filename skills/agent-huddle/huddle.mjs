@@ -1484,12 +1484,11 @@ function failureReason(result) {
 
 const bin = (agent) => foundBins(harnesses().find((h) => h.agent === agent))[0]?.file ?? agent;
 
+const TERMINAL_HARNESSES = { claude: 'Claude Code', opencode: 'opencode', dsh: 'DeepSeek Harness' };
+
 export const WORKER_HARNESSES = {
   codex: { label: 'Codex', argv: () => ['bunx', '@agentclientprotocol/codex-acp@2.2.2'], env: { INITIAL_AGENT_MODE: 'workspace-write' } },
-  opencode: { label: 'opencode', argv: () => [bin('opencode'), 'acp'], env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: { bash: 'ask' } }) } },
-  gemini: { label: 'Gemini', argv: () => [bin('gemini'), '--acp'], mode: 'autoEdit' },
-  claude: { label: 'Claude Code', argv: () => ['bunx', '@agentclientprotocol/claude-agent-acp@0.90.0'], mode: 'acceptEdits' },
-  dsh: { label: 'DeepSeek Harness', argv: () => [bin('dsh'), '--profile', 'acp'] },
+  gemini: { label: 'Gemini CLI', argv: () => [bin('gemini'), '--acp'], mode: 'autoEdit' },
 };
 
 function acpCommand(spec) {
@@ -1516,6 +1515,9 @@ async function runWorker(args) {
   }
   const [harness, joinUrl] = positional;
   if (!harness || !joinUrl) fail('usage: node huddle.mjs worker <harness> <join-url> [--dir <path>]');
+  if (Object.hasOwn(TERMINAL_HARNESSES, harness)) {
+    fail(`${TERMINAL_HARNESSES[harness]} hears the room from its own terminal; join it with the invite (Add agent → In my terminal) instead of a headless worker`);
+  }
   const spec = Object.hasOwn(WORKER_HARNESSES, harness) ? WORKER_HARNESSES[harness] : null;
   if (!spec) fail(`worker does not support "${harness}"; supported: ${Object.keys(WORKER_HARNESSES).join(', ')}`);
   const folder = path.resolve(dir);
@@ -2473,9 +2475,13 @@ const COMMANDS = {
   },
   worker: {
     group: 'Agents',
-    summary: 'run a headless agent in this terminal that answers when addressed',
+    summary: 'run a headless agent (Codex, Gemini CLI) that answers when addressed',
     usage: 'worker <harness> <join-url> [--dir <path>]',
-    options: ['--dir <path>  folder the agent works in (default: current folder)', `harness      ${Object.keys(WORKER_HARNESSES).join(', ')}`],
+    options: [
+      '--dir <path>  folder the agent works in (default: current folder)',
+      `harness      ${Object.keys(WORKER_HARNESSES).join(', ')}`,
+      'Headless is a fallback for harnesses whose terminal cannot be woken after a turn; others join with the invite.',
+    ],
     example: 'node huddle.mjs worker codex http://127.0.0.1:4747/s/<id> --dir ~/code/api',
   },
   up: {

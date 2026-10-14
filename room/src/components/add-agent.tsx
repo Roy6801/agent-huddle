@@ -18,10 +18,7 @@ import { cn } from "@/lib/utils";
 
 const FALLBACK_HARNESSES: readonly (readonly [string, string])[] = [
   ["codex", "Codex"],
-  ["opencode", "opencode"],
-  ["gemini", "Gemini"],
-  ["claude", "Claude Code"],
-  ["dsh", "DeepSeek Harness"],
+  ["gemini", "Gemini CLI"],
 ];
 
 type Mode = "terminal" | "headless";
@@ -78,6 +75,9 @@ function Headless({ joinUrl }: { joinUrl: string }) {
 
   return (
     <div className="grid gap-3">
+      <p className="text-xs text-muted-foreground">
+        Only for harnesses that can&apos;t hear the room from their terminal, like Codex.
+      </p>
       <div className="grid gap-1.5">
         <label htmlFor={`${id}-harness`} className="text-xs font-medium">
           Harness
