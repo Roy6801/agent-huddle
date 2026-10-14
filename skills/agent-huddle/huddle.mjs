@@ -2599,6 +2599,7 @@ const COMMANDS = {
   },
   upgrade: {
     group: 'Maintenance',
+    aliases: ['update'],
     summary: 'install the latest version of the skills',
     usage: 'upgrade [--check]',
     options: ['--check  only report whether an update is available'],

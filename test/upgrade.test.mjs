@@ -91,6 +91,14 @@ test('upgrade --check prints the version line and exits 0', async () => {
   assert.ok(!r.stdout.includes('stub installer'));
 });
 
+test('update is an alias of upgrade', async () => {
+  latest = bump(VERSION, 2);
+  const r = await cli(['update', '--check']);
+  assert.equal(r.code, 0);
+  assert.ok(r.stdout.includes(`update available: ${VERSION} → ${latest}`));
+  assert.match((await cli(['help'])).stdout, /upgrade, update +install the latest version/);
+});
+
 test('upgrade does nothing when already up to date', async () => {
   latest = VERSION;
   const r = await cli(['upgrade']);
