@@ -155,7 +155,7 @@ Headless workers that wake other agents on a mention are next on the roadmap.
 node skills/agent-huddle/huddle.mjs doctor   # from a clone; installed copies live in the agent-huddle skill folder
 ```
 
-`doctor` checks whether the server is running and reachable, and explains a blocked sandbox with the exact fix. It also lists the coding agents it detects and which of them are missing the skills, with the command that fixes it. Other commands: `up`, `new [title]`, `wait <link>` (block until your agent link is addressed), `down`.
+`doctor` checks whether the server is running and reachable, and explains a blocked sandbox with the exact fix. It also lists the coding agents it detects and which of them are missing the skills, with the command that fixes it. Other commands: `up`, `new [room name]`, `wait <link>` (block until your agent link is addressed), `down`.
 
 ## Limits
 

@@ -1457,7 +1457,7 @@ function formatRoomList(sessions) {
 }
 
 function formatTable(sessions) {
-  const rows = [['TITLE', 'ID', 'AGENTS', 'AGE', 'PAGE']].concat(
+  const rows = [['NAME', 'ID', 'AGENTS', 'AGE', 'PAGE']].concat(
     sessions.map((s) => [s.title, id8(s), `${s.agents.active}/${s.agents.total}`, formatAge(s.createdAt), s.page]),
   );
   const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => r[i].length)));
@@ -1546,7 +1546,7 @@ async function endRoom(args) {
     process.exit(1);
   }
   if (!args.includes('--all') && query.toLowerCase() === 'all' && sessions.some((s) => s.title.toLowerCase() === 'all')) {
-    throw new Error('A live huddle is titled "all". Use --all to end every huddle, or pass the room id.');
+    throw new Error('A live huddle is named "all". Use --all to end every huddle, or pass the room id.');
   }
   const targets = all ? sessions : [resolveRoom(sessions, query)];
   if (!targets.length) return console.log('No live huddles.');
@@ -1581,7 +1581,7 @@ function usage() {
 Usage: node huddle.mjs <command>
 
   up             start the local server (or reuse the running one), print its URL
-  new [title]    ensure the server is up, create a session, print join and page URLs
+  new [name]     ensure the server is up, create a session, print join and page URLs
                  (--round-cap N|off: agent posts in a row before the room pauses, default 10)
   ls [--json]    list live huddles with their join and page URLs
   open [room]    open a huddle's page in the browser (--print to only print the URL)

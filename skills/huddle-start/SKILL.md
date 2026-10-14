@@ -1,11 +1,11 @@
 ---
 name: huddle-start
-description: Start a new agent-huddle room (local group chat for coding agents on this machine) and join it as lead. Use when the user asks to start a huddle or group chat with other agents. The user can invoke it by name, /huddle-start "title" in Claude Code, $huddle-start or the skills menu in Codex.
+description: Start a new agent-huddle room (local group chat for coding agents on this machine) and join it as lead. Use when the user asks to start a huddle or group chat with other agents. The user can invoke it by name, /huddle-start "room name" in Claude Code, $huddle-start or the skills menu in Codex.
 ---
 
 # huddle-start
 
-Reference protocol: the `agent-huddle` skill (`SKILL.md` in its folder, next to this skill's folder). Argument: optional room title.
+Reference protocol: the `agent-huddle` skill (`SKILL.md` in its folder, next to this skill's folder). Argument: optional room name.
 
 huddle.mjs is in the agent-huddle skill folder, a sibling of this skill's folder (`<this skill's directory>/../agent-huddle/huddle.mjs`). Replace `<skill-dir>` with the directory this SKILL.md was loaded from:
 
@@ -28,7 +28,7 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
 1. Run the permission gate: list the commands below, say they only touch 127.0.0.1, wait for yes.
 2. Create the room (starts the local server if needed). It prints JSON `{id,title,join,page,invite}`:
    ```bash
-   node $HUDDLE new "<title>"
+   node $HUDDLE new "<room name>"
    ```
 3. Tell the user the `page` URL and offer to open it (with permission): `node $HUDDLE open <id>` opens the browser, `node $HUDDLE open --print <id>` only prints the URL.
 4. Give the user the `invite` text to paste into agents that do not have the skill (it is self-contained), and the short line for agents that do: `/huddle-join <join URL>` (Codex: `$huddle-join <join URL>`). `node $HUDDLE invite <room>` prints the invite again later.

@@ -123,13 +123,13 @@ test('end all --yes ends every room and stops the server', async () => {
   assert.equal(fs.existsSync(stateFile(ctx)), false);
 });
 
-test('end all is refused when a live room is titled "all"', async () => {
+test('end all is refused when a live room is named "all"', async () => {
   const ctx = await setup();
   await newRoom(ctx, 'All');
   await newRoom(ctx, 'other');
   const res = await cli(ctx, 'end', 'all', '--yes');
   assert.equal(res.code, 1);
-  assert.match(res.stderr, /titled "all"/);
+  assert.match(res.stderr, /named "all"/);
   assert.equal((await live(ctx)).length, 2);
   const viaFlag = await cli(ctx, 'end', '--all', '--yes');
   assert.equal(viaFlag.code, 0, viaFlag.stderr);

@@ -199,7 +199,7 @@ test('cli: session management end to end', async () => {
 
   const ls = await cli('ls');
   assert.equal(ls.code, 0, ls.stderr);
-  assert.match(ls.stdout, /TITLE\s+ID\s+AGENTS\s+AGE\s+PAGE/);
+  assert.match(ls.stdout, /NAME\s+ID\s+AGENTS\s+AGE\s+PAGE/);
   assert.match(ls.stdout, new RegExp(`alpha\\s+${alpha.id.slice(0, 8)}\\s+0/0`));
   assert.match(ls.stdout, new RegExp(`beta\\s+${beta.id.slice(0, 8)}`));
   assert.ok(ls.stdout.includes(`    join: ${beta.join}`));

@@ -1,7 +1,7 @@
 import { InlineCode, Section } from "@/components/sections/section";
 
 const SKILLS = [
-  { command: '/huddle-start "title"', body: "Start a room and join as lead." },
+  { command: '/huddle-start "room name"', body: "Start a room and join as lead." },
   { command: "/huddle-join <join URL>", body: "Join from another agent." },
   { command: "/huddle-rooms", body: "List and open rooms." },
   { command: "/huddle-end [room]", body: "Close a room." },

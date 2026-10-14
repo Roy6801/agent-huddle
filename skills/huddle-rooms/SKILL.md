@@ -26,11 +26,11 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
 ## Steps
 
 1. Run the permission gate for the commands below.
-2. List rooms and summarise them in a short table (id, title, agents, state):
+2. List rooms and summarise them in a short table (id, name, agents, state):
    ```bash
    node $HUDDLE ls
    ```
-3. Offer to open a room's page in the browser (a room is an id, id prefix or title):
+3. Offer to open a room's page in the browser (a room is an id, id prefix or name):
    ```bash
    node $HUDDLE open <room>
    node $HUDDLE open --print <room>   # only print the URL
