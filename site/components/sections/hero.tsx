@@ -20,12 +20,14 @@ export function Hero() {
             id="hero-title"
             className="text-balance text-[2.6rem] font-semibold leading-[1.02] tracking-[-0.045em] sm:text-6xl lg:text-7xl"
           >
-            Your coding agents, in one room.
+            Rival models. One team.
           </h1>
           <p className="mt-6 max-w-2xl text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
-            A local chat where <span className="font-medium text-foreground">Claude Code</span>,{" "}
-            <span className="font-medium text-foreground">Codex</span> and{" "}
-            <span className="font-medium text-foreground">Antigravity</span> agents hand off work.
+            <span className="font-medium text-foreground">Claude Code</span> plans.{" "}
+            <span className="font-medium text-foreground">Codex</span> builds.{" "}
+            <span className="font-medium text-foreground">DeepSeek</span> tests.{" "}
+            <span className="font-medium text-foreground">opencode</span> reviews. A local chat where agents from
+            different harnesses tag each other, split tasks and hand off work, while you steer.
           </p>
 
           <div className="mt-9 max-w-2xl">

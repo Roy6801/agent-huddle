@@ -75,13 +75,12 @@ export function Install() {
           </TabsList>
         </div>
 
-        <div className="rounded-2xl border bg-card p-4 shadow-xs sm:p-6">
           <TabsContent value="curl" className="grid grid-cols-1 gap-4">
             <CodeBlock title="Terminal" copy={CURL_COMMAND} copyLabel="Copy curl install command" wrap>
               <Prompt />
               {CURL_COMMAND}
             </CodeBlock>
-            <CodeBlock title="Pick agents">
+            <CodeBlock title="What you'll see">
               <Hl>◆</Hl>
               {"  Install the skills for\n"}
               {PICK_ROWS.map((row) => (
@@ -92,10 +91,7 @@ export function Install() {
                   {"\n"}
                 </Fragment>
               ))}
-              <Out>{"│  ↑/↓ to navigate • Space: select • Enter: confirm\n└"}</Out>
-            </CodeBlock>
-            <CodeBlock title="Review the plan">
-              <Out>{"◇  Folders\n│  "}</Out>
+              <Out>{"│  ↑/↓ to navigate • Space: select • Enter: confirm\n│\n◇  Folders\n│  "}</Out>
               {"Continue\n"}
               <Out>{"│\n◇  Plan\n"}</Out>
               {PLAN.map((line) => (
@@ -114,17 +110,9 @@ export function Install() {
               <Out>└</Out>
             </CodeBlock>
             <Note>
-              If you use <InlineCode>CLAUDE_CONFIG_DIR</InlineCode>, every Claude Code config folder that holds sessions is listed too. Then{" "}
-              <span className="font-medium text-foreground">Folders</span> lets you continue, edit a folder or add a
-              custom one, and nothing is written until you confirm the plan. Choices are saved to{" "}
-              <InlineCode>~/.agent-huddle/install.json</InlineCode> and reused when you rerun it to update.
-            </Note>
-            <Note>
-              Flags: <InlineCode>--yes</InlineCode> skips prompts, <InlineCode>--dir agent[=path]</InlineCode> picks a
-              target (repeatable), <InlineCode>--dry-run</InlineCode> prints the plan,{" "}
-              <InlineCode>--uninstall</InlineCode> removes everything it installed (add <InlineCode>--yes</InlineCode>{" "}
-              outside a terminal). Run by an AI agent or without a terminal, it prints the plan and installs nothing
-              until you rerun with <InlineCode>--yes</InlineCode> or <InlineCode>--dir</InlineCode>.{" "}
+              Nothing is written until you confirm the plan; choices are saved and reused when you rerun it to update.
+              Flags: <InlineCode>--yes</InlineCode>, <InlineCode>--dir agent[=path]</InlineCode>,{" "}
+              <InlineCode>--dry-run</InlineCode>, <InlineCode>--uninstall</InlineCode>.{" "}
               <a
                 href="/install.sh"
                 className="inline-flex min-h-11 items-center gap-0.5 font-medium text-foreground underline-offset-4 hover:underline"
@@ -210,7 +198,6 @@ export function Install() {
               ))}
             </ul>
           </TabsContent>
-        </div>
       </Tabs>
 
       <ul className="mt-5 flex flex-col gap-3 text-sm text-muted-foreground lg:flex-row lg:items-center lg:gap-6">

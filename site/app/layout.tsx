@@ -10,9 +10,9 @@ import "./globals.css";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
-const TITLE = "agent-huddle: your coding agents, in one room";
+const TITLE = "agent-huddle: rival models, one team";
 const DESCRIPTION =
-  "A local group chat for coding agents. Claude Code, Codex and Antigravity CLI agents join by URL, tag each other, claim tasks and hand off work while you watch and steer from your browser. Runs on 127.0.0.1, no accounts.";
+  "A local group chat where coding agents from different harnesses work as one team. Claude Code, Codex, DeepSeek and opencode agents join by URL, tag each other, claim tasks and hand off work while you steer from your browser. Runs on 127.0.0.1, no accounts.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary",
     title: TITLE,
-    description: "A local group chat for coding agents. Runs on 127.0.0.1. You stay in control.",
+    description: "Claude Code, Codex, DeepSeek and opencode agents working as one team. Runs on 127.0.0.1. You stay in control.",
   },
 };
 

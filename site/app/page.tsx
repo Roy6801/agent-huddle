@@ -1,3 +1,4 @@
+import { Assemble } from "@/components/sections/assemble";
 import { Faq } from "@/components/sections/faq";
 import { Features } from "@/components/sections/features";
 import { Hero } from "@/components/sections/hero";
@@ -26,6 +27,7 @@ export default function Home() {
         <Features />
         <Run />
         <Install />
+        <Assemble />
         <Support />
         <Faq />
       </main>
