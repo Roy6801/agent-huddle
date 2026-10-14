@@ -11,6 +11,7 @@ const FAKE = new URL('./fixtures/fake-acp.mjs', import.meta.url).pathname;
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-worker-'));
 const promptLog = path.join(home, 'prompts.json');
 const pidFile = path.join(home, 'agent.pid');
+const grandchildFile = path.join(home, 'grandchild.pid');
 let env;
 const workers = [];
 
@@ -44,12 +45,12 @@ async function until(fn, ms = 5000) {
   assert.fail('timed out');
 }
 
-const readPrompts = () => (fs.existsSync(promptLog) ? JSON.parse(fs.readFileSync(promptLog, 'utf8')) : { prompts: [] });
+const readPrompts = () => (fs.existsSync(promptLog) ? JSON.parse(fs.readFileSync(promptLog, 'utf8')) : { prompts: [], cancels: [] });
 
-async function setup(name) {
-  env ??= { ...process.env, AGENT_HUDDLE_HOME: home, AGENT_HUDDLE_PORT: String(await freePort()) };
+async function setup(name, ...newArgs) {
+  env ??= { ...process.env, AGENT_HUDDLE_HOME: home, AGENT_HUDDLE_PORT: String(await freePort()), AGENT_HUDDLE_QUIET_MS: '1500' };
   fs.rmSync(promptLog, { force: true });
-  const created = JSON.parse((await cli('new', name)).stdout);
+  const created = JSON.parse((await cli('new', name, ...newArgs)).stdout);
   const claude = await (await fetch(`${created.join}/join`, json({ harness: 'claude' }))).json();
   return { created, claude };
 }
@@ -75,6 +76,7 @@ function startWorker(join, extra = {}) {
 
 const say = (agent, text) => fetch(`${agent.link}/post`, json({ text }));
 const codexPosts = async (room) => (await (await fetch(`${room.created.page}/api/state`)).json()).messages.filter((m) => m.from === 'codex-1');
+const state = async (room) => (await (await fetch(`${room.created.page}/api/state`)).json()).messages;
 const alive = (pid) => {
   try {
     process.kill(pid, 0);
@@ -198,18 +200,116 @@ test('a failed start prints the cause, exits 1 and leaves the room', async () =>
   assert.equal(who.agents.find((a) => a.handle === 'codex-1').status, 'left');
 });
 
-test('SIGTERM during a run cancels it, leaves the room and kills the agent', async () => {
+test('SIGTERM during a run cancels it, leaves the room and reaps the agent process tree', async () => {
   const room = await setup('stop room');
-  const w = startWorker(room.created.join, { FAKE_ACP_DELAY_MS: '5000' });
+  const w = startWorker(room.created.join, { FAKE_ACP_DELAY_MS: '5000', FAKE_ACP_GRANDCHILD: grandchildFile });
   await until(() => w.out.includes('codex-1 is listening'));
   await say(room.claude, '@codex-1 long job');
   await until(() => w.out.includes('running on'));
   const pid = Number(fs.readFileSync(pidFile, 'utf8'));
+  const grandchild = Number(fs.readFileSync(grandchildFile, 'utf8'));
+  assert.ok(alive(grandchild));
 
   w.proc.kill('SIGTERM');
   assert.equal(await w.exit, 0);
   assert.equal(alive(pid), false);
+  assert.equal(alive(grandchild), false);
+  assert.deepEqual(readPrompts().cancels, ['fake-1']);
   const who = await (await fetch(`${room.claude.link}/who`)).json();
   assert.equal(who.agents.find((a) => a.handle === 'codex-1').status, 'left');
   assert.equal((await codexPosts(room)).length, 0);
+});
+
+test('a missing agent binary exits 1 naming it and leaves the room', async () => {
+  const room = await setup('missing room');
+  const w = startWorker(room.created.join, { AGENT_HUDDLE_ACP_CMD: JSON.stringify(['/nonexistent/codex-acp']) });
+  assert.equal(await w.exit, 1);
+  assert.match(w.err, /\/nonexistent\/codex-acp/);
+  const who = await (await fetch(`${room.claude.link}/who`)).json();
+  assert.equal(who.agents.find((a) => a.handle === 'codex-1').status, 'left');
+});
+
+test('a bad AGENT_HUDDLE_ACP_CMD is rejected before joining', async () => {
+  const room = await setup('bad cmd room');
+  const w = startWorker(room.created.join, { AGENT_HUDDLE_ACP_CMD: 'not json' });
+  assert.equal(await w.exit, 1);
+  assert.match(w.err, /AGENT_HUDDLE_ACP_CMD must be a JSON array/);
+  const who = await (await fetch(`${room.claude.link}/who`)).json();
+  assert.equal(who.agents.some((a) => a.handle === 'codex-1'), false);
+});
+
+test('at the round cap the reply is not retried and the worker keeps listening', async () => {
+  const room = await setup('cap room', '--round-cap', '3');
+  const w = startWorker(room.created.join);
+  await until(() => w.out.includes('codex-1 is listening'));
+
+  await say(room.claude, '@codex-1 one');
+  await until(async () => (await codexPosts(room)).length === 1);
+  await say(room.claude, '@codex-1 two');
+  await until(() => w.out.includes('round cap reached'));
+  await sleep(500);
+
+  assert.equal(w.out.split('round cap reached').length - 1, 1);
+  assert.equal((await codexPosts(room)).length, 1);
+  assert.equal(readPrompts().prompts.length, 2);
+  assert.equal(w.proc.exitCode, null);
+});
+
+test('a room ended mid-run cancels the run and exits 0 promptly', async () => {
+  const room = await setup('end room');
+  const w = startWorker(room.created.join, { FAKE_ACP_DELAY_MS: '15000', AGENT_HUDDLE_HEARTBEAT_MS: '200' });
+  await until(() => w.out.includes('codex-1 is listening'));
+  await say(room.claude, '@codex-1 long job');
+  await until(() => w.out.includes('running on'));
+
+  const started = Date.now();
+  assert.equal((await cli('end', 'end room', '--yes', '--keep-server')).code, 0);
+  assert.equal(await w.exit, 0);
+  assert.ok(Date.now() - started < 5000);
+  assert.match(w.out, /room ended/);
+  assert.deepEqual(readPrompts().cancels, ['fake-1']);
+});
+
+test('a busy worker keeps its heartbeat so a mention mid-run is not reported as not listening', async () => {
+  const room = await setup('busy room');
+  const w = startWorker(room.created.join, { FAKE_ACP_DELAY_MS: '4000', AGENT_HUDDLE_HEARTBEAT_MS: '300' });
+  await until(() => w.out.includes('codex-1 is listening'));
+  await say(room.claude, '@codex-1 long job');
+  await until(() => w.out.includes('running on'));
+  await sleep(2200);
+
+  await say(room.claude, '@codex-1 are you there?');
+  await sleep(500);
+  assert.equal((await state(room)).some((m) => /isn't listening/.test(m.text)), false);
+  const who = await (await fetch(`${room.claude.link}/who`)).json();
+  assert.equal(who.agents.find((a) => a.handle === 'codex-1').status, 'active');
+
+  w.proc.kill('SIGTERM');
+  await w.exit;
+});
+
+test('a reply the server rejects is reported to @you once', async () => {
+  const room = await setup('reject room');
+  const w = startWorker(room.created.join, { FAKE_ACP_REPLY: '@nobody hello' });
+  await until(() => w.out.includes('codex-1 is listening'));
+  await say(room.claude, '@codex-1 hi');
+  await until(async () => (await codexPosts(room)).length === 1);
+  await sleep(500);
+
+  const posts = await codexPosts(room);
+  assert.equal(posts.length, 1);
+  assert.match(posts[0].text, /^@you codex-1 reply could not be posted: unknown mention nobody/);
+});
+
+test('a reply over the server limit is truncated with a marker', async () => {
+  const room = await setup('long room');
+  const w = startWorker(room.created.join, { FAKE_ACP_REPLY: 'x'.repeat(9000) });
+  await until(() => w.out.includes('codex-1 is listening'));
+  await say(room.claude, '@codex-1 write a lot');
+  const [post] = await until(async () => {
+    const posts = await codexPosts(room);
+    return posts.length ? posts : null;
+  });
+  assert.equal(post.text.length, 8000);
+  assert.ok(post.text.endsWith('… (truncated)'));
 });
