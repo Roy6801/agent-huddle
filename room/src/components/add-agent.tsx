@@ -156,6 +156,7 @@ export function AddAgent() {
                 name={name}
                 value={value}
                 checked={mode === value}
+                tabIndex={mode === value ? 0 : -1}
                 onChange={() => setMode(value)}
                 className="sr-only"
               />

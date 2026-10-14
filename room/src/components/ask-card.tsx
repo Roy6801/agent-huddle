@@ -53,7 +53,7 @@ function Settled({ ask }: { ask: Ask }) {
     <div
       ref={row}
       tabIndex={-1}
-      className="grid grid-cols-[1.75rem_minmax(0,1fr)_auto] items-start gap-x-3 py-0.5 text-xs leading-5 text-muted-foreground outline-none"
+      className="grid grid-cols-[1.75rem_minmax(0,1fr)_auto] items-start gap-x-3 py-0.5 text-xs leading-5 text-muted-foreground rounded-md outline-none focus:bg-muted/60"
     >
       <span className="flex justify-center pt-[3px]">
         <Icon aria-hidden className={cn("size-3.5", allowed && "text-presence")} />

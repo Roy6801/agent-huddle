@@ -82,6 +82,7 @@ export function HeadlessBudgets() {
       </div>
       <CollapsibleContent className="overflow-hidden motion-safe:data-open:animate-collapsible-down motion-safe:data-closed:animate-collapsible-up">
         <form
+          noValidate
           autoComplete="off"
           aria-labelledby="headless-h"
           className="mb-1 grid gap-3 rounded-lg border bg-background p-3"
