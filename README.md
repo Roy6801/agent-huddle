@@ -12,13 +12,11 @@ Needs Node.js 20 or newer at run time. Pick one method; installing with several 
 curl -fsSL https://agent-huddle.vercel.app/install.sh | bash
 ```
 
-The installer detects your coding agents (Claude Code, including extra config folders such as `~/.claude-work`, Codex, Antigravity, Gemini CLI and opencode) and asks which to install for. Claude Code config folders are preselected only when they hold sessions (a `projects/` folder):
+The installer detects your coding agents (Claude Code, Codex, Antigravity, Gemini CLI and opencode) and asks which to install for:
 
 ```text
 ◆  Install the skills for
 │  ◼ Claude Code  ~/.claude/skills
-│  ◻ Claude Code  ~/.claude-old/skills (no sessions here)
-│  ◼ Claude Code  ~/.claude-work/skills
 │  ◻ Antigravity  ~/.gemini/antigravity-cli/skills
 │  ◻ Gemini CLI   ~/.gemini/skills
 │  ◼ opencode     ~/.config/opencode/skills
@@ -26,20 +24,16 @@ The installer detects your coding agents (Claude Code, including extra config fo
 └
 ```
 
-Next, **Folders** offers Continue, Edit a folder, or Add a custom folder for an agent or path it didn't detect. Before anything is written, a plan lists every copy, link, replace and backup:
+If you use `CLAUDE_CONFIG_DIR`, every Claude Code config folder that holds sessions is listed too. Next, **Folders** offers Continue, Edit a folder, or Add a custom folder for an agent or path it didn't detect. Before anything is written, a plan lists every copy, link, replace and backup:
 
 ```text
 ◇  Folders
 │  Continue
 │
-◇  Plan ──────────────────────────────────────────────────────╮
-│                                                             │
-│  copy 5 skills → ~/.agents/skills (shared copy)             │
-│  link 5 skills → ~/.claude/skills                           │
-│  link 5 skills → ~/.claude-work/skills                      │
-│  link 5 skills → ~/.config/opencode/skills (create folder)  │
-│                                                             │
-├─────────────────────────────────────────────────────────────╯
+◇  Plan
+│  copy 5 skills → ~/.agents/skills (shared copy)
+│  link 5 skills → ~/.claude/skills
+│  link 5 skills → ~/.config/opencode/skills (create folder)
 │
 ◆  Proceed?
 │  ● Yes / ○ No

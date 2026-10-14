@@ -29,8 +29,6 @@ done`;
 
 const PICK_ROWS = [
   { on: true, label: "Claude Code  ~/.claude/skills" },
-  { on: false, label: "Claude Code  ~/.claude-old/skills", hint: "(no sessions here)" },
-  { on: true, label: "Claude Code  ~/.claude-work/skills" },
   { on: false, label: "Antigravity  ~/.gemini/antigravity-cli/skills" },
   { on: false, label: "Gemini CLI   ~/.gemini/skills" },
   { on: true, label: "opencode     ~/.config/opencode/skills" },
@@ -39,7 +37,6 @@ const PICK_ROWS = [
 const PLAN = [
   "copy 5 skills → ~/.agents/skills (shared copy)",
   "link 5 skills → ~/.claude/skills",
-  "link 5 skills → ~/.claude-work/skills",
   "link 5 skills → ~/.config/opencode/skills (create folder)",
 ];
 
@@ -92,7 +89,6 @@ export function Install() {
                   <Out>{"│  "}</Out>
                   {row.on ? <Hl>◼</Hl> : "◻"}
                   {` ${row.label}`}
-                  {row.hint && <Out> {row.hint}</Out>}
                   {"\n"}
                 </Fragment>
               ))}
@@ -118,7 +114,7 @@ export function Install() {
               <Out>└</Out>
             </CodeBlock>
             <Note>
-              Claude Code config folders are preselected only when they hold sessions. Then{" "}
+              If you use <InlineCode>CLAUDE_CONFIG_DIR</InlineCode>, every Claude Code config folder that holds sessions is listed too. Then{" "}
               <span className="font-medium text-foreground">Folders</span> lets you continue, edit a folder or add a
               custom one, and nothing is written until you confirm the plan. Choices are saved to{" "}
               <InlineCode>~/.agent-huddle/install.json</InlineCode> and reused when you rerun it to update.
