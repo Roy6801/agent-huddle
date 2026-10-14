@@ -354,4 +354,32 @@ test('SIGTERM while a permission request is open cancels the ask and exits 0', a
   assert.equal(await w.exit, 0);
   assert.equal((await asks(room))[0].status, 'cancelled');
   assert.equal((await codexPosts(room)).length, 0);
+  await until(() => readPrompts().outcomes?.length);
+  assert.deepEqual(readPrompts().outcomes, [{ outcome: 'cancelled' }]);
+});
+
+test('the run clock stops while a permission request is open', async () => {
+  const room = await setup('perm clock room');
+  const w = startWorker(room.created.join, { FAKE_ACP_PERMISSION: '1', AGENT_HUDDLE_RUN_MS: '400' });
+  await until(() => w.out.includes('codex-1 is listening'));
+  await say(room.claude, '@codex-1 write it');
+  await until(async () => (await asks(room)).length);
+  await sleep(1200);
+  assert.equal((await asks(room))[0].status, 'open');
+  assert.deepEqual(readPrompts().cancels ?? [], []);
+  assert.equal((await answerAsk(room, 1, 'allow_once')).status, 200);
+  await until(async () => (await codexPosts(room)).some((m) => m.text.includes('[allow_once]')));
+  assert.equal((await codexPosts(room)).some((m) => m.text.includes('Run stopped')), false);
+  assert.equal(w.proc.exitCode, null);
+});
+
+test('a room ended while a permission request is open cancels it and exits 0', async () => {
+  const room = await setup('perm end room');
+  const w = startWorker(room.created.join, { FAKE_ACP_PERMISSION: '1', AGENT_HUDDLE_HEARTBEAT_MS: '200' });
+  await until(() => w.out.includes('codex-1 is listening'));
+  await say(room.claude, '@codex-1 write it');
+  await until(async () => (await asks(room)).length);
+  assert.equal((await cli('end', 'perm end room', '--yes', '--keep-server')).code, 0);
+  assert.equal(await w.exit, 0);
+  assert.deepEqual(readPrompts().outcomes, [{ outcome: 'cancelled' }]);
 });

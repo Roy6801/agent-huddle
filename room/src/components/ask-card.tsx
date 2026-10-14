@@ -1,5 +1,5 @@
 import { BanIcon, CheckIcon, ChevronRightIcon, ClockIcon, ShieldQuestionIcon } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { HarnessDot, Jazzicon } from "@/components/identity";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,11 @@ const SETTLED: Record<AskKind, string> = {
   reject_always: "Always denied by you",
 };
 
+/** The ask the human just answered; its settled row takes focus when it replaces the buttons. */
+let answeredAsk: number | null = null;
+
 function settledText(ask: Ask) {
+  if (ask.status === "open") return "Room ended";
   if (ask.status === "timeout") return "Timed out — denied";
   if (ask.status === "cancelled") return "Cancelled";
   return ask.answer ? SETTLED[ask.answer.kind] : "Answered";
@@ -39,8 +43,18 @@ function settledText(ask: Ask) {
 function Settled({ ask }: { ask: Ask }) {
   const allowed = ask.status === "answered" && ask.answer?.kind.startsWith("allow");
   const Icon = allowed ? CheckIcon : ask.status === "answered" ? BanIcon : ClockIcon;
+  const row = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (answeredAsk !== ask.id) return;
+    answeredAsk = null;
+    row.current?.focus();
+  }, [ask.id]);
   return (
-    <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_auto] items-start gap-x-3 py-0.5 text-xs leading-5 text-muted-foreground">
+    <div
+      ref={row}
+      tabIndex={-1}
+      className="grid grid-cols-[1.75rem_minmax(0,1fr)_auto] items-start gap-x-3 py-0.5 text-xs leading-5 text-muted-foreground outline-none"
+    >
       <span className="flex justify-center pt-[3px]">
         <Icon aria-hidden className={cn("size-3.5", allowed && "text-presence")} />
       </span>
@@ -74,16 +88,19 @@ function Open({ ask, identities }: { ask: Ask; identities: Identities }) {
     setError("");
     try {
       const { r, data } = await post(`/api/asks/${ask.id}`, { optionId: o.optionId });
-      if (r.ok) pollNow();
-      else if (r.status === 409) {
+      if (r.ok) {
+        answeredAsk = ask.id;
+        pollNow();
+        return;
+      }
+      if (r.status === 409) {
         setError("This was already settled.");
         pollNow();
       } else setError(data?.error || "Could not send your answer. Try again.");
     } catch {
       setError("Could not reach the server. Try again.");
-    } finally {
-      setSending(null);
     }
+    setSending(null);
   }
 
   return (
@@ -150,5 +167,6 @@ function Open({ ask, identities }: { ask: Ask; identities: Identities }) {
 }
 
 export function AskCard({ ask, identities }: { ask: Ask; identities: Identities }) {
-  return ask.status === "open" ? <Open ask={ask} identities={identities} /> : <Settled ask={ask} />;
+  const { state } = useRoom();
+  return ask.status === "open" && !state.ended ? <Open ask={ask} identities={identities} /> : <Settled ask={ask} />;
 }

@@ -50,7 +50,10 @@ function Banners() {
         </p>
       )}
       {asking > 0 && !state.ended && (
-        <p className="flex shrink-0 items-center gap-2 border-b border-signal/20 bg-signal/5 px-4 py-2 text-[13px] leading-5 font-medium text-signal">
+        <p
+          role="status"
+          className="flex shrink-0 items-center gap-2 border-b border-signal/20 bg-signal/5 px-4 py-2 text-[13px] leading-5 font-medium text-signal"
+        >
           <ShieldQuestionIcon aria-hidden className="size-4 shrink-0" />
           {asking === 1 ? "1 approval is waiting on you." : `${asking} approvals are waiting on you.`}
         </p>

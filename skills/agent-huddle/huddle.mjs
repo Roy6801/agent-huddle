@@ -211,6 +211,9 @@ export function createHuddle(opts = {}) {
 
   function endRoom(s) {
     s.ended = true;
+    for (const a of s.asks) {
+      if (a.status === 'open') a.status = 'cancelled';
+    }
     for (const agent of s.agents.values()) {
       for (const w of agent.waiters) {
         clearTimeout(w.timer);
@@ -462,17 +465,24 @@ export function createHuddle(opts = {}) {
     return ask;
   }
 
-  function waitForAsk(s, agent, ask, res, seconds) {
-    const waiter = { res, ask };
+  function cancelAsk(s, agent, n) {
+    const ask = getAsk(s, agent, n);
+    if (ask.status !== 'open') throw new HttpError(409, `ask is ${ask.status}`);
+    settleAsk(s, ask, 'cancelled');
+    system(s, `${ask.title} cancelled`, { ask: ask.id });
+    return ask;
+  }
+
+  function parkWaiter(agent, waiters, waiter, seconds, onTimeout) {
     waiter.timer = setTimeout(() => {
-      s.askWaiters.delete(waiter);
+      waiters.delete(waiter);
       agent.lastSeen = Date.now();
-      sendJson(res, 200, ask);
+      onTimeout();
     }, seconds * 1000);
-    s.askWaiters.add(waiter);
-    res.on('close', () => {
+    waiters.add(waiter);
+    waiter.res.on('close', () => {
       clearTimeout(waiter.timer);
-      s.askWaiters.delete(waiter);
+      waiters.delete(waiter);
       agent.lastSeen = Date.now();
     });
   }
@@ -909,13 +919,14 @@ How the room works:
     const taskMatch = /^tasks\/(\d+)\/(claim|done|release)$/.exec(key);
     const fileMatch = /^files\/([\w-]+)$/.exec(key);
     const askMatch = /^asks\/(\d+)$/.exec(key);
+    const askCancelMatch = /^asks\/(\d+)\/cancel$/.exec(key);
 
     if (method === 'GET') {
       if (fileMatch) return sendFile(res, getFile(s, fileMatch[1]));
       if (askMatch) {
         const ask = getAsk(s, agent, askMatch[1]);
         if (ask.status !== 'open') return ok(ask);
-        return waitForAsk(s, agent, ask, res, clampWait(url.searchParams.get('wait')));
+        return parkWaiter(agent, s.askWaiters, { res, ask }, clampWait(url.searchParams.get('wait')), () => sendJson(res, 200, ask));
       }
       switch (key) {
         case '':
@@ -936,19 +947,7 @@ How the room works:
         }
         case 'wait': {
           if (hasAddressedUnread(s, agent)) return ok(readFor(s, agent, 500));
-          const waiter = { res };
-          waiter.timer = setTimeout(() => {
-            agent.waiters.delete(waiter);
-            agent.lastSeen = Date.now();
-            res.writeHead(204).end();
-          }, clampWait(url.searchParams.get('wait')) * 1000);
-          agent.waiters.add(waiter);
-          res.on('close', () => {
-            clearTimeout(waiter.timer);
-            agent.waiters.delete(waiter);
-            agent.lastSeen = Date.now();
-          });
-          return;
+          return parkWaiter(agent, agent.waiters, { res }, clampWait(url.searchParams.get('wait')), () => res.writeHead(204).end());
         }
         case 'who':
           return ok(whoView(s));
@@ -959,6 +958,7 @@ How the room works:
       }
     } else if (method === 'POST') {
       if (taskMatch) return ok(taskAction(s, agent, taskMatch[1], taskMatch[2], body));
+      if (askCancelMatch) return ok(cancelAsk(s, agent, askCancelMatch[1]));
       if (upload) {
         const f = await receiveFile(s, req, res, url, agent.handle);
         return sendJson(res, 201, { ...fileMeta(f), url: `${base}/s/${s.id}/as/${token}/files/${f.id}` });
@@ -1468,7 +1468,7 @@ async function runWorker(args) {
   };
   const nap = (ms) => Promise.race([sleep(ms), aborted]);
   const ASK_LABELS = { allow_once: 'Allow once', allow_always: 'Always', reject_once: 'Deny', reject_always: 'Deny' };
-  // the wait for the human counts toward AGENT_HUDDLE_RUN_MS
+  let run = null;
   async function askHuman({ toolCall: call = {}, options = [] }) {
     const cancelled = { outcome: { outcome: 'cancelled' } };
     const paths = (call.locations ?? []).map((l) => l.path).filter(Boolean);
@@ -1483,25 +1483,44 @@ async function runWorker(args) {
     }
     const deny = options.find((o) => o.kind === 'reject_once');
     const fallback = deny ? { outcome: { outcome: 'selected', optionId: deny.optionId } } : cancelled;
-    if (signal.aborted) return cancelled;
+    const current = run;
+    const stop = current ? AbortSignal.any([signal, current.ctl.signal]) : signal;
+    if (stop.aborted) return cancelled;
+    current?.hold();
+    let id;
     try {
       const body = { title, ...(detail && { detail }), options: picked.map((o) => ({ optionId: o.optionId, kind: o.kind, name: ASK_LABELS[o.kind] })) };
-      const res = await fetch(`${me.link}/asks`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body), signal });
+      const res = await fetch(`${me.link}/asks`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body), signal: stop });
+      if (res.status === 410) return cancelled;
       if (!res.ok) throw new Error(`ask rejected (${res.status})`);
-      const { id } = await res.json();
+      id = (await res.json()).id;
       console.log(`asked @you: ${title}`);
+      let failures = 0;
       for (;;) {
-        const got = await fetch(`${me.link}/asks/${id}?wait=25`, { signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]) });
-        if (!got.ok) throw new Error(`ask lookup failed (${got.status})`);
-        const ask = await got.json();
+        let ask;
+        try {
+          const got = await fetch(`${me.link}/asks/${id}?wait=25`, { signal: AbortSignal.any([stop, AbortSignal.timeout(30_000)]) });
+          if (got.status === 410) return cancelled;
+          if (!got.ok) throw new Error(`ask lookup failed (${got.status})`);
+          ask = await got.json();
+          failures = 0;
+        } catch (err) {
+          if (stop.aborted || ++failures >= 3) throw err;
+          await nap(5000);
+          continue;
+        }
         if (ask.status === 'open') continue;
         console.log(`@you ${ask.status === 'answered' ? `chose ${ask.answer.optionId}` : ask.status}: ${title}`);
         return ask.status === 'answered' ? { outcome: { outcome: 'selected', optionId: ask.answer.optionId } } : fallback;
       }
     } catch (err) {
-      if (signal.aborted) return cancelled;
+      if (id) await fetch(`${me.link}/asks/${id}/cancel`, { method: 'POST', headers: jsonHeaders, body: '{}', signal: AbortSignal.timeout(3000) }).catch(() => {});
+      if (stop.aborted) return cancelled;
       console.log(`ask failed (${err.message}); denied`);
+      await post(`@you ${me.handle} could not ask you about "${title.replace(/@/g, '')}"; denied`);
       return fallback;
+    } finally {
+      current?.release();
     }
   }
   const acp = acpClient(argv, {
@@ -1591,11 +1610,29 @@ async function runWorker(args) {
       let error;
       let stopped = false;
       let grace;
-      const runTimer = setTimeout(() => {
-        stopped = true;
-        acp.notify('session/cancel', { sessionId });
-        grace = setTimeout(() => abort(1, 'agent did not stop after cancel; killed it'), Number(process.env.AGENT_HUDDLE_CANCEL_MS) || 10_000);
-      }, runMs);
+      const ctl = new AbortController();
+      const clock = { left: runMs, since: 0, timer: null, open: 0 };
+      const start = () => {
+        clock.since = Date.now();
+        clock.timer = setTimeout(() => {
+          stopped = true;
+          ctl.abort();
+          acp.notify('session/cancel', { sessionId });
+          grace = setTimeout(() => abort(1, 'agent did not stop after cancel; killed it'), Number(process.env.AGENT_HUDDLE_CANCEL_MS) || 10_000);
+        }, clock.left);
+      };
+      run = {
+        ctl,
+        hold() {
+          if (clock.open++ > 0) return;
+          clearTimeout(clock.timer);
+          clock.left -= Date.now() - clock.since;
+        },
+        release() {
+          if (--clock.open === 0 && !ctl.signal.aborted) start();
+        },
+      };
+      start();
       const beat = setInterval(heartbeat, heartbeatMs);
       running = true;
       try {
@@ -1603,8 +1640,9 @@ async function runWorker(args) {
       } catch (err) {
         error = err;
       }
-      clearTimeout(runTimer);
+      clearTimeout(clock.timer);
       clearTimeout(grace);
+      run = null;
       clearInterval(beat);
       if (signal.aborted) return;
       running = false;

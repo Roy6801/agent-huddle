@@ -119,3 +119,29 @@ test('leaving cancels open asks and wakes the long-poll', async () => {
   assert.equal((await waiting).json.status, 'cancelled');
   assert.equal((await state()).asks[0].status, 'cancelled');
 });
+
+test('ending the room cancels open asks and wakes the long-poll with 410', async () => {
+  const { created, join, call, ask } = await room({ adminToken: 'test-admin-token' });
+  const a = await join('codex');
+  await ask(a);
+  const waiting = call('GET', `${a.link}/asks/1?wait=20`);
+  await new Promise((r) => setTimeout(r, 100));
+  const end = await fetch(`${new URL(created.join).origin}/admin/rooms/${created.id}/end`, { method: 'POST', headers: { authorization: 'Bearer test-admin-token' } });
+  assert.equal(end.status, 200);
+  assert.equal((await waiting).status, 410);
+});
+
+test('an agent cancels its own open ask', async () => {
+  const { join, call, ask, state } = await room();
+  const a = await join('codex');
+  const b = await join('claude');
+  await ask(a);
+  assert.equal((await call('POST', `${b.link}/asks/1/cancel`, {})).status, 404);
+  const waiting = call('GET', `${a.link}/asks/1?wait=20`);
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal((await call('POST', `${a.link}/asks/1/cancel`, {})).json.status, 'cancelled');
+  assert.equal((await waiting).json.status, 'cancelled');
+  assert.equal((await call('POST', `${a.link}/asks/1/cancel`, {})).status, 409);
+  assert.equal((await call('POST', `${a.link}/asks/2/cancel`, {})).status, 404);
+  assert.ok((await state()).messages.some((m) => m.ask === 1 && m.text === 'run rm -rf build cancelled'));
+});

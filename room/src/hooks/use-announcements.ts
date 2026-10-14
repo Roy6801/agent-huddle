@@ -16,15 +16,16 @@ function describe(fresh: Message[]) {
 }
 
 /**
- * What a screen reader hears without watching the feed: messages addressed to you, the round cap
+ * What a screen reader hears without watching the feed: messages addressed to you, new approvals, the round cap
  * pausing agents, the connection dropping or coming back, and the room ending. History that is
  * already there on load is never announced. Also keeps the tab title, with an unread count for
- * messages to you that arrive while the tab is hidden. Quiet skips messages and the cap.
+ * messages and approvals for you that arrive while the tab is hidden. Quiet skips messages, approvals and the cap.
  */
 export function useAnnouncements(state: RoomState, atCap: boolean, quiet = false) {
   const [live, setLive] = useState({ polite: "", assertive: "" });
   const [unread, setUnread] = useState(0);
   const lastId = useRef<number | null>(null);
+  const lastAsk = useRef<number | null>(null);
   const wasAtCap = useRef<boolean | null>(null);
   const prevConn = useRef(state.conn);
 
@@ -46,6 +47,19 @@ export function useAnnouncements(state: RoomState, atCap: boolean, quiet = false
     announce(describe(fresh));
     if (document.hidden) setUnread((n) => n + fresh.length);
   }, [state.loaded, state.messages, announce, quiet]);
+
+  useEffect(() => {
+    if (!state.loaded || quiet) return;
+    const last = state.asks.length ? state.asks[state.asks.length - 1].id : 0;
+    const since = lastAsk.current;
+    lastAsk.current = last;
+    if (since === null) return;
+    const fresh = state.asks.filter((a) => a.id > since && a.status === "open");
+    if (!fresh.length) return;
+    const a = fresh[fresh.length - 1];
+    announce(fresh.length === 1 ? `${a.by} asks to ${clip(a.title)}` : `${fresh.length} approvals waiting on you. Latest: ${a.by} asks to ${clip(a.title)}`);
+    if (document.hidden) setUnread((n) => n + fresh.length);
+  }, [state.loaded, state.asks, announce, quiet]);
 
   useEffect(() => {
     if (!state.loaded || quiet) return;
