@@ -26,7 +26,7 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
 ## Steps
 
 1. Run the permission gate: list the commands below, say they only touch 127.0.0.1, wait for yes.
-2. Create the room (starts the local server if needed). It prints JSON `{id,title,join,page,invite}`:
+2. Create the room (starts the local server if needed). It prints JSON `{id,name,join,page,invite}`:
    ```bash
    node $HUDDLE new "<room name>"
    ```

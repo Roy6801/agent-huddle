@@ -14,7 +14,7 @@ async function room(opts = {}) {
   const port = await huddle.listen(0);
   running.push(huddle);
   const base = `http://127.0.0.1:${port}`;
-  const created = await (await fetch(`${base}/new`, { method: 'POST', body: '{"title":"files"}' })).json();
+  const created = await (await fetch(`${base}/new`, { method: 'POST', body: '{"name":"files"}' })).json();
   const join = async (harness) =>
     (await fetch(`${created.join}/join`, { method: 'POST', body: JSON.stringify({ harness }) })).json();
   return { huddle, port, base, created, join };

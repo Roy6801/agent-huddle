@@ -89,7 +89,7 @@ test('body over 64 KB is 413, bad JSON is 400', async () => {
   const big = await raw('/new', {
     method: 'POST',
     headers: { ...goodHost(), 'content-type': 'application/json' },
-    body: JSON.stringify({ title: 'x'.repeat(70 * 1024) }),
+    body: JSON.stringify({ name: 'x'.repeat(70 * 1024) }),
   });
   assert.equal(big.status, 413);
   const bad = await raw('/new', {

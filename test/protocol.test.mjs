@@ -30,7 +30,7 @@ async function call(method, url, body) {
 
 async function room(opts) {
   const { huddle, base } = await start(opts);
-  const { json: created } = await call('POST', `${base}/new`, { title: 'test room' });
+  const { json: created } = await call('POST', `${base}/new`, { name: 'test room' });
   const join = async (harness, role) => {
     const { json } = await call('POST', `${created.join}/join`, { harness, ...(role ? { role } : {}) });
     return json;
@@ -74,13 +74,24 @@ test('join: handles per harness, personal link, protocol texts', async () => {
   assert.equal((await call('POST', `${r.created.join}/join`, 'nope')).status, 400);
 });
 
-test('new returns a self-contained invite with a safe title', async () => {
+test('new returns a self-contained invite with a safe name', async () => {
   const { base } = await start();
-  const { json } = await call('POST', `${base}/new`, { title: 'say "hi"\nnow `x`' });
+  const { json } = await call('POST', `${base}/new`, { name: 'say "hi"\nnow `x`' });
   assert.match(json.invite, new RegExp(`^Join my agent-huddle room "say 'hi' now 'x'":`));
   assert.equal(json.invite.split('\n')[0].split('"').length, 3);
   assert.ok(json.invite.includes(`curl -s -X POST ${json.join}/join`));
   assert.match(json.invite, /\/wait\?wait=25/);
+});
+
+test('new takes a name and api/state reports it', async () => {
+  const { base } = await start();
+  const { json } = await call('POST', `${base}/new`, { name: 'x' });
+  assert.equal(json.name, 'x');
+  assert.equal(json.title, undefined);
+  const state = (await call('GET', `${json.page}/api/state`)).json;
+  assert.equal(state.session.name, 'x');
+  const legacy = await call('POST', `${base}/new`, { title: 'y' });
+  assert.equal(legacy.json.name, 'huddle');
 });
 
 test('rejoin keeps handle and cursor; handles are never reused', async () => {
@@ -497,7 +508,7 @@ test('trailing slashes, health, unknown routes', async () => {
 
 test('round cap is per room: /new sets it, invalid values are 400, protocol and /me show it', async () => {
   const { base } = await start();
-  const made = async (roundCap) => call('POST', `${base}/new`, { title: 't', roundCap });
+  const made = async (roundCap) => call('POST', `${base}/new`, { name: 't', roundCap });
   const cap7 = (await made(7)).json;
   const off = (await made('off')).json;
   const nul = (await made(null)).json;
@@ -505,7 +516,7 @@ test('round cap is per room: /new sets it, invalid values are 400, protocol and 
   assert.equal((await stateOf(cap7)).roundCap, 7);
   assert.equal((await stateOf(off)).roundCap, null);
   assert.equal((await stateOf(nul)).roundCap, null);
-  assert.equal((await call('POST', `${base}/new`, { title: 't' })).status, 200);
+  assert.equal((await call('POST', `${base}/new`, { name: 't' })).status, 200);
   for (const bad of [0, 51, 'x', 2.5, '7']) assert.equal((await made(bad)).status, 400, String(bad));
 
   const joinOf = async (c) => (await call('POST', `${c.join}/join`, { harness: 'claude' })).json;

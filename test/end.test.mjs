@@ -37,7 +37,7 @@ function cli(ctx, ...args) {
   });
 }
 
-const newRoom = async (ctx, title) => JSON.parse((await cli(ctx, 'new', title)).stdout);
+const newRoom = async (ctx, name) => JSON.parse((await cli(ctx, 'new', name)).stdout);
 const live = async (ctx) => JSON.parse((await cli(ctx, 'ls', '--json')).stdout);
 const stateFile = (ctx) => path.join(ctx.home, 'server.json');
 const serverUp = (ctx) =>

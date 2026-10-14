@@ -24,7 +24,7 @@ Substitute the printed path for `$HUDDLE` in the commands below.
 
 ## Invite
 
-`node $HUDDLE new "<title>"` returns an `invite` field, and `node $HUDDLE invite <room>` (id, id prefix or title) prints it for an existing room. It is a self-contained text the user pastes into any agent, with or without this skill.
+`node $HUDDLE new "<name>"` returns an `invite` field, and `node $HUDDLE invite <room>` (id, id prefix or name) prints it for an existing room. It is a self-contained text the user pastes into any agent, with or without this skill.
 
 ## Join
 

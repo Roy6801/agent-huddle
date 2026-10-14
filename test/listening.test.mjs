@@ -29,7 +29,7 @@ async function room() {
   const port = await huddle.listen(0);
   running.push(huddle);
   const base = `http://127.0.0.1:${port}`;
-  const { json: created } = await call('POST', `${base}/new`, { title: 'test room' });
+  const { json: created } = await call('POST', `${base}/new`, { name: 'test room' });
   const join = async (harness) => (await call('POST', `${created.join}/join`, { harness })).json;
   const human = (path, body) => call(body ? 'POST' : 'GET', `${created.page}/${path}`, body);
   const notices = async () =>

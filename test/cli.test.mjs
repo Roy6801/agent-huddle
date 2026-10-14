@@ -51,7 +51,7 @@ test('new twice reuses one server and prints join and page URLs', async () => {
   const a = JSON.parse(first.stdout);
   const info = serverJson();
   assert.equal(info.port, port);
-  assert.equal(a.title, 'sprite game');
+  assert.equal(a.name, 'sprite game');
   assert.ok(a.join.startsWith(`http://127.0.0.1:${port}/s/`));
   assert.match(a.page, /\/s\/[^/]+\/h\/[^/]+$/);
 
@@ -72,8 +72,8 @@ test('new twice reuses one server and prints join and page URLs', async () => {
   const byId = await cli('invite', a.id.slice(0, 8));
   assert.equal(byId.code, 0, byId.stderr);
   assert.equal(byId.stdout.trim(), a.invite);
-  const byTitle = await cli('invite', 'sprite');
-  assert.equal(byTitle.stdout.trim(), a.invite);
+  const byName = await cli('invite', 'sprite');
+  assert.equal(byName.stdout.trim(), a.invite);
   const none = await cli('invite', 'nothing-like-this');
   assert.notEqual(none.code, 0);
   assert.match(none.stderr, /No live huddle matches/);
@@ -83,7 +83,7 @@ test('new --round-cap sets the room cap and rejects bad values', async () => {
   const made = await cli('new', 'capped', '--round-cap', '3');
   assert.equal(made.code, 0, made.stderr);
   const room = JSON.parse(made.stdout);
-  assert.equal(room.title, 'capped');
+  assert.equal(room.name, 'capped');
   const state = await (await fetch(`${room.page}/api/state`)).json();
   assert.equal(state.roundCap, 3);
 

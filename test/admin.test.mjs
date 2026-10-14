@@ -37,9 +37,9 @@ async function call(method, url, { body, token } = {}) {
 const admin = (base, method, route, ...rest) =>
   call(method, `${base}/admin/${route}`, { token: rest.length ? rest[0] : TOKEN });
 
-async function room(title) {
+async function room(name) {
   const ctx = await start();
-  const { json: created } = await call('POST', `${ctx.base}/new`, { body: { title } });
+  const { json: created } = await call('POST', `${ctx.base}/new`, { body: { name } });
   const { json: agent } = await call('POST', `${created.join}/join`, { body: { harness: 'claude' } });
   return { ...ctx, created, agent };
 }
@@ -79,13 +79,13 @@ test('admin routes reject a foreign Host', async () => {
 
 test('list shows live sessions newest first with counts and URLs', async () => {
   const { base } = await start();
-  const a = (await call('POST', `${base}/new`, { body: { title: 'first' } })).json;
-  const b = (await call('POST', `${base}/new`, { body: { title: 'second' } })).json;
+  const a = (await call('POST', `${base}/new`, { body: { name: 'first' } })).json;
+  const b = (await call('POST', `${base}/new`, { body: { name: 'second' } })).json;
   await call('POST', `${a.join}/join`, { body: { harness: 'claude' } });
   await call('POST', `${a.join}/join`, { body: { harness: 'codex' } });
   const { status, json } = await admin(base, 'GET', 'sessions');
   assert.equal(status, 200);
-  assert.deepEqual(json.sessions.map((s) => s.title), ['second', 'first']);
+  assert.deepEqual(json.sessions.map((s) => s.name), ['second', 'first']);
   const first = json.sessions[1];
   assert.equal(first.id, a.id);
   assert.deepEqual(first.agents, { active: 2, total: 2 });
@@ -103,7 +103,7 @@ test('ending a session releases waiting agents with 410', async () => {
   await new Promise((resolve) => setTimeout(resolve, 50));
   const started = Date.now();
   const end = await admin(r.base, 'POST', `sessions/${r.created.id}/end`);
-  assert.deepEqual(end.json, { id: r.created.id, title: 'doomed', ended: true });
+  assert.deepEqual(end.json, { id: r.created.id, name: 'doomed', ended: true });
   const waited = await wait;
   assert.equal(waited.status, 410);
   assert.equal(waited.json.error, 'huddle ended');
@@ -205,7 +205,7 @@ test('cli: session management end to end', async () => {
   assert.ok(ls.stdout.includes(`    join: ${beta.join}`));
 
   const json = JSON.parse((await cli('ls', '--json')).stdout);
-  assert.deepEqual(json.map((s) => s.title), ['beta', 'alpha']);
+  assert.deepEqual(json.map((s) => s.name), ['beta', 'alpha']);
 
   const open = await cli('open', '--print', 'bet');
   assert.equal(open.code, 0, open.stderr);
@@ -223,7 +223,7 @@ test('cli: session management end to end', async () => {
   assert.equal(end.code, 0, end.stderr);
   assert.ok(end.stdout.startsWith(`Ended "alpha" (${alpha.id.slice(0, 8)})`));
   const after1 = JSON.parse((await cli('ls', '--json')).stdout);
-  assert.deepEqual(after1.map((s) => s.title), ['alpha two', 'beta']);
+  assert.deepEqual(after1.map((s) => s.name), ['alpha two', 'beta']);
 
   const all = await cli('end', '--all', '--yes', '--keep-server');
   assert.equal(all.code, 0, all.stderr);
