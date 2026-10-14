@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Copies install.sh, README, LICENSE and skills/ from the repo root into site/public and writes
-// site/public/agent-huddle.zip. Zero dependencies; needs Node 22+ for zlib.crc32.
+// Copies install.sh, install.mjs, README, LICENSE and skills/ from the repo root into site/public
+// and writes site/public/agent-huddle.zip. Zero dependencies; needs Node 22+ for zlib.crc32.
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
@@ -11,6 +11,7 @@ const ROOT = path.dirname(SITE);
 const PUBLIC = path.join(SITE, 'public');
 const ROOT_FILES = [
   { name: 'install.sh', mode: 0o755 },
+  { name: 'install.mjs', mode: 0o755 },
   { name: 'README.md', mode: 0o644 },
   { name: 'LICENSE', mode: 0o644 },
 ];

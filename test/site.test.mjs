@@ -15,7 +15,7 @@ const SKILL_FILES = [
   'skills/agent-huddle/page.html',
   ...['huddle-start', 'huddle-join', 'huddle-rooms', 'huddle-end'].map((v) => `skills/${v}/SKILL.md`),
 ];
-const FILES = ['install.sh', 'README.md', 'LICENSE', ...SKILL_FILES];
+const FILES = ['install.sh', 'install.mjs', 'README.md', 'LICENSE', ...SKILL_FILES];
 
 const run = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: 'utf8', ...opts });
 
@@ -42,9 +42,9 @@ test('the zip is valid and keeps executable modes', () => {
   const info = run('zipinfo', [zip]);
   assert.equal(info.status, 0, info.stderr);
   const mode = (name) => info.stdout.split('\n').find((l) => l.trim().endsWith(`agent-huddle/${name}`))?.split(/\s+/)[0];
-  assert.equal(mode('install.sh'), '-rwxr-xr-x');
-  assert.equal(mode('skills/agent-huddle/huddle.mjs'), '-rwxr-xr-x');
-  for (const f of FILES.filter((x) => x !== 'install.sh' && !x.endsWith('huddle.mjs'))) assert.equal(mode(f), '-rw-r--r--', f);
+  const executable = ['install.sh', 'install.mjs', 'skills/agent-huddle/huddle.mjs'];
+  for (const f of executable) assert.equal(mode(f), '-rwxr-xr-x', f);
+  for (const f of FILES.filter((x) => !executable.includes(x))) assert.equal(mode(f), '-rw-r--r--', f);
 });
 
 test('the zip extracts to agent-huddle/ with identical bytes', () => {

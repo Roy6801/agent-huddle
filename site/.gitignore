@@ -49,3 +49,4 @@ next-env.d.ts
 /public/LICENSE
 /public/agent-huddle.zip
 /public/skills/
+/public/install.mjs

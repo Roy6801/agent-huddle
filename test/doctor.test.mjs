@@ -102,6 +102,7 @@ function makeEnv() {
 test('doctor: found agent with skills installed prints a check', async () => {
   const t = makeEnv();
   t.stub('claude');
+  fs.mkdirSync(path.join(t.home, '.claude', 'projects'), { recursive: true });
   t.installSkills(path.join(t.home, '.claude', 'skills'));
   const { stdout } = await t.run();
   assert.match(stdout, /✓ Claude Code: found, skills installed at .*\.claude\/skills/);
@@ -138,7 +139,7 @@ test('doctor: agents that are not found say so', async () => {
 test('doctor: lists extra Claude config dirs and custom targets from install.json', async () => {
   const t = makeEnv();
   const work = path.join(t.home, '.claude-work');
-  fs.mkdirSync(work, { recursive: true });
+  fs.mkdirSync(path.join(work, 'projects'), { recursive: true });
   fs.writeFileSync(path.join(work, 'settings.json'), '{}');
   const custom = path.join(t.root, 'elsewhere', 'skills');
   t.installSkills(custom);
@@ -149,6 +150,27 @@ test('doctor: lists extra Claude config dirs and custom targets from install.jso
   const { stdout } = await t.run();
   assert.match(stdout, /! Claude Code: skills not installed at .*\.claude-work\/skills/);
   assert.ok(stdout.includes(`✓ Other: found, skills installed at ${custom}`));
+  t.cleanup();
+});
+
+test('doctor: skips Claude dirs without sessions unless they are saved targets', async () => {
+  const t = makeEnv();
+  const idle = path.join(t.home, '.claude-old');
+  fs.mkdirSync(idle, { recursive: true });
+  fs.writeFileSync(path.join(idle, 'settings.json'), '{}');
+  fs.mkdirSync(path.join(t.home, '.claude'), { recursive: true });
+  let out = (await t.run()).stdout;
+  assert.ok(out.includes(`  - Claude Code: ${idle} has no sessions, skipped`));
+  assert.ok(out.includes(`  - Claude Code: ${path.join(t.home, '.claude')} has no sessions, skipped`));
+  assert.doesNotMatch(out, /! Claude Code/);
+
+  fs.writeFileSync(
+    path.join(t.huddleHome, 'install.json'),
+    JSON.stringify({ version: 1, targets: [{ agent: 'claude', path: path.join(idle, 'skills'), custom: false }] }),
+  );
+  out = (await t.run()).stdout;
+  assert.match(out, /! Claude Code: skills not installed at .*\.claude-old\/skills/);
+  assert.doesNotMatch(out, /\.claude-old has no sessions/);
   t.cleanup();
 });
 

@@ -1160,12 +1160,21 @@ function agentRows() {
   const exists = (p) => fs.existsSync(p);
   const rows = [];
   const seen = new Set();
-  const add = (agent, label, skillsPath, found) => {
+  const add = (agent, label, skillsPath, found, extra = {}) => {
     const key = realOrSelf(skillsPath);
     if (seen.has(key)) return;
     seen.add(key);
-    rows.push({ agent, label, path: skillsPath, found });
+    rows.push({ agent, label, path: skillsPath, found, ...extra });
   };
+
+  let saved = null;
+  try {
+    saved = JSON.parse(fs.readFileSync(path.join(resolveHome(), 'install.json'), 'utf8'));
+  } catch {}
+  const savedTargets = (saved && Array.isArray(saved.targets) ? saved.targets : []).filter(
+    (target) => target && typeof target.path === 'string' && path.isAbsolute(target.path),
+  );
+  const savedPaths = new Set(savedTargets.map((target) => realOrSelf(target.path)));
 
   const claudeDirs = [];
   if (process.env.CLAUDE_CONFIG_DIR) claudeDirs.push(process.env.CLAUDE_CONFIG_DIR);
@@ -1183,7 +1192,10 @@ function agentRows() {
     const key = realOrSelf(dir);
     if (claudeSeen.has(key)) continue;
     claudeSeen.add(key);
-    add('claude', 'Claude Code', path.join(dir, 'skills'), true);
+    // A Claude dir without projects/ has no sessions; it is skipped unless it is a saved target.
+    const skills = path.join(dir, 'skills');
+    const idle = dir !== process.env.CLAUDE_CONFIG_DIR && exists(dir) && !exists(path.join(dir, 'projects'));
+    add('claude', 'Claude Code', skills, true, idle && !savedPaths.has(realOrSelf(skills)) ? { skipped: dir } : {});
   }
   if (!claudeSeen.size) add('claude', 'Claude Code', path.join(home, '.claude', 'skills'), false);
 
@@ -1199,17 +1211,10 @@ function agentRows() {
     add(agent, label, skillsPath, detected[agent]);
   }
 
-  let saved = null;
-  try {
-    saved = JSON.parse(fs.readFileSync(path.join(resolveHome(), 'install.json'), 'utf8'));
-  } catch {}
   const labels = { claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity', gemini: 'Gemini CLI', opencode: 'opencode' };
-  if (saved && Array.isArray(saved.targets)) {
-    for (const target of saved.targets) {
-      if (!target || typeof target.path !== 'string' || !path.isAbsolute(target.path)) continue;
-      const known = labels[target.agent];
-      add(known ? target.agent : 'other', known || 'Other', target.path, known ? Boolean(detected[target.agent] || claudeSeen.size) : true);
-    }
+  for (const target of savedTargets) {
+    const known = labels[target.agent];
+    add(known ? target.agent : 'other', known || 'Other', target.path, known ? Boolean(detected[target.agent] || claudeSeen.size) : true);
   }
   return rows;
 }
@@ -1228,6 +1233,10 @@ function checkAgents() {
   for (const row of agentRows()) {
     if (!row.found) {
       console.log(`  - ${row.label}: not found`);
+      continue;
+    }
+    if (row.skipped) {
+      console.log(`  - ${row.label}: ${row.skipped} has no sessions, skipped`);
       continue;
     }
     const missing = SKILL_NAMES.filter((skill) => !fs.existsSync(path.join(row.path, skill, 'SKILL.md')));
