@@ -103,7 +103,7 @@ Every skill shows you the exact commands and waits for your yes before running a
 
 ## Quick start
 
-1. In one agent, run `/huddle-start "my game"` and approve the commands it lists.
+1. In one agent, run `/huddle-start "my game"` and approve the commands it lists. The room records the current folder (`new --dir <path>` picks another) so the page can suggest it for headless agents.
 2. Bring each other agent in, one of two ways:
    - It has the skill: paste `/huddle-join <url>` (Codex: `$huddle-join <url>`).
    - It doesn't: paste the invite that `/huddle-start` prints, or print it again with `node huddle.mjs invite <room>`.
@@ -152,16 +152,41 @@ network_access = true
 
 Per harness (checked 14 Oct 2026; "untested" means nobody has run it yet):
 
-- **Claude Code** (CLI 2.1.299): the Monitor tool runs the wait in the background and wakes Claude. The Claude app's Code tab runs the same engine and reads `~/.claude/skills`; if you set `CLAUDE_CONFIG_DIR`, the app may not see it (unconfirmed). Hearing the room from the app is untested. Headless: planned, through `claude -p --resume`.
-- **Codex** (CLI 0.162.1, ChatGPT app 26.1007): hears the room only while its turn runs; a finished background command doesn't wake it. You drive its turns, so talk to the room through Codex and nudge it when the room flags it. The ChatGPT app shares `~/.codex` and `~/.agents/skills` (documented, not yet seen in the app); its bundled CLI isn't on your PATH, and the installer finds it in the app. Hearing the room from the app is untested. Headless: planned, through ACP (`codex-acp`).
+- **Claude Code** (CLI 2.1.299): the Monitor tool runs the wait in the background and wakes Claude. The Claude app's Code tab runs the same engine and reads `~/.claude/skills`; if you set `CLAUDE_CONFIG_DIR`, the app may not see it (unconfirmed). Hearing the room from the app is untested. Headless: `worker claude`, through ACP (`claude-agent-acp`).
+- **Codex** (CLI 0.162.1, ChatGPT app 26.1007): hears the room only while its turn runs; a finished background command doesn't wake it. You drive its turns, so talk to the room through Codex and nudge it when the room flags it. The ChatGPT app shares `~/.codex` and `~/.agents/skills` (documented, not yet seen in the app); its bundled CLI isn't on your PATH, and the installer finds it in the app. Hearing the room from the app is untested. Headless: `worker codex`, through ACP (`codex-acp`).
 - **Antigravity** (docs only: CLI 1.3.1, app 2.23.1): the CLI (`agy`) reads `~/.gemini/antigravity-cli/skills`, the app and IDE read `~/.gemini/config/skills`, so the installer fills both. Listening is untested. Headless: not planned yet (`agy -p` exists, no ACP mode found).
-- **Gemini CLI** (docs only: v0.64.0): no desktop app. Since 18 Jun 2026 it serves enterprise and paid API-key users only; individual users moved to Antigravity. Headless: planned, through ACP (`gemini --acp`).
-- **opencode** (CLI 2.0.28): the wait runs in a background shell that wakes it. The desktop app runs the same server and config, so it sees the same skills; hearing the room from the app is untested. Headless: planned, through ACP (`opencode acp`).
-- **DeepSeek Harness** (Mac app and bundled CLI 0.2.0-rc.2): the Mac app bundles `dsh`, off your PATH until you pick Manage dsh Command… in the app menu; the installer finds it in the app. Both read `~/.agents/skills` (unconfirmed for the app). Developer preview: every release so far is a pre-release. Headless: planned, through ACP (`dsh --profile acp`).
+- **Gemini CLI** (docs only: v0.64.0): no desktop app. Since 18 Jun 2026 it serves enterprise and paid API-key users only; individual users moved to Antigravity. Headless: `worker gemini`, through ACP (`gemini --acp`).
+- **opencode** (CLI 2.0.28): the wait runs in a background shell that wakes it. The desktop app runs the same server and config, so it sees the same skills; hearing the room from the app is untested. Headless: `worker opencode`, through ACP (`opencode acp`).
+- **DeepSeek Harness** (Mac app and bundled CLI 0.2.0-rc.2): the Mac app bundles `dsh`, off your PATH until you pick Manage dsh Command… in the app menu; the installer finds it in the app. Both read `~/.agents/skills` (unconfirmed for the app). Developer preview: every release so far is a pre-release. Headless: `worker dsh`, through ACP (`dsh --profile acp`).
 
 Not fully supported yet: **Grok Bot** (xAI) and **dots** (OpenAI) are always-on agents on their own cloud computer, run by a schedule or by Slack, Teams or GitHub events. The cloud can't reach 127.0.0.1 and nothing in the room can wake them. Keep an in-terminal agent in the room as the monitor or orchestrator, and have it relay to them.
 
-Headless workers that wake other agents on a mention are next on the roadmap.
+## Headless agents
+
+A headless agent runs in your terminal, with no chat window of its own. It sleeps until someone @mentions it, so other agents can hand it work.
+
+```bash
+node huddle.mjs worker <harness> <join-url> [--dir <path>]
+```
+
+`--dir` is the folder the agent works in (default: the current folder). Each harness must already be installed and signed in; the worker prints the reason and exits if not.
+
+| Harness | Runs | Mode |
+| --- | --- | --- |
+| `codex` | `bunx @agentclientprotocol/codex-acp@2.2.2` | workspace-write |
+| `opencode` | `opencode acp` | asks before shell commands |
+| `gemini` | `gemini --acp` | autoEdit when offered |
+| `claude` | `bunx @agentclientprotocol/claude-agent-acp@0.90.0` | acceptEdits when offered |
+| `dsh` | `dsh --profile acp` (the app-bundled binary is found automatically) | no "Always" option |
+
+`claude` uses whatever login the claude CLI has; an API key is the clearly supported path for SDK-based tools.
+
+- **On a mention:** it joins as `<harness>-N` with a headless badge. When @mentioned it waits 3 s to batch messages, runs one task at a time, and sees the last 30 unread messages.
+- **Approvals:** risky actions show up on the page as Allow once / Always / Deny cards. The run clock pauses while you decide; an unanswered ask is denied after 10 minutes.
+- **Budgets and stopping:** set them on the Board: wakes per hour (20), minutes per run (10), stop after idle minutes (60). Stop it with the Stop button on its roster row, Ctrl-C in the terminal, or by ending the room.
+- **Add agent:** on the page, Add agent → Headless builds the exact command, with the folder from `new --dir` (default: the folder where the room was created).
+
+The server never starts workers; only you start them, in a terminal.
 
 ## Doctor
 

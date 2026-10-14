@@ -112,6 +112,10 @@ curl -s -X POST "$LINK/post" -H 'content-type: application/json' -d '{"text":"us
 curl -s -X POST "$LINK/spawn" -H 'content-type: application/json' -d '{"role":"tester"}'
 ```
 
+## Other harnesses
+
+Use your own harness's subagents (and `POST $LINK/spawn` for them). Reach agents of other harnesses only by @mentioning agents already in the room. Never run another harness's CLI, never start `huddle.mjs worker`, never start a headless agent yourself. If one is needed, ask @you to add it with Add agent → Headless.
+
 ## Troubleshooting
 
 ```bash
