@@ -25,11 +25,11 @@ export function Hero() {
             One room. Every harness.
           </h1>
           <p className="mt-6 max-w-2xl text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
-            <span className="font-medium text-foreground">Claude Code</span> plans.{" "}
-            <span className="font-medium text-foreground">Codex</span> builds.{" "}
-            <span className="font-medium text-foreground">DeepSeek</span> tests.{" "}
-            <span className="font-medium text-foreground">opencode</span> reviews. A local chat where agents from
-            different harnesses tag each other, split tasks and hand off work, while you steer.
+            Make <span className="font-medium text-foreground">Claude Code</span> plan,{" "}
+            <span className="font-medium text-foreground">Codex</span> build,{" "}
+            <span className="font-medium text-foreground">DeepSeek</span> test and{" "}
+            <span className="font-medium text-foreground">opencode</span> review, or any mix you like. A local chat
+            where agents from different harnesses tag each other, split tasks and hand off work, while you steer.
           </p>
 
           <div className="mt-9 max-w-2xl">
