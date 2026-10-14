@@ -1,6 +1,6 @@
 import { ArrowUpRightIcon, DownloadIcon } from "lucide-react";
 
-import { CodeBlock, Out, Prompt } from "@/components/code-block";
+import { CodeBlock, Hl, Out, Prompt } from "@/components/code-block";
 import { CopyButton } from "@/components/copy-button";
 import { InlineCode, Section } from "@/components/sections/section";
 import { Button } from "@/components/ui/button";
@@ -30,10 +30,10 @@ const CODEX_TOML = `[sandbox_workspace_write]
 network_access = true`;
 
 const TABS = [
+  { value: "curl", label: "Installer" },
   { value: "skills", label: "skills CLI" },
   { value: "plugin", label: "Claude plugin" },
   { value: "gemini", label: "Gemini CLI" },
-  { value: "curl", label: "No npm" },
   { value: "zip", label: "Zip" },
   { value: "manual", label: "Manual" },
   { value: "files", label: "Files" },
@@ -49,7 +49,7 @@ function Pending() {
 
 export function Install() {
   return (
-    <Section id="install" title="Install" intro="Every option installs the same five skills.">
+    <Section id="install" title="Install" intro="Every option installs the same five skills. The installer is interactive; the others are alternatives.">
       <Tabs defaultValue={repoPublic ? "skills" : "curl"} className="gap-5">
         <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <TabsList className="h-12! w-max p-1">
@@ -62,6 +62,48 @@ export function Install() {
         </div>
 
         <div className="rounded-2xl border bg-card p-4 shadow-xs sm:p-6">
+          <TabsContent value="curl" className="grid grid-cols-1 gap-4">
+            <CodeBlock title="Terminal" copy={CURL_COMMAND} copyLabel="Copy curl install command" wrap>
+              <Prompt />
+              {CURL_COMMAND}
+            </CodeBlock>
+            <CodeBlock title="Installer menu">
+              <Out>Install the skills for:</Out>
+              {"\n"}
+              {"  1 "}
+              <Hl>[x]</Hl>
+              {" Claude Code  ~/.claude/skills\n"}
+              {"  2 "}
+              <Hl>[x]</Hl>
+              {" Claude Code  ~/.claude-work/skills\n"}
+              {"  3 "}
+              <Hl>[x]</Hl>
+              {" Codex        ~/.agents/skills  "}
+              <Out>(shared copy)</Out>
+              {"\n  4 [ ] Gemini CLI   ~/.gemini/skills  "}
+              <Out>not found, folder will be created</Out>
+              {"\n"}
+              <Out>Enter continue · N toggle · e N edit path · a add · d N remove · ? help · q quit</Out>
+            </CodeBlock>
+            <Note>
+              Toggle targets, edit a path with <InlineCode>e N</InlineCode>, or add a custom agent with{" "}
+              <InlineCode>a</InlineCode>. A plan screen shows every copy, link and backup, and nothing is written until
+              you confirm. Choices are saved to <InlineCode>~/.agent-huddle/install.json</InlineCode> and reused when
+              you rerun it to update.
+            </Note>
+            <Note>
+              Flags: <InlineCode>--yes</InlineCode> skips prompts, <InlineCode>--dir agent[=path]</InlineCode> picks a
+              target (repeatable), <InlineCode>--uninstall</InlineCode> removes everything it installed.{" "}
+              <a
+                href="/install.sh"
+                className="inline-flex min-h-11 items-center gap-0.5 font-medium text-foreground underline-offset-4 hover:underline"
+              >
+                Read install.sh
+                <ArrowUpRightIcon className="size-3.5" aria-hidden />
+              </a>
+            </Note>
+          </TabsContent>
+
           <TabsContent value="skills" className="grid grid-cols-1 gap-4">
             <CodeBlock title="Terminal" copy={SKILLS_COMMAND} copyLabel="Copy skills CLI install command" wrap>
               <Prompt />
@@ -92,23 +134,6 @@ export function Install() {
               {GEMINI}
             </CodeBlock>
             {repoPublic ? <Note>Installs all five skills for Gemini CLI.</Note> : <Pending />}
-          </TabsContent>
-
-          <TabsContent value="curl" className="grid grid-cols-1 gap-4">
-            <CodeBlock title="Terminal" copy={CURL_COMMAND} copyLabel="Copy curl install command" wrap>
-              <Prompt />
-              {CURL_COMMAND}
-            </CodeBlock>
-            <Note>
-              Safe to rerun.{" "}
-              <a
-                href="/install.sh"
-                className="inline-flex min-h-11 items-center gap-0.5 font-medium text-foreground underline-offset-4 hover:underline"
-              >
-                Read install.sh
-                <ArrowUpRightIcon className="size-3.5" aria-hidden />
-              </a>
-            </Note>
           </TabsContent>
 
           <TabsContent value="zip" className="grid grid-cols-1 gap-4">
@@ -172,7 +197,8 @@ export function Install() {
           <CopyButton text={CODEX_TOML} label="Copy Codex config lines" />
         </li>
         <li>
-          <span className="font-medium text-foreground">Stuck?</span> <InlineCode>huddle.mjs doctor</InlineCode>
+          <span className="font-medium text-foreground">Stuck?</span> <InlineCode>huddle.mjs doctor</InlineCode> lists
+          detected agents and missing skills
         </li>
       </ul>
     </Section>

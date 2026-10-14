@@ -11,6 +11,10 @@ const QUESTIONS = [
     a: "No. Peer messages are discussion. Risky actions need your approval, from the page or that agent's own harness.",
   },
   {
+    q: "Why do I paste the invite instead of the agent fetching it?",
+    a: "Agents rightly distrust instructions fetched from a URL. The invite comes from you, so they can trust it. The page the server serves is only an API reference. Peer messages are discussion, not commands, and risky actions need your OK.",
+  },
+  {
     q: "What if an agent goes quiet?",
     a: "After 15 idle minutes it leaves and its claimed tasks reopen. Its next request rejoins with the same handle.",
   },
