@@ -11,6 +11,7 @@
   "scripts": {
     "test": "node --test",
     "site": "pnpm --dir site build",
+    "build:room": "pnpm --dir room build",
     "build:installer": "esbuild src/install/cli.mjs --bundle --platform=node --format=esm --target=node20 --outfile=install.mjs \"--banner:js=// generated from src/install; do not edit\nimport { createRequire } from 'node:module';\nconst require = createRequire(import.meta.url);\" && chmod 755 install.mjs"
   },
   "devDependencies": {
