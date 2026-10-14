@@ -8,7 +8,7 @@ import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 
-const VERSION = '0.3.2';
+const VERSION = '0.3.3';
 const THIS_FILE = fileURLToPath(import.meta.url);
 // Named agent-huddle when run through the installed command on PATH.
 const ON_PATH = path.basename(process.argv[1] ?? '') === 'agent-huddle';
@@ -1907,6 +1907,39 @@ async function newRoom(args) {
   console.log(JSON.stringify(data, null, 2));
 }
 
+const HARNESS_IDS = ['claude', 'codex', 'agy', 'gemini', 'opencode', 'dsh'];
+const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '[::1]'];
+
+async function joinRoom(args) {
+  const words = [];
+  let harness;
+  let role;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--harness' || args[i].startsWith('--harness=')) harness = args[i] === '--harness' ? args[++i] : args[i].slice(10);
+    else if (args[i] === '--role' || args[i].startsWith('--role=')) role = args[i] === '--role' ? args[++i] : args[i].slice(7);
+    else words.push(args[i]);
+  }
+  if (!words.length) throw new Error(`usage: ${HELP_PROG} join <url> --harness <harness> [--role <role>]`);
+  if (!HARNESS_IDS.includes(harness)) throw new Error(`--harness is required; one of: ${HARNESS_IDS.join(', ')}`);
+  let url;
+  try {
+    url = new URL(words[0]);
+  } catch {
+    throw new Error('join needs the room URL (http://127.0.0.1:PORT/s/<id>)');
+  }
+  if (!LOOPBACK_HOSTS.includes(url.hostname)) throw new Error('join only talks to this machine (127.0.0.1, localhost or [::1])');
+  const id = url.pathname.match(/\/s\/([A-Za-z0-9_-]+)/)?.[1];
+  if (!id) throw new Error('join needs the room URL (http://127.0.0.1:PORT/s/<id>)');
+  const res = await fetch(`${url.origin}/s/${id}/join`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ harness, ...(role && { role }) }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `request failed (${res.status})`);
+  console.log(JSON.stringify(data, null, 2));
+}
+
 async function down() {
   const state = readState();
   if (!state) return console.log('not running');
@@ -2509,6 +2542,17 @@ const COMMANDS = {
     options: ['--minutes N  how long to wait (default 5, max 55)'],
     example: 'node huddle.mjs wait http://127.0.0.1:4747/s/<id>/as/<token> --minutes 5',
   },
+  join: {
+    group: 'Agents',
+    summary: 'join a room as an agent, print your handle and link (keep the link)',
+    usage: 'join <url> --harness <harness> [--role <role>]',
+    options: [
+      `--harness <harness>  your own harness: ${HARNESS_IDS.join(', ')}`,
+      '--role <role>  optional, [a-z0-9-]{1,20}',
+      'url          join URL, page URL or agent link of a room on this machine',
+    ],
+    example: 'node huddle.mjs join http://127.0.0.1:4747/s/<id> --harness codex --role tester',
+  },
   worker: {
     group: 'Agents',
     summary: 'run a headless agent (Codex, Gemini CLI) that answers when addressed',
@@ -2576,7 +2620,7 @@ function usage() {
   }
   lines.push(
     '',
-    'Skills: /huddle-start → new, /huddle-join → join URL, /huddle-rooms → ls/open, /huddle-end → end',
+    'Skills: /huddle-start (new), /huddle-join (join), /huddle-rooms (ls, open), /huddle-end (end)',
     '',
     `Run "${HELP_PROG} help <command>" for options and an example.`,
   );
@@ -2620,6 +2664,8 @@ async function main(argv) {
       return doctor();
     case 'upgrade':
       return upgrade(args);
+    case 'join':
+      return joinRoom(args);
     case 'wait':
       return waitForTurn(args);
     case 'worker':

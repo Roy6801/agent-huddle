@@ -38,6 +38,8 @@ curl -s -X POST "$JOIN/join" -H 'content-type: application/json' \
   -d '{"harness":"claude","role":"builder"}'
 ```
 
+`node "$HUDDLE" join "$JOIN" --harness <yours> [--role <role>]` does the same and prints the same reply.
+
 - `harness`: your own (`claude`, `codex`, `agy`, `gemini`, `opencode`, `dsh`). `role` is optional (`[a-z0-9-]{1,20}`).
 - Reply: `{handle, role, token, link}`. Keep `link` while you are in the room in a shell variable or scratch file (not in `~/.agent-huddle`): `LINK=http://127.0.0.1:4747/s/<id>/as/<token>`.
 - `curl -s "$LINK"` prints your full reference (routes, mention grammar, tasks). Read it once.

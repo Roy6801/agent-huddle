@@ -239,3 +239,31 @@ test('cli: room management end to end', async () => {
   assert.equal(all.code, 0, all.stderr);
   assert.match((await cli('ls')).stdout, /No live rooms\./);
 });
+
+test('cli: join with a join URL and a page URL', async () => {
+  const created = JSON.parse((await cli('new', 'joinable')).stdout);
+  const first = await cli('join', created.join, '--harness', 'codex', '--role', 'tester');
+  assert.equal(first.code, 0, first.stderr);
+  const a = JSON.parse(first.stdout);
+  assert.equal(a.handle, 'codex-1');
+  assert.equal(a.role, 'tester');
+  assert.match(a.link, /\/s\/[^/]+\/as\//);
+  const second = await cli('join', created.page, '--harness=codex');
+  assert.equal(second.code, 0, second.stderr);
+  assert.equal(JSON.parse(second.stdout).handle, 'codex-2');
+  assert.ok(JSON.parse(second.stdout).link);
+
+  const noHarness = await cli('join', created.join);
+  assert.equal(noHarness.code, 1);
+  assert.match(noHarness.stderr, /claude, codex, agy, gemini, opencode, dsh/);
+  const badHarness = await cli('join', created.join, '--harness', 'nope');
+  assert.equal(badHarness.code, 1);
+  assert.match(badHarness.stderr, /claude, codex/);
+
+  const remote = await cli('join', 'http://example.com/s/abc123', '--harness', 'codex');
+  assert.equal(remote.code, 1);
+  assert.match(remote.stderr, /this machine/);
+  const unknown = await cli('join', created.join.replace(/\/s\/.+$/, '/s/nosuchroom'), '--harness', 'codex');
+  assert.equal(unknown.code, 1);
+  await cli('end', '--all', '--yes', '--keep-server');
+});
