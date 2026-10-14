@@ -371,6 +371,7 @@ export function createHuddle(opts = {}) {
         role: a.role,
         parent: a.parent,
         status: agentStatus(a),
+        stopRequested: a.stopRequested === true,
         lastSeen: new Date(a.lastSeen).toISOString(),
       })),
       you: { online: humanOnline(s) },
@@ -644,6 +645,7 @@ export function createHuddle(opts = {}) {
     const agent = s.agents.get(handle);
     if (!agent || agent.status === 'left') throw new HttpError(404, 'unknown agent');
     if (agent.role !== 'headless') throw new HttpError(409, 'only headless agents can be stopped here');
+    if (agent.stopRequested) return { ok: true };
     agent.stopRequested = true;
     system(s, `you asked ${handle} to stop`);
     for (const w of agent.waiters) {
@@ -989,6 +991,7 @@ How the room works:
             roundCap: s.roundCap,
             headless: s.headless,
             stopRequested: agent.stopRequested === true,
+            addressed: hasAddressedUnread(s, agent),
           });
         case 'read': {
           const limit = Math.min(500, Math.max(1, parseInt(url.searchParams.get('limit'), 10) || 100));
@@ -1063,6 +1066,7 @@ How the room works:
         agentStreak: s.agentStreak,
         folder: s.folder,
         worker: THIS_FILE,
+        harnesses: Object.entries(WORKER_HARNESSES).map(([id, h]) => [id, h.label]),
       });
     }
     if (method === 'POST' && key === 'api/post') return sendJson(res, 200, postFromHuman(s, body));
@@ -1462,7 +1466,7 @@ function failureReason(result) {
 
 const bin = (agent) => foundBins(harnesses().find((h) => h.agent === agent))[0]?.file ?? agent;
 
-const WORKER_HARNESSES = {
+export const WORKER_HARNESSES = {
   codex: { label: 'Codex', argv: () => ['bunx', '@agentclientprotocol/codex-acp@2.2.2'], env: { INITIAL_AGENT_MODE: 'workspace-write' } },
   opencode: { label: 'opencode', argv: () => [bin('opencode'), 'acp'], env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: { bash: 'ask' } }) } },
   gemini: { label: 'Gemini', argv: () => [bin('gemini'), '--acp'], mode: 'autoEdit' },
@@ -1609,6 +1613,7 @@ async function runWorker(args) {
   const jsonHeaders = { 'content-type': 'application/json' };
   const budgets = { wakesPerHour: 20, runMinutes: 10, idleMinutes: 60 };
   let stopAsked = false;
+  let addressed = false;
   const refresh = () =>
     fetch(`${me.link}/me`, { signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) })
       .then(async (res) => {
@@ -1616,6 +1621,7 @@ async function runWorker(args) {
         const info = await res.json();
         Object.assign(budgets, info.headless);
         stopAsked ||= info.stopRequested === true;
+        addressed = info.addressed === true;
       })
       .catch(() => {});
   const limits = () => ({
@@ -1624,6 +1630,7 @@ async function runWorker(args) {
     idleMs: Number(process.env.AGENT_HUDDLE_IDLE_MS) || budgets.idleMinutes * 60_000,
   });
   const windowMs = Number(process.env.AGENT_HUDDLE_WAKE_WINDOW_MS) || 3_600_000;
+  const gatePollMs = Number(process.env.AGENT_HUDDLE_GATE_POLL_MS) || 5000;
   const wakeTimes = [];
   let wakeNoted = false;
   let lastActive = Date.now();
@@ -1649,7 +1656,34 @@ async function runWorker(args) {
       })
       .catch(() => {});
 
+  const wakeGate = {
+    async acquire() {
+      for (;;) {
+        const { wakes, idleMs } = limits();
+        const now = Date.now();
+        while (wakeTimes.length && now - wakeTimes[0] >= windowMs) wakeTimes.shift();
+        if (stopAsked) return 'stop';
+        if (wakeTimes.length < wakes) return 'run';
+        if (now - lastActive >= idleMs) return 'idle';
+        await refresh();
+        if (stopAsked) return 'stop';
+        if (addressed && !wakeNoted) {
+          wakeNoted = true;
+          const at = new Date(wakeTimes[0] + windowMs).toTimeString().slice(0, 5);
+          await post(`@you ${me.handle} used its ${wakes} wake${wakes === 1 ? '' : 's'} this hour; next wake at ${at}`);
+        }
+        await nap(Math.min(wakeTimes[0] + windowMs - Date.now(), gatePollMs));
+        if (signal.aborted) return 'stop';
+      }
+    },
+    record() {
+      wakeTimes.push(Date.now());
+      wakeNoted = false;
+    },
+  };
+
   const loop = async () => {
+    const stopNow = () => abort(0, `${me.handle} stopped by @you`);
     let mode = '';
     try {
       await acp.request('initialize', { protocolVersion: 1, clientCapabilities: CLIENT_CAPABILITIES, clientInfo: { name: 'agent-huddle', version: VERSION } });
@@ -1673,6 +1707,9 @@ async function runWorker(args) {
     while (!signal.aborted) {
       const idleLeft = limits().idleMs - (Date.now() - lastActive);
       if (idleLeft <= 0) return abort(0, `${me.handle} stopped after ${Math.round(limits().idleMs / 60_000)} min idle`);
+      const gate = await wakeGate.acquire();
+      if (gate === 'idle') continue;
+      if (gate === 'stop') return stopNow();
       let res;
       try {
         res = await fetch(`${me.link}/wait?wait=${Math.max(1, Math.min(25, Math.ceil(idleLeft / 1000)))}`, { signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]) });
@@ -1691,7 +1728,7 @@ async function runWorker(args) {
       }
       if (res.status !== 200) return abort(1, `huddle error: ${(await res.json().catch(() => ({}))).error ?? res.status}`, false);
       const payload = await res.json();
-      if (payload.stop) return abort(0, `${me.handle} stopped by @you`);
+      if (payload.stop) return stopNow();
       const woken = payload.messages;
       await nap(Number(process.env.AGENT_HUDDLE_BATCH_MS) || 3000);
       if (signal.aborted) return;
@@ -1699,27 +1736,9 @@ async function runWorker(args) {
       const unread = [...new Map([...woken, ...more.messages].map((m) => [m.id, m])).values()];
       if (!unread.some((m) => m.to?.includes(me.handle))) continue;
       await refresh();
-      if (stopAsked) return abort(0, `${me.handle} stopped by @you`);
-      const { wakes, runMs } = limits();
-      const now = Date.now();
-      while (wakeTimes.length && now - wakeTimes[0] >= windowMs) wakeTimes.shift();
-      if (wakeTimes.length >= wakes) {
-        const until = wakeTimes[0] + windowMs;
-        if (!wakeNoted) {
-          wakeNoted = true;
-          const at = new Date(until).toTimeString().slice(0, 5);
-          await post(`@you ${me.handle} used its ${wakes} wake${wakes === 1 ? '' : 's'} this hour; next wake at ${at}`);
-        }
-        while (!signal.aborted && Date.now() < until && !stopAsked) {
-          await nap(Math.min(until - Date.now(), 5000));
-          await refresh();
-        }
-        if (signal.aborted) return;
-        if (stopAsked) return abort(0, `${me.handle} stopped by @you`);
-        wakeTimes.shift();
-      }
-      wakeTimes.push(Date.now());
-      wakeNoted = false;
+      if (stopAsked) return stopNow();
+      const { runMs } = limits();
+      wakeGate.record();
       const messages = unread.slice(-30);
       const lines = messages.map((m) => `${m.to?.includes(me.handle) ? '→ you ' : ''}[${m.from}] ${m.text}`);
       const text = (first ? preamble : '') + lines.join('\n');

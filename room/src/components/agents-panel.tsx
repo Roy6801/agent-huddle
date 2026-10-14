@@ -83,31 +83,35 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function StopButton({ handle }: { handle: string }) {
+function StopButton({ handle, requested }: { handle: string; requested: boolean }) {
   const { state, pollNow } = useRoom();
   const { post } = useSource();
-  const [stopping, setStopping] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
   async function stop() {
     setError("");
+    setSending(true);
     try {
       const { r, data } = await post(`/api/agents/${handle}/stop`, {});
-      if (!r.ok) return setError(errMain(r, data));
-      setStopping(true);
+      if (!r.ok) {
+        setSending(false);
+        return setError(errMain(r, data));
+      }
       pollNow();
     } catch {
+      setSending(false);
       setError("Could not reach the room server.");
     }
   }
 
-  if (stopping) return <p className="col-span-2 text-muted-foreground">Stopping after its current run</p>;
+  if (requested) return <p className="col-span-2 text-muted-foreground">Stopping after its current run</p>;
   return (
     <div className="col-span-2 mt-1 grid gap-1">
       <Button
         variant="outline"
         size="xs"
-        disabled={state.ended}
+        disabled={state.ended || sending}
         onClick={stop}
         className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
       >
@@ -188,7 +192,7 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
                 {fmtAgo(agent.lastSeen)}
               </time>
             </Detail>
-            {agent.role === "headless" && agent.status !== "left" && <StopButton handle={agent.handle} />}
+            {agent.role === "headless" && agent.status !== "left" && <StopButton handle={agent.handle} requested={agent.stopRequested === true} />}
           </dl>
         </CollapsibleContent>
       </SidebarMenuItem>

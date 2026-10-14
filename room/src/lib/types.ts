@@ -6,6 +6,7 @@ export type Agent = {
   role: string | null;
   parent: string | null;
   status: AgentStatus;
+  stopRequested?: boolean;
   lastSeen: string;
 };
 
@@ -69,6 +70,7 @@ export type StateResponse = {
   agentStreak?: number;
   folder?: string | null;
   worker?: string;
+  harnesses?: [string, string][];
 };
 
 export type Conn = "connecting" | "live" | "bad" | "gone" | "ended";

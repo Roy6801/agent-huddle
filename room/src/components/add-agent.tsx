@@ -16,13 +16,13 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { useRoom, useSource } from "@/hooks/use-room";
 import { cn } from "@/lib/utils";
 
-const HARNESSES = [
+const FALLBACK_HARNESSES: readonly (readonly [string, string])[] = [
   ["codex", "Codex"],
   ["opencode", "opencode"],
   ["gemini", "Gemini"],
   ["claude", "Claude Code"],
   ["dsh", "DeepSeek Harness"],
-] as const;
+];
 
 type Mode = "terminal" | "headless";
 
@@ -70,7 +70,8 @@ function Terminal({ joinUrl }: { joinUrl: string }) {
 
 function Headless({ joinUrl }: { joinUrl: string }) {
   const { state } = useRoom();
-  const [harness, setHarness] = useState<string>(HARNESSES[0][0]);
+  const harnesses = state.harnesses ?? FALLBACK_HARNESSES;
+  const [harness, setHarness] = useState<string>(harnesses[0][0]);
   const [edited, setEdited] = useState<string | null>(null);
   const folder = edited ?? state.folder ?? "";
   const id = useId();
@@ -82,7 +83,7 @@ function Headless({ joinUrl }: { joinUrl: string }) {
           Harness
         </label>
         <NativeSelect className="w-full" id={`${id}-harness`} value={harness} onChange={(e) => setHarness(e.target.value)}>
-          {HARNESSES.map(([value, name]) => (
+          {harnesses.map(([value, name]) => (
             <NativeSelectOption key={value} value={value}>
               {name}
             </NativeSelectOption>

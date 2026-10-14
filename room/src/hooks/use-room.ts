@@ -10,6 +10,8 @@ export type RoomState = {
   folder?: string | null;
   /** Absolute path of the server's huddle.mjs, for the headless command. */
   worker?: string;
+  /** Headless harnesses the server supports, as [id, label]. */
+  harnesses?: [string, string][];
   agents: Agent[];
   tasks: Task[];
   asks: Ask[];
@@ -93,6 +95,8 @@ export function useRoomState() {
           const roundCap = data.roundCap === null || typeof data.roundCap === "number" ? data.roundCap : s.roundCap;
           const folder = data.folder ?? s.folder;
           const worker = data.worker ?? s.worker;
+          const harnesses = data.harnesses ?? s.harnesses;
+          const harnessesSame = JSON.stringify(harnesses) === JSON.stringify(s.harnesses);
           const streak = data.agentStreak ?? 0;
           const headless = data.headless ?? s.headless;
           const headlessSame = JSON.stringify(headless) === JSON.stringify(s.headless);
@@ -109,6 +113,7 @@ export function useRoomState() {
             roundCap === s.roundCap &&
             folder === s.folder &&
             worker === s.worker &&
+            harnessesSame &&
             streak === s.streak &&
             headlessSame;
           if (unchanged) return s;
@@ -119,6 +124,7 @@ export function useRoomState() {
             roundCap,
             folder,
             worker,
+            harnesses: harnessesSame ? s.harnesses : harnesses,
             streak,
             headless: headlessSame ? s.headless : headless,
             agents: agentsChanged ? agents : s.agents,
