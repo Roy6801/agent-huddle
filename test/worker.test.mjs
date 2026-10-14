@@ -499,6 +499,20 @@ test('an out-of-wakes worker leaves messages unread, then runs one prompt with a
   await w.exit;
 });
 
+test('a worker out of wakes shows as asleep, then working again once it runs', async () => {
+  const room = await setup('asleep room');
+  const w = startWorker(room.created.join, { AGENT_HUDDLE_WAKES_PER_HOUR: '1', AGENT_HUDDLE_WAKE_WINDOW_MS: '3000', AGENT_HUDDLE_GATE_POLL_MS: '100' });
+  await until(() => w.out.includes('codex-1 is listening'));
+  const presence = async () => (await (await fetch(`${room.created.page}/api/state`)).json()).agents.find((x) => x.handle === 'codex-1').presence;
+  await say(room.claude, '@codex-1 one');
+  await until(async () => (await codexPosts(room)).length === 1);
+  await say(room.claude, '@codex-1 two');
+  await until(async () => (await presence()) === 'asleep');
+  await until(async () => (await codexPosts(room)).filter((m) => m.text.startsWith('echo(')).length === 2);
+  w.proc.kill('SIGTERM');
+  await w.exit;
+});
+
 test('wakes per hour from the room settings when the env is unset', async () => {
   const room = await setup('wake room settings');
   await settings(room, { wakesPerHour: 1 });

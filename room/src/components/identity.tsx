@@ -3,7 +3,7 @@ import { useId } from "react";
 
 import { harnessKey, type HarnessKey } from "@/lib/format";
 import { jazzicon } from "@/lib/jazzicon";
-import type { AgentStatus } from "@/lib/types";
+import type { AgentPresence } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** Deterministic avatar for a handle, identical to the site. "you" gets the accent avatar. */
@@ -86,23 +86,24 @@ export function HarnessDot({
   );
 }
 
-// Shape as well as colour: active is full, idle half full, left an empty ring.
-const PRESENCE: Record<AgentStatus, string> = {
-  active: "bg-presence",
-  idle: "bg-[linear-gradient(to_top,var(--idle)_50%,transparent_50%)] ring-inset ring-[1.5px] ring-idle",
+// Shape as well as colour: listening is full, working a pulsing ring, asleep half full, left an empty ring.
+const PRESENCE: Record<AgentPresence, string> = {
+  listening: "bg-presence",
+  working: "bg-presence/40 ring-inset ring-[1.5px] ring-presence motion-safe:animate-pulse",
+  asleep: "bg-[linear-gradient(to_top,var(--idle)_50%,transparent_50%)] ring-inset ring-[1.5px] ring-idle",
   left: "bg-transparent ring-inset ring-[1.5px] ring-muted-foreground",
 };
 
-/** Avatar with a presence dot, as in the demo's roster. The status itself is written out by the caller. */
+/** Avatar with a presence dot, as in the demo's roster. The presence itself is written out by the caller. */
 export function PresenceAvatar({
   handle,
-  status,
+  presence,
   size = 20,
   ringClass = "ring-sidebar bg-sidebar",
   className,
 }: {
   handle: string;
-  status: AgentStatus;
+  presence: AgentPresence;
   size?: number;
   ringClass?: string;
   className?: string;
@@ -111,7 +112,7 @@ export function PresenceAvatar({
     <span aria-hidden className={cn("relative inline-flex shrink-0", className)}>
       <Jazzicon handle={handle} size={size} />
       <span className={cn("absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 forced-color-adjust-none", ringClass)}>
-        <span className={cn("block size-full rounded-full transition-colors duration-500", PRESENCE[status])} />
+        <span className={cn("block size-full rounded-full transition-colors duration-500", PRESENCE[presence])} />
       </span>
     </span>
   );

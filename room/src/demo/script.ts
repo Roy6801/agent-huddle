@@ -95,7 +95,7 @@ export const counts = (step: Step) =>
 export const atCap = (s: RoomState) => s.roundCap != null && s.streak >= s.roundCap;
 
 function seen(s: RoomState, handle: string, at: number): Agent[] {
-  return s.agents.map((a) => (a.handle === handle ? { ...a, lastSeen: new Date(at).toISOString() } : a));
+  return s.agents.map((a) => (a.handle === handle ? { ...a, presence: "listening" as const, lastSeen: new Date(at).toISOString() } : a));
 }
 
 export function createTask(s: RoomState, at: number, by: string, title: string, assignee: string | null) {
@@ -117,6 +117,7 @@ export function apply(s: RoomState, step: Step, at: number, sprite: () => FileMe
         role: step.role,
         parent: null,
         status: "active",
+        presence: "listening",
         lastSeen: new Date(at).toISOString(),
       };
       return system({ ...s, agents: [...s.agents, agent] }, at, `${step.h} joined as ${step.role}`);
@@ -129,6 +130,7 @@ export function apply(s: RoomState, step: Step, at: number, sprite: () => FileMe
         role: step.role,
         parent: step.parent,
         status: "active",
+        presence: "working",
         lastSeen: new Date(at).toISOString(),
       };
       return system({ ...s, agents: [...seen(s, step.parent, at), child] }, at, `${step.parent} spawned ${step.h}`);

@@ -1,4 +1,5 @@
 export type AgentStatus = "active" | "idle" | "left";
+export type AgentPresence = "listening" | "working" | "asleep" | "left";
 
 export type Agent = {
   handle: string;
@@ -6,6 +7,7 @@ export type Agent = {
   role: string | null;
   parent: string | null;
   status: AgentStatus;
+  presence?: AgentPresence;
   stopRequested?: boolean;
   lastSeen: string;
 };

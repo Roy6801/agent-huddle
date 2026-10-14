@@ -21,23 +21,27 @@ import { usePanels } from "@/hooks/use-panels";
 import { useRoom, useSource } from "@/hooks/use-room";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { errMain } from "@/lib/api";
-import { fmtAgo, fullTime } from "@/lib/format";
-import type { Agent, AgentStatus } from "@/lib/types";
+import { fmtAgo, fullTime, presenceOf } from "@/lib/format";
+import type { Agent, AgentPresence } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const GROUPS: [AgentStatus, string][] = [
-  ["active", "Active"],
-  ["idle", "Idle"],
+const GROUPS: [AgentPresence, string][] = [
+  ["listening", "Listening"],
+  ["working", "Working"],
+  ["asleep", "Asleep"],
   ["left", "Left"],
 ];
 
-const ORDER: Record<AgentStatus, number> = { active: 0, idle: 1, left: 2 };
+const ORDER: Record<AgentPresence, number> = { listening: 0, working: 1, asleep: 2, left: 3 };
 
-const STATUS_TEXT: Record<AgentStatus, string> = {
-  active: "Active",
-  idle: "Idle",
-  left: "Left the room",
+const PRESENCE_TEXT: Record<AgentPresence, string> = {
+  listening: "Listening",
+  working: "Working",
+  asleep: "Asleep",
+  left: "Left",
 };
+
+const awake = (a: Agent) => ["listening", "working"].includes(presenceOf(a));
 
 /** Members of one status group as a parent-first list with their nesting depth. */
 function tree(members: Agent[]) {
@@ -130,6 +134,7 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
   const { expandedAgent, setExpandedAgent } = usePanels();
   const { state, isMobile, setOpen } = useSidebar();
   const open = expandedAgent === agent.handle;
+  const presence = presenceOf(agent);
 
   return (
     <Collapsible asChild open={open} onOpenChange={(o) => setExpandedAgent(o ? agent.handle : null)}>
@@ -138,8 +143,8 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
           <SidebarMenuButton
             data-roving-item
             // The drawer never shows it, and a hidden tooltip would swallow the first Esc.
-            tooltip={isMobile ? undefined : `${agent.handle} · ${agent.status}`}
-            className={cn("h-9 gap-2.5 group-data-[collapsible=icon]:p-1.5!", agent.status === "left" && "text-muted-foreground")}
+            tooltip={isMobile ? undefined : `${agent.handle} · ${presence}`}
+            className={cn("h-9 gap-2.5 group-data-[collapsible=icon]:p-1.5!", presence === "left" && "text-muted-foreground")}
             onClick={() => {
               if (state === "collapsed" && !isMobile) setOpen(true);
             }}
@@ -155,8 +160,8 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
             )}
             <PresenceAvatar
               handle={agent.handle}
-              status={agent.status}
-              className={cn(agent.status === "left" && "opacity-55")}
+              presence={presence}
+              className={cn(presence === "left" && "opacity-55")}
             />
             <span className="min-w-0 truncate font-mono text-xs font-medium">{agent.handle}</span>
             {agent.role === "headless" ? (
@@ -167,14 +172,12 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
               agent.role && <span className="min-w-0 truncate text-[11px] text-muted-foreground">{agent.role}</span>
             )}
             <HarnessDot harness={agent.harness} className="ml-auto group-data-[collapsible=icon]:hidden" />
-            <span className="sr-only">{`, ${agent.status}`}</span>
+            <span className="sr-only">{`, ${PRESENCE_TEXT[presence]}`}</span>
           </SidebarMenuButton>
         </CollapsibleTrigger>
         <CollapsibleContent className="overflow-hidden group-data-[collapsible=icon]:hidden motion-safe:data-open:animate-collapsible-down motion-safe:data-closed:animate-collapsible-up">
           <dl className="mx-1 mt-0.5 mb-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-sidebar-accent/60 px-2.5 py-2 text-[11px] leading-4">
-            <Detail label="Status">
-              {STATUS_TEXT[agent.status]}
-            </Detail>
+            <Detail label="Status">{PRESENCE_TEXT[presence]}</Detail>
             <Detail label="Harness">
               <span className="inline-flex items-center gap-1.5">
                 <HarnessDot harness={agent.harness} decorative />
@@ -192,7 +195,7 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
                 {fmtAgo(agent.lastSeen)}
               </time>
             </Detail>
-            {agent.role === "headless" && agent.status !== "left" && <StopButton handle={agent.handle} requested={agent.stopRequested === true} />}
+            {agent.role === "headless" && presence !== "left" && <StopButton handle={agent.handle} requested={agent.stopRequested === true} />}
           </dl>
         </CollapsibleContent>
       </SidebarMenuItem>
@@ -203,7 +206,7 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
 export function AgentsPanel() {
   const { state } = useRoom();
   const { agents } = state;
-  const nActive = agents.filter((a) => a.status === "active").length;
+  const nActive = agents.filter(awake).length;
   const roving = useRovingFocus<HTMLDivElement>();
 
   return (
@@ -225,11 +228,11 @@ export function AgentsPanel() {
             No agents yet. Share the join link to bring them in.
           </p>
         ) : (
-          GROUPS.map(([status, label]) => {
-            const members = agents.filter((a) => a.status === status);
+          GROUPS.map(([presence, label]) => {
+            const members = agents.filter((a) => presenceOf(a) === presence);
             if (!members.length) return null;
             return (
-              <SidebarGroup key={status} className="py-1">
+              <SidebarGroup key={presence} className="py-1">
                 <SidebarGroupLabel asChild className="gap-1.5">
                   <h3>
                     {label}
@@ -254,10 +257,10 @@ export function AgentsPanel() {
 /** Phone header: up to three overlapping avatars, presence on the front one, opening the agents drawer. */
 export function AgentStack({ expanded, onClick, className }: { expanded: boolean; onClick: () => void; className?: string }) {
   const { live } = useRoom();
-  const sorted = live.slice().sort((a, b) => ORDER[a.status] - ORDER[b.status]);
+  const sorted = live.slice().sort((a, b) => ORDER[presenceOf(a)] - ORDER[presenceOf(b)]);
   const shown = sorted.slice(0, 3);
   const extra = sorted.length - shown.length;
-  const nActive = live.filter((a) => a.status === "active").length;
+  const nActive = live.filter(awake).length;
   const name = live.length ? `Agents, ${live.length} in the room, ${nActive} active` : "Agents, none in the room yet";
 
   return (
@@ -276,7 +279,7 @@ export function AgentStack({ expanded, onClick, className }: { expanded: boolean
               <PresenceAvatar
                 key={a.handle}
                 handle={a.handle}
-                status={a.status}
+                presence={presenceOf(a)}
                 size={26}
                 ringClass="ring-background bg-background"
                 className="z-3 rounded-full ring-2 ring-background"

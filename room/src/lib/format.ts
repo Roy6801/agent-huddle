@@ -1,3 +1,8 @@
+import type { Agent, AgentPresence } from "@/lib/types";
+
+export const presenceOf = (a: Agent): AgentPresence =>
+  a.presence ?? (a.status === "active" ? "working" : a.status === "idle" ? "asleep" : "left");
+
 export function fmtTime(v: string | number | null | undefined) {
   if (v == null) return "";
   const d = new Date(v);
