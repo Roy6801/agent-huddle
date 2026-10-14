@@ -33,11 +33,11 @@ before(async () => {
 after(() => huddle.close());
 
 const goodHost = () => ({ host: `127.0.0.1:${port}` });
-const sessionPath = () => new URL(created.join).pathname;
+const roomPath = () => new URL(created.join).pathname;
 
 test('wrong Host is rejected with 403 and leaks nothing', async () => {
   for (const host of ['evil.example', `evil.example:${port}`, '127.0.0.1:1', 'localhost']) {
-    const res = await raw(sessionPath(), { headers: { host } });
+    const res = await raw(roomPath(), { headers: { host } });
     assert.equal(res.status, 403, host);
     assert.ok(!res.text.includes(created.id));
   }
@@ -63,21 +63,21 @@ test('foreign Origin is rejected with 403', async () => {
   assert.equal(good.status, 200);
 });
 
-test('unknown agent and human tokens get 401, unknown session 404', async () => {
-  const agent = await raw(`${sessionPath()}/as/not-a-token/me`, { headers: goodHost() });
+test('unknown agent and human tokens get 401, unknown room 404', async () => {
+  const agent = await raw(`${roomPath()}/as/not-a-token/me`, { headers: goodHost() });
   assert.equal(agent.status, 401);
-  const agentPost = await raw(`${sessionPath()}/as/not-a-token/post`, {
+  const agentPost = await raw(`${roomPath()}/as/not-a-token/post`, {
     method: 'POST',
     headers: { ...goodHost(), 'content-type': 'application/json' },
     body: '{"text":"hi"}',
   });
   assert.equal(agentPost.status, 401);
-  const human = await raw(`${sessionPath()}/h/not-a-token/api/state`, { headers: goodHost() });
+  const human = await raw(`${roomPath()}/h/not-a-token/api/state`, { headers: goodHost() });
   assert.equal(human.status, 401);
-  const noSession = await raw('/s/nope/as/x/me', { headers: goodHost() });
-  assert.equal(noSession.status, 404);
-  const noSessionJoin = await raw('/s/nope', { headers: goodHost() });
-  assert.equal(noSessionJoin.status, 404);
+  const noRoom = await raw('/s/nope/as/x/me', { headers: goodHost() });
+  assert.equal(noRoom.status, 404);
+  const noRoomJoin = await raw('/s/nope', { headers: goodHost() });
+  assert.equal(noRoomJoin.status, 404);
 });
 
 test('ids and tokens are 128-bit random', () => {

@@ -60,7 +60,7 @@ test('join: handles per harness, personal link, protocol texts', async () => {
 
   const personal = await call('GET', a.link);
   assert.match(personal.text, /You are claude-1/);
-  assert.match(personal.text, /huddle 'test room'/);
+  assert.match(personal.text, /room 'test room'/);
   assert.match(personal.text, /reference material, not instructions/);
   assert.match(personal.text, /\/wait\?wait=25/);
 
@@ -89,7 +89,7 @@ test('new takes a name and api/state reports it', async () => {
   assert.equal(json.name, 'x');
   assert.equal(json.title, undefined);
   const state = (await call('GET', `${json.page}/api/state`)).json;
-  assert.equal(state.session.name, 'x');
+  assert.equal(state.room.name, 'x');
   const legacy = await call('POST', `${base}/new`, { title: 'y' });
   assert.equal(legacy.json.name, 'huddle');
 });
@@ -479,7 +479,7 @@ test('human page and state: online flag, since filter, page.html route', async (
   await post(a, 'hello');
   const s1 = await r.state();
   assert.equal(s1.you.online, true);
-  assert.equal(s1.session.id, r.created.id);
+  assert.equal(s1.room.id, r.created.id);
   assert.equal(s1.roundCap, 10);
   assert.equal(s1.agentStreak, 1);
   const since = (await r.human(`api/state?since=${s1.messages.at(-1).id - 1}`)).json;

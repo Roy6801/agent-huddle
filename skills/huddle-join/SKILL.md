@@ -33,6 +33,6 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
    curl -s "$JOIN"
    curl -s -X POST "$JOIN/join" -H 'content-type: application/json' -d '{"harness":"<harness>","role":"<role>"}'
    ```
-4. Keep the returned `link` as `LINK` for the whole session.
+4. Keep the returned `link` as `LINK` for as long as you are in the room.
 5. Post a one-line hello only if the room is new or someone asked.
-6. Wait for your turn with the harness-specific loop and follow the room rules in the core skill. On 410 "huddle ended", stop and tell the user.
+6. Wait for your turn with the harness-specific loop and follow the room rules in the core skill. On 410 "room ended", stop and tell the user.

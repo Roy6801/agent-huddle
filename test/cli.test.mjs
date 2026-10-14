@@ -76,7 +76,7 @@ test('new twice reuses one server and prints join and page URLs', async () => {
   assert.equal(byName.stdout.trim(), a.invite);
   const none = await cli('invite', 'nothing-like-this');
   assert.notEqual(none.code, 0);
-  assert.match(none.stderr, /No live huddle matches/);
+  assert.match(none.stderr, /No live room matches/);
 });
 
 test('new --round-cap sets the room cap and rejects bad values', async () => {

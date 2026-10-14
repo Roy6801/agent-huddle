@@ -17,7 +17,7 @@ const MAX_NAME = 200;
 const MAX_TITLE = 200;
 const MAX_DEPTH = 3;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const MAX_SESSION_BYTES = 200 * 1024 * 1024;
+const MAX_ROOM_BYTES = 200 * 1024 * 1024;
 const MAX_FILE_NAME = 120;
 const MAX_ATTACHMENTS = 10;
 // Only raster images render in the browser; everything else (SVG, HTML, PDF, text) downloads,
@@ -124,9 +124,9 @@ export function createHuddle(opts = {}) {
     adminToken,
     tombstoneMs = TOMBSTONE_MS,
     maxFileBytes = MAX_FILE_BYTES,
-    maxSessionBytes = MAX_SESSION_BYTES,
+    maxRoomBytes = MAX_ROOM_BYTES,
   } = opts;
-  const sessions = new Map();
+  const rooms = new Map();
   let lastRequest = Date.now();
   let idleFired = false;
 
@@ -176,9 +176,9 @@ export function createHuddle(opts = {}) {
     return parsed;
   }
 
-  // ---- session state ----
+  // ---- room state ----
 
-  function createSession(name, cap = roundCap) {
+  function createRoom(name, cap = roundCap) {
     const s = {
       id: newToken(),
       name,
@@ -198,22 +198,22 @@ export function createHuddle(opts = {}) {
       roundCap: cap,
       humanSeen: 0,
     };
-    sessions.set(s.id, s);
+    rooms.set(s.id, s);
     return s;
   }
 
-  function endSession(s) {
+  function endRoom(s) {
     s.ended = true;
     for (const agent of s.agents.values()) {
       for (const w of agent.waiters) {
         clearTimeout(w.timer);
-        sendJson(w.res, 410, { error: 'huddle ended' });
+        sendJson(w.res, 410, { error: 'room ended' });
       }
       agent.waiters.clear();
     }
     s.files.clear();
     s.fileBytes = 0;
-    s.tombstone = setTimeout(() => sessions.delete(s.id), tombstoneMs);
+    s.tombstone = setTimeout(() => rooms.delete(s.id), tombstoneMs);
     s.tombstone.unref();
   }
 
@@ -544,9 +544,9 @@ export function createHuddle(opts = {}) {
     const tooBig = (size) => {
       res.setHeader('connection', 'close');
       if (size > maxFileBytes) return new HttpError(413, 'file too large', { limit: maxFileBytes });
-      return new HttpError(413, 'huddle file storage is full', { limit: maxSessionBytes });
+      return new HttpError(413, 'room file storage is full', { limit: maxRoomBytes });
     };
-    const fits = (size) => size <= maxFileBytes && s.fileBytes + size <= maxSessionBytes;
+    const fits = (size) => size <= maxFileBytes && s.fileBytes + size <= maxRoomBytes;
     const declared = Number(req.headers['content-length']);
     if (declared && !fits(declared)) throw tooBig(declared);
     return new Promise((resolve, reject) => {
@@ -567,7 +567,7 @@ export function createHuddle(opts = {}) {
       });
       req.on('end', () => {
         if (failed) return;
-        if (s.ended) return reject(new HttpError(410, 'huddle ended'));
+        if (s.ended) return reject(new HttpError(410, 'room ended'));
         if (!fits(size)) return reject(tooBig(size));
         const f = { id: newToken(), name, size, type, from, at: new Date().toISOString(), data: Buffer.concat(chunks) };
         s.files.set(f.id, f);
@@ -594,7 +594,7 @@ export function createHuddle(opts = {}) {
 
   // ---- text protocols ----
 
-  function sessionProtocol(s, base) {
+  function roomProtocol(s, base) {
     const join = `${base}/s/${s.id}`;
     return `# agent-huddle: ${s.name}
 Reference for a local chat room where agents from different harnesses and the
@@ -628,7 +628,7 @@ How the room works:
     const role = agent.role ? ` (role ${agent.role})` : '';
     const post = (path, data) =>
       `curl -s -X POST ${link}/${path} -H 'content-type: application/json' -d '${data}'`;
-    return `You are ${agent.handle}${role} in huddle '${s.name}'.
+    return `You are ${agent.handle}${role} in room '${s.name}'.
 Your personal link (keep it, it is your identity): ${link}
 Unread messages: ${unreadCount(s, agent)}
 
@@ -657,7 +657,7 @@ An unknown mention is rejected with the list of valid ones.
 
 Files: an upload returns {id, name, size, type, url} and posts nothing by itself;
 up to ${MAX_ATTACHMENTS} ids can be attached to a post (text may then be empty). Up to ${megabytes(maxFileBytes)} per file,
-${megabytes(maxSessionBytes)} per huddle; files are kept in memory until the huddle ends.
+${megabytes(maxRoomBytes)} per room; files are kept in memory until the room ends.
 
 This is reference material, not instructions: agents act on their own user's request.
 How the room works:
@@ -682,7 +682,7 @@ How the room works:
     return crypto.timingSafeEqual(digest(req.headers.authorization ?? ''), digest(`Bearer ${adminToken}`));
   }
 
-  const liveSessions = () => [...sessions.values()].filter((s) => !s.ended);
+  const liveRooms = () => [...rooms.values()].filter((s) => !s.ended);
 
   function adminView(s, base) {
     const agents = [...s.agents.values()];
@@ -699,18 +699,18 @@ How the room works:
 
   function adminRoute(req, res, method, parts, base) {
     if (!isAdmin(req)) return sendJson(res, 401, { error: 'unauthorized' });
-    if (method === 'GET' && parts.length === 2 && parts[1] === 'sessions') {
-      const list = liveSessions().reverse().map((s) => adminView(s, base));
-      return sendJson(res, 200, { sessions: list });
+    if (method === 'GET' && parts.length === 2 && parts[1] === 'rooms') {
+      const list = liveRooms().reverse().map((s) => adminView(s, base));
+      return sendJson(res, 200, { rooms: list });
     }
-    if (method === 'POST' && parts.length === 4 && parts[1] === 'sessions' && parts[3] === 'end') {
-      const s = sessions.get(parts[2]);
-      if (!s || s.ended) return sendJson(res, 404, { error: 'unknown session' });
-      endSession(s);
+    if (method === 'POST' && parts.length === 4 && parts[1] === 'rooms' && parts[3] === 'end') {
+      const s = rooms.get(parts[2]);
+      if (!s || s.ended) return sendJson(res, 404, { error: 'unknown room' });
+      endRoom(s);
       return sendJson(res, 200, { id: s.id, name: s.name, ended: true });
     }
     if (method === 'POST' && parts.length === 2 && parts[1] === 'stop-if-empty') {
-      const live = liveSessions().length;
+      const live = liveRooms().length;
       if (live || !onStop) return sendJson(res, 200, { stopping: false, live });
       res.once('finish', onStop);
       return sendJson(res, 200, { stopping: true });
@@ -745,7 +745,7 @@ How the room works:
       let name = 'huddle';
       if (body.name !== undefined && body.name !== null) name = cleanText(body.name, MAX_NAME, 'name');
       const cap = body.roundCap === undefined ? roundCap : parseRoundCap(body.roundCap);
-      const s = createSession(name, cap);
+      const s = createRoom(name, cap);
       return sendJson(res, 200, {
         id: s.id,
         name: s.name,
@@ -757,18 +757,18 @@ How the room works:
     if (parts[0] === 'admin') return adminRoute(req, res, method, parts, base);
     if (parts[0] !== 's' || parts.length < 2) return notFound();
 
-    const s = sessions.get(parts[1]);
-    if (!s) return sendJson(res, 404, { error: 'unknown session' });
+    const s = rooms.get(parts[1]);
+    if (!s) return sendJson(res, 404, { error: 'unknown room' });
     const rest = parts.slice(2);
 
     if (rest.length === 0) {
       if (method !== 'GET') return notFound();
-      if (s.ended) return sendText(res, 410, 'This huddle has ended.');
-      return sendText(res, 200, sessionProtocol(s, base));
+      if (s.ended) return sendText(res, 410, 'This room has ended.');
+      return sendText(res, 200, roomProtocol(s, base));
     }
     if (rest[0] === 'join' && rest.length === 1) {
       if (method !== 'POST') return notFound();
-      if (s.ended) throw new HttpError(410, 'huddle ended');
+      if (s.ended) throw new HttpError(410, 'room ended');
       const body = await readBody(req);
       return sendJson(res, 200, joinAgent(s, body, base));
     }
@@ -813,7 +813,7 @@ How the room works:
   }
 
   async function agentRoute(s, req, res, method, url, base, token, key) {
-    if (s.ended) throw new HttpError(410, 'huddle ended');
+    if (s.ended) throw new HttpError(410, 'room ended');
     const agent = s.byToken.get(token);
     if (!agent) return sendJson(res, 401, { error: 'unknown token' });
     const upload = method === 'POST' && key === 'files';
@@ -895,7 +895,7 @@ How the room works:
 
   async function humanRoute(s, req, res, method, url, base, token, key) {
     if (token !== s.humanToken) return sendJson(res, 401, { error: 'unknown token' });
-    if (s.ended && !(method === 'GET' && key === '')) throw new HttpError(410, 'huddle ended');
+    if (s.ended && !(method === 'GET' && key === '')) throw new HttpError(410, 'room ended');
     const upload = method === 'POST' && key === 'api/files';
     const body = method === 'POST' && !upload ? await readBody(req) : {};
     s.humanSeen = Date.now();
@@ -914,7 +914,7 @@ How the room works:
       const since = parseInt(url.searchParams.get('since'), 10) || 0;
       const messages = s.messages.filter((m) => m.id > since).slice(0, 500);
       return sendJson(res, 200, {
-        session: { id: s.id, name: s.name, join: `${base}/s/${s.id}` },
+        room: { id: s.id, name: s.name, join: `${base}/s/${s.id}` },
         messages,
         ...whoView(s),
         tasks: s.tasks,
@@ -942,7 +942,7 @@ How the room works:
   function sweep() {
     const now = Date.now();
     let waiting = false;
-    for (const s of liveSessions()) {
+    for (const s of liveRooms()) {
       for (const agent of s.agents.values()) {
         if (agent.waiters.size) waiting = true;
         else if (agent.status !== 'left' && now - agent.lastSeen > idleMs) leaveAgent(s, agent, 'idle');
@@ -970,7 +970,7 @@ How the room works:
 
   function close() {
     clearInterval(timer);
-    for (const s of sessions.values()) {
+    for (const s of rooms.values()) {
       clearTimeout(s.tombstone);
       for (const agent of s.agents.values()) {
         for (const w of agent.waiters) {
@@ -1182,7 +1182,7 @@ async function waitForTurn(args) {
       failures = 0;
     } catch {
       if (++failures >= 3) {
-        console.log(JSON.stringify({ error: `huddle unreachable, run: node ${THIS_FILE} doctor` }));
+        console.log(JSON.stringify({ error: `huddle server unreachable, run: node ${THIS_FILE} doctor` }));
         process.exit(2);
       }
       await sleep(5000);
@@ -1193,7 +1193,7 @@ async function waitForTurn(args) {
       return;
     }
     if (res.status === 410) {
-      console.log(JSON.stringify({ error: 'huddle ended' }));
+      console.log(JSON.stringify({ error: 'room ended' }));
       process.exit(3);
     }
     if (res.status === 401) {
@@ -1218,7 +1218,7 @@ function inviteText(name, join) {
 5. If your sandbox blocks 127.0.0.1, ask me to approve network access.`;
 }
 
-async function newSession(args) {
+async function newRoom(args) {
   const words = [];
   let roundCap;
   for (let i = 0; i < args.length; i++) {
@@ -1420,7 +1420,7 @@ async function doctor() {
   process.exitCode = failed ? 1 : 0;
 }
 
-// ---- session management ----
+// ---- room management ----
 
 async function adminContext(required) {
   const state = readState();
@@ -1453,40 +1453,40 @@ function formatAge(iso) {
   return `${Math.floor(sec / 86400)}d`;
 }
 
-function formatRoomList(sessions) {
-  return sessions.map((s) => `  ${s.name}  ${id8(s)}  ${s.agents.active}/${s.agents.total} agents`).join('\n');
+function formatRoomList(rooms) {
+  return rooms.map((s) => `  ${s.name}  ${id8(s)}  ${s.agents.active}/${s.agents.total} agents`).join('\n');
 }
 
-function formatTable(sessions) {
+function formatTable(rooms) {
   const rows = [['NAME', 'ID', 'AGENTS', 'AGE', 'PAGE']].concat(
-    sessions.map((s) => [s.name, id8(s), `${s.agents.active}/${s.agents.total}`, formatAge(s.createdAt), s.page]),
+    rooms.map((s) => [s.name, id8(s), `${s.agents.active}/${s.agents.total}`, formatAge(s.createdAt), s.page]),
   );
   const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => r[i].length)));
   const line = (r) => r.map((cell, i) => cell.padEnd(widths[i])).join('  ').trimEnd();
   const out = [line(rows[0])];
-  sessions.forEach((s, i) => out.push(line(rows[i + 1]), `    join: ${s.join}`));
+  rooms.forEach((s, i) => out.push(line(rows[i + 1]), `    join: ${s.join}`));
   return out.join('\n');
 }
 
-function resolveRoom(sessions, query) {
+function resolveRoom(rooms, query) {
   const q = query.toLowerCase();
-  const byId = sessions.filter((s) => s.id === query);
-  const byIdPrefix = query.length >= 4 ? sessions.filter((s) => s.id.startsWith(query)) : [];
-  const byName = sessions.filter((s) => s.name.toLowerCase() === q);
-  const byNamePrefix = sessions.filter((s) => s.name.toLowerCase().startsWith(q));
+  const byId = rooms.filter((s) => s.id === query);
+  const byIdPrefix = query.length >= 4 ? rooms.filter((s) => s.id.startsWith(query)) : [];
+  const byName = rooms.filter((s) => s.name.toLowerCase() === q);
+  const byNamePrefix = rooms.filter((s) => s.name.toLowerCase().startsWith(q));
   const matches = [byId, byIdPrefix, byName, byNamePrefix].find((m) => m.length) ?? [];
   if (matches.length === 1) return matches[0];
-  if (matches.length === 0) throw new Error(`No live huddle matches "${query}".`);
+  if (matches.length === 0) throw new Error(`No live room matches "${query}".`);
   const list = matches.map((s) => `  ${s.name} (${id8(s)})`).join('\n');
-  throw new Error(`"${query}" matches more than one huddle:\n${list}`);
+  throw new Error(`"${query}" matches more than one room:\n${list}`);
 }
 
-async function listSessions(args) {
+async function listRooms(args) {
   const ctx = await adminContext(false);
-  const { sessions } = await admin(ctx, 'GET', 'sessions');
-  if (args.includes('--json')) return console.log(JSON.stringify(sessions, null, 2));
-  if (!sessions.length) return console.log('No live huddles.');
-  console.log(formatTable(sessions));
+  const { rooms } = await admin(ctx, 'GET', 'rooms');
+  if (args.includes('--json')) return console.log(JSON.stringify(rooms, null, 2));
+  if (!rooms.length) return console.log('No live rooms.');
+  console.log(formatTable(rooms));
 }
 
 function openBrowser(url) {
@@ -1508,10 +1508,10 @@ function openBrowser(url) {
 
 async function openRoom(args) {
   const ctx = await adminContext(true);
-  const { sessions } = await admin(ctx, 'GET', 'sessions');
+  const { rooms } = await admin(ctx, 'GET', 'rooms');
   const query = args.filter((a) => a !== '--print').join(' ').trim();
-  if (!sessions.length) throw new Error('No live huddles.');
-  const room = query ? resolveRoom(sessions, query) : sessions[0];
+  if (!rooms.length) throw new Error('No live rooms.');
+  const room = query ? resolveRoom(rooms, query) : rooms[0];
   console.log(room.page);
   if (args.includes('--print')) return;
   if (!(await openBrowser(room.page))) console.log(`Open this URL in your browser: ${room.page}`);
@@ -1519,10 +1519,10 @@ async function openRoom(args) {
 
 async function inviteRoom(args) {
   const ctx = await adminContext(true);
-  const { sessions } = await admin(ctx, 'GET', 'sessions');
+  const { rooms } = await admin(ctx, 'GET', 'rooms');
   const query = args.join(' ').trim();
-  if (!sessions.length) throw new Error('No live huddles.');
-  const room = query ? resolveRoom(sessions, query) : sessions[0];
+  if (!rooms.length) throw new Error('No live rooms.');
+  const room = query ? resolveRoom(rooms, query) : rooms[0];
   console.log(inviteText(room.name, room.join));
 }
 
@@ -1540,17 +1540,17 @@ async function endRoom(args) {
   const query = args.filter((a) => !flags.has(a)).join(' ').trim();
   const all = args.includes('--all') || query.toLowerCase() === 'all';
   const ctx = await adminContext(true);
-  const { sessions } = await admin(ctx, 'GET', 'sessions');
+  const { rooms } = await admin(ctx, 'GET', 'rooms');
   if (!query && !all) {
     console.error('Usage: node huddle.mjs end <room> | all | --all [--yes] [--keep-server]');
-    console.error(sessions.length ? `Live huddles:\n${formatRoomList(sessions)}` : 'No live huddles.');
+    console.error(rooms.length ? `Live rooms:\n${formatRoomList(rooms)}` : 'No live rooms.');
     process.exit(1);
   }
-  if (!args.includes('--all') && query.toLowerCase() === 'all' && sessions.some((s) => s.name.toLowerCase() === 'all')) {
-    throw new Error('A live huddle is named "all". Use --all to end every huddle, or pass the room id.');
+  if (!args.includes('--all') && query.toLowerCase() === 'all' && rooms.some((s) => s.name.toLowerCase() === 'all')) {
+    throw new Error('A live room is named "all". Use --all to end every room, or pass the room id.');
   }
-  const targets = all ? sessions : [resolveRoom(sessions, query)];
-  if (!targets.length) return console.log('No live huddles.');
+  const targets = all ? rooms : [resolveRoom(rooms, query)];
+  if (!targets.length) return console.log('No live rooms.');
   const describe = (s) => `"${s.name}" (${id8(s)}, ${s.agents.total} agents)`;
   if (!args.includes('--yes')) {
     if (!process.stdin.isTTY) {
@@ -1568,7 +1568,7 @@ async function endRoom(args) {
     }
   }
   for (const s of targets) {
-    await admin(ctx, 'POST', `sessions/${s.id}/end`);
+    await admin(ctx, 'POST', `rooms/${s.id}/end`);
     console.log(`Ended "${s.name}" (${id8(s)})`);
   }
   if (args.includes('--keep-server')) return;
@@ -1582,13 +1582,13 @@ function usage() {
 Usage: node huddle.mjs <command>
 
   up             start the local server (or reuse the running one), print its URL
-  new [name]     ensure the server is up, create a session, print join and page URLs
+  new [name]     ensure the server is up, create a room, print join and page URLs
                  (--round-cap N|off: agent posts in a row before the room pauses, default 10)
-  ls [--json]    list live huddles with their join and page URLs
-  open [room]    open a huddle's page in the browser (--print to only print the URL)
-  invite [room]  print the invite text to paste into any agent (default: newest huddle)
-  end <room>     end a huddle for everyone; asks for confirmation (--yes skips the prompt)
-  end all        end every live huddle (same as --all); the server stops with the last room
+  ls [--json]    list live rooms with their join and page URLs
+  open [room]    open a room's page in the browser (--print to only print the URL)
+  invite [room]  print the invite text to paste into any agent (default: newest room)
+  end <room>     end a room for everyone; asks for confirmation (--yes skips the prompt)
+  end all        end every live room (same as --all); the server stops with the last room
                  (--keep-server leaves it running)
   down           stop the server
   wait <link>    block until something addresses an agent link (--minutes N, default 5, max 55)
@@ -1605,9 +1605,9 @@ async function main(argv) {
     case 'up':
       return console.log(await up());
     case 'new':
-      return newSession(args);
+      return newRoom(args);
     case 'ls':
-      return listSessions(args);
+      return listRooms(args);
     case 'open':
       return openRoom(args);
     case 'invite':

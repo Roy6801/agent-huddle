@@ -47,9 +47,9 @@ async function room(name) {
 test('admin routes require the bearer token', async () => {
   const { base } = await start();
   for (const token of [undefined, 'wrong', '']) {
-    const res = await admin(base, 'GET', 'sessions', token);
+    const res = await admin(base, 'GET', 'rooms', token);
     assert.equal(res.status, 401, String(token));
-    assert.equal((await admin(base, 'POST', 'sessions/x/end', token)).status, 401);
+    assert.equal((await admin(base, 'POST', 'rooms/x/end', token)).status, 401);
   }
 });
 
@@ -57,7 +57,7 @@ test('admin is disabled when the server has no admin token', async () => {
   const huddle = createHuddle();
   const port = await huddle.listen(0);
   running.push(huddle);
-  const res = await admin(`http://127.0.0.1:${port}`, 'GET', 'sessions', 'undefined');
+  const res = await admin(`http://127.0.0.1:${port}`, 'GET', 'rooms', 'undefined');
   assert.equal(res.status, 401);
 });
 
@@ -65,7 +65,7 @@ test('admin routes reject a foreign Host', async () => {
   const { port } = await start();
   const status = await new Promise((resolve, reject) => {
     const req = http.request(
-      { host: '127.0.0.1', port, path: '/admin/sessions', headers: { host: 'evil.example', authorization: `Bearer ${TOKEN}` } },
+      { host: '127.0.0.1', port, path: '/admin/rooms', headers: { host: 'evil.example', authorization: `Bearer ${TOKEN}` } },
       (res) => {
         res.resume();
         resolve(res.statusCode);
@@ -77,43 +77,43 @@ test('admin routes reject a foreign Host', async () => {
   assert.equal(status, 403);
 });
 
-test('list shows live sessions newest first with counts and URLs', async () => {
+test('list shows live rooms newest first with counts and URLs', async () => {
   const { base } = await start();
   const a = (await call('POST', `${base}/new`, { body: { name: 'first' } })).json;
   const b = (await call('POST', `${base}/new`, { body: { name: 'second' } })).json;
   await call('POST', `${a.join}/join`, { body: { harness: 'claude' } });
   await call('POST', `${a.join}/join`, { body: { harness: 'codex' } });
-  const { status, json } = await admin(base, 'GET', 'sessions');
+  const { status, json } = await admin(base, 'GET', 'rooms');
   assert.equal(status, 200);
-  assert.deepEqual(json.sessions.map((s) => s.name), ['second', 'first']);
-  const first = json.sessions[1];
+  assert.deepEqual(json.rooms.map((s) => s.name), ['second', 'first']);
+  const first = json.rooms[1];
   assert.equal(first.id, a.id);
   assert.deepEqual(first.agents, { active: 2, total: 2 });
   assert.equal(first.messages, 2);
   assert.equal(first.join, a.join);
   assert.equal(first.page, a.page);
   assert.ok(Date.parse(first.createdAt));
-  assert.equal(json.sessions[0].id, b.id);
-  assert.deepEqual(json.sessions[0].agents, { active: 0, total: 0 });
+  assert.equal(json.rooms[0].id, b.id);
+  assert.deepEqual(json.rooms[0].agents, { active: 0, total: 0 });
 });
 
-test('ending a session releases waiting agents with 410', async () => {
+test('ending a room releases waiting agents with 410', async () => {
   const r = await room('doomed');
   const wait = call('GET', `${r.agent.link}/wait?wait=30`);
   await new Promise((resolve) => setTimeout(resolve, 50));
   const started = Date.now();
-  const end = await admin(r.base, 'POST', `sessions/${r.created.id}/end`);
+  const end = await admin(r.base, 'POST', `rooms/${r.created.id}/end`);
   assert.deepEqual(end.json, { id: r.created.id, name: 'doomed', ended: true });
   const waited = await wait;
   assert.equal(waited.status, 410);
-  assert.equal(waited.json.error, 'huddle ended');
+  assert.equal(waited.json.error, 'room ended');
   assert.ok(Date.now() - started < 2000);
 });
 
-test('an ended session answers 410 on every agent and human route', async () => {
+test('an ended room answers 410 on every agent and human route', async () => {
   const r = await room('doomed');
-  await admin(r.base, 'POST', `sessions/${r.created.id}/end`);
-  const gone = { error: 'huddle ended' };
+  await admin(r.base, 'POST', `rooms/${r.created.id}/end`);
+  const gone = { error: 'room ended' };
   for (const [method, url, body] of [
     ['POST', `${r.agent.link}/post`, { text: 'hi' }],
     ['GET', `${r.agent.link}/read`],
@@ -130,21 +130,21 @@ test('an ended session answers 410 on every agent and human route', async () => 
   }
   const proto = await call('GET', r.created.join);
   assert.equal(proto.status, 410);
-  assert.equal(proto.text, 'This huddle has ended.');
+  assert.equal(proto.text, 'This room has ended.');
 });
 
-test('ended sessions leave the list and cannot be ended again', async () => {
+test('ended rooms leave the list and cannot be ended again', async () => {
   const r = await room('doomed');
-  await admin(r.base, 'POST', `sessions/${r.created.id}/end`);
-  assert.deepEqual((await admin(r.base, 'GET', 'sessions')).json.sessions, []);
-  assert.equal((await admin(r.base, 'POST', `sessions/${r.created.id}/end`)).status, 404);
-  assert.equal((await admin(r.base, 'POST', 'sessions/nope/end')).status, 404);
+  await admin(r.base, 'POST', `rooms/${r.created.id}/end`);
+  assert.deepEqual((await admin(r.base, 'GET', 'rooms')).json.rooms, []);
+  assert.equal((await admin(r.base, 'POST', `rooms/${r.created.id}/end`)).status, 404);
+  assert.equal((await admin(r.base, 'POST', 'rooms/nope/end')).status, 404);
 });
 
 test('tombstones are deleted after the TTL', async () => {
   const { base } = await start({ tombstoneMs: 50 });
   const created = (await call('POST', `${base}/new`, { body: {} })).json;
-  await admin(base, 'POST', `sessions/${created.id}/end`);
+  await admin(base, 'POST', `rooms/${created.id}/end`);
   assert.equal((await call('GET', created.join)).status, 410);
   await new Promise((resolve) => setTimeout(resolve, 150));
   assert.equal((await call('GET', created.join)).status, 404);
@@ -190,7 +190,7 @@ test('cli: ls, open and end without a running server', async () => {
   }
 });
 
-test('cli: session management end to end', async () => {
+test('cli: room management end to end', async () => {
   const alpha = JSON.parse((await cli('new', 'alpha')).stdout);
   const beta = JSON.parse((await cli('new', 'beta')).stdout);
   const info = JSON.parse(fs.readFileSync(path.join(home, 'server.json'), 'utf8'));
@@ -227,5 +227,5 @@ test('cli: session management end to end', async () => {
 
   const all = await cli('end', '--all', '--yes', '--keep-server');
   assert.equal(all.code, 0, all.stderr);
-  assert.match((await cli('ls')).stdout, /No live huddles\./);
+  assert.match((await cli('ls')).stdout, /No live rooms\./);
 });

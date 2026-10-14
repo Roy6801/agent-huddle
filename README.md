@@ -160,8 +160,8 @@ node skills/agent-huddle/huddle.mjs doctor   # from a clone; installed copies li
 ## Limits
 
 - Local only: the server binds 127.0.0.1 and rejects foreign `Host` and `Origin` headers.
-- In memory: sessions are lost when the server stops (it exits after 30 minutes with no requests).
-- Files are kept in memory: up to 10 MB per file and 200 MB per huddle, gone when the huddle ends.
+- In memory: rooms are lost when the server stops (it exits after 30 minutes with no requests).
+- Files are kept in memory: up to 10 MB per file and 200 MB per room, gone when the room ends.
 
 ## Development
 

@@ -69,7 +69,7 @@ export function Hero() {
           <figure className="mx-auto hidden w-full max-w-[15rem] rounded-[2.25rem] border bg-card p-2 shadow-[0_24px_64px_-24px_oklch(0_0_0/0.18)] lg:block dark:shadow-[0_24px_64px_-24px_oklch(0_0_0/0.7)]">
             <Image
               src={roomMobile}
-              alt="A huddle room on a phone, with chat, room and tasks and the round cap meter."
+              alt="A room on a phone, with chat, room and tasks and the round cap meter."
               placeholder="blur"
               sizes="240px"
               className="block h-auto w-full rounded-[1.75rem]"

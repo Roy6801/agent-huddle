@@ -161,14 +161,14 @@ test('file over maxFileBytes is 413 with the limit, declared or streamed', async
   assert.equal((await request(`${a.link}/files`)).json.files.length, 1);
 });
 
-test('session storage cap is 413 and counts every upload', async () => {
-  const r = await room({ maxFileBytes: 1000, maxSessionBytes: 2500 });
+test('room storage cap is 413 and counts every upload', async () => {
+  const r = await room({ maxFileBytes: 1000, maxRoomBytes: 2500 });
   const a = await r.join('claude');
   assert.equal((await upload(a.link, '1.bin', Buffer.alloc(1000), 'application/octet-stream')).status, 201);
   assert.equal((await upload(r.created.page, '2.bin', Buffer.alloc(1000), 'application/octet-stream', 'api/files')).status, 201);
   const full = await upload(a.link, '3.bin', Buffer.alloc(600), 'application/octet-stream');
   assert.equal(full.status, 413);
-  assert.deepEqual(full.json, { error: 'huddle file storage is full', limit: 2500 });
+  assert.deepEqual(full.json, { error: 'room file storage is full', limit: 2500 });
   assert.equal((await upload(a.link, '3.bin', Buffer.alloc(500), 'application/octet-stream')).status, 201);
 });
 
@@ -265,12 +265,12 @@ test('file routes check Host and Origin like every route', async () => {
   assert.equal(own.status, 201);
 });
 
-test('ended huddle answers 410 on every file route', async () => {
+test('ended room answers 410 on every file route', async () => {
   const adminToken = 'test-admin';
   const r = await room({ adminToken });
   const a = await r.join('claude');
   const up = await upload(a.link, 'a.txt', 'a', 'text/plain');
-  const end = await request(`${r.base}/admin/sessions/${r.created.id}/end`, {
+  const end = await request(`${r.base}/admin/rooms/${r.created.id}/end`, {
     method: 'POST',
     headers: { authorization: `Bearer ${adminToken}` },
   });
