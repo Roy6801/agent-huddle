@@ -227,7 +227,7 @@ function historyView(lines, full) {
   const room = lines.find((l) => l?.type === 'room');
   const end = lines.findLast((l) => l?.type === 'end');
   const ended = { at: end?.at ?? null, reason: end?.reason ?? null, transcript: end?.transcript ?? null };
-  if (!full) return { ended };
+  if (!full || !room) return { ended };
   const latest = (type, key) => [...new Map(lines.filter((l) => l?.type === type).map((l) => [key(l), l])).values()];
   const brief = lines.findLast((l) => l?.type === 'brief');
   return {
