@@ -2270,9 +2270,17 @@ function failureReason(result) {
 
 const bin = (agent) => foundBins(harnesses().find((h) => h.agent === agent))[0]?.file ?? agent;
 
-const TERMINAL_HARNESSES = { claude: 'Claude Code', opencode: 'opencode', dsh: 'DeepSeek Harness' };
+const TERMINAL_HARNESSES = { opencode: 'opencode', dsh: 'DeepSeek Harness' };
 
+// Headless runs on the harness's own login: Claude Code prefers an API key from the environment, so the adapter never gets one.
 export const WORKER_HARNESSES = {
+  claude: {
+    label: 'Claude Code',
+    argv: () => ['bunx', '@agentclientprotocol/claude-agent-acp@0.91.0'],
+    env: { ANTHROPIC_API_KEY: undefined, ANTHROPIC_AUTH_TOKEN: undefined },
+    mode: 'acceptEdits',
+    signIn: 'run claude in a terminal and sign in with /login, then start the worker again',
+  },
   codex: { label: 'Codex', argv: () => ['bunx', '@agentclientprotocol/codex-acp@2.2.2'], env: { INITIAL_AGENT_MODE: 'workspace-write' }, blocksLocalhost: () => !codexNetworkAllowed() },
   gemini: { label: 'Gemini CLI', argv: () => [bin('gemini'), '--acp'], mode: 'autoEdit' },
 };
@@ -2525,7 +2533,7 @@ async function runWorker(args) {
         );
       }
     } catch (err) {
-      return abort(1, `could not start the agent: ${err.message}`);
+      return abort(1, `could not start the agent: ${err.message}${spec.signIn ? `; if ${spec.label} is not signed in, ${spec.signIn}` : ''}`);
     }
     if (signal.aborted) return;
     console.log(`${me.handle} is listening in ${folder} (session ${sessionId}${mode ? `, mode ${mode}` : ''})`);
@@ -3475,12 +3483,12 @@ const COMMANDS = {
   },
   worker: {
     group: 'Agents',
-    summary: 'run a headless agent (Codex, Gemini CLI) that answers when addressed',
+    summary: 'run a headless agent (Claude Code, Codex, Gemini CLI) that answers when addressed',
     usage: 'worker <harness> <join-url> [--dir <path>]',
     options: [
       '--dir <path>  folder the agent works in (default: current folder)',
       `harness      ${Object.keys(WORKER_HARNESSES).join(', ')}`,
-      'Headless is a fallback for harnesses whose terminal cannot be woken after a turn; others join with the invite.',
+      "It uses the harness's own sign-in. opencode and DeepSeek Harness join with the invite instead.",
     ],
     example: 'node huddle.mjs worker codex http://127.0.0.1:4747/s/<id> --dir ~/code/api',
   },

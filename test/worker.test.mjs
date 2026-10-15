@@ -321,8 +321,17 @@ test('a failed start prints the cause, exits 1 and leaves the room', async () =>
   const w = startWorker(room.created.join, { FAKE_ACP_NEW_FAIL: '1' });
   assert.equal(await w.exit, 1);
   assert.match(w.err, /could not start the agent: auth required/);
+  assert.doesNotMatch(w.err, /sign in/);
   const who = await (await fetch(`${room.claude.link}/who`)).json();
   assert.equal(who.agents.find((a) => a.handle === 'codex-1').status, 'left');
+});
+
+test('a failed start of worker claude says to sign in with claude, never with an API key', async () => {
+  const room = await setup('claude start-fail room');
+  const w = startWorker(room.created.join, { FAKE_ACP_NEW_FAIL: '1' }, 'claude');
+  assert.equal(await w.exit, 1);
+  assert.match(w.err, /could not start the agent: auth required; if Claude Code is not signed in, run claude in a terminal and sign in with \/login/);
+  assert.doesNotMatch(w.err, /API key/i);
 });
 
 test('SIGTERM during a run cancels it, leaves the room and reaps the agent process tree', async () => {
@@ -546,6 +555,41 @@ test('worker gemini sets the planned mode when the agent offers it, and joins as
   assert.match(readPrompts().prompts[0].text, /\(headless Gemini CLI\)/);
 });
 
+test('worker claude joins headless in acceptEdits, answers a mention, and its adapter never sees an API key', async () => {
+  const room = await setup('claude headless room');
+  const w = startWorker(
+    room.created.join,
+    { FAKE_ACP_MODES: 'default,acceptEdits,plan,auto,bypassPermissions', ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_AUTH_TOKEN: 'tok-test' },
+    'claude',
+  );
+  await until(() => w.out.includes('claude-2 is listening'));
+  assert.match(w.out, /mode acceptEdits/);
+  assert.deepEqual(readPrompts().modes, [{ sessionId: 'fake-1', modeId: 'acceptEdits' }]);
+  const who = await (await fetch(`${room.claude.link}/who`)).json();
+  assert.equal(who.agents.find((a) => a.handle === 'claude-2').role, 'headless');
+  assert.doesNotMatch(w.err, /hears the room from its own terminal/);
+
+  await say(room.claude, '@claude-2 hi');
+  await until(async () => (await state(room)).some((m) => m.from === 'claude-2' && m.text.includes('echo(fake-1)')));
+  assert.match(readPrompts().prompts[0].text, /You are claude-2 \(headless Claude Code\)/);
+  assert.deepEqual(readPrompts().env, { apiKey: false, authToken: false });
+});
+
+test('a Claude Code permission request becomes an Allow once / Always / Deny card with its command', async () => {
+  const room = await setup('claude perm room');
+  const w = startWorker(room.created.join, { FAKE_ACP_PERMISSION: 'claude' }, 'claude');
+  await until(() => w.out.includes('claude-2 is listening'));
+  await say(room.claude, '@claude-2 clean up');
+  const [ask] = await until(async () => (await asks(room)).length && asks(room));
+  assert.equal(ask.title, '`rm -rf build`');
+  assert.equal(ask.detail, 'command: rm -rf build');
+  assert.deepEqual(ask.options.map((o) => [o.optionId, o.name]), [['allow-once', 'Allow once'], ['allow-with-updates', 'Always'], ['reject', 'Deny']]);
+  assert.equal((await answerAsk(room, 1, 'allow-with-updates')).status, 200);
+  await until(() => readPrompts().outcomes?.length);
+  assert.deepEqual(readPrompts().outcomes, [{ outcome: 'selected', optionId: 'allow-with-updates' }]);
+  await until(async () => (await state(room)).some((m) => m.from === 'claude-2' && m.text.includes('[allow-with-updates]')));
+});
+
 test('worker gemini sends no set_mode when the agent offers no modes', async () => {
   const room = await setup('gemini mode room');
   const w = startWorker(room.created.join, {}, 'gemini');
@@ -558,10 +602,10 @@ test('an unknown harness exits 1 listing the supported ones', async () => {
   const room = await setup('unknown harness room');
   const w = startWorker(room.created.join, {}, 'foo');
   assert.equal(await w.exit, 1);
-  assert.match(w.err, /supported: codex, gemini/);
+  assert.match(w.err, /supported: claude, codex, gemini/);
 });
 
-for (const harness of ['claude', 'opencode', 'dsh']) {
+for (const harness of ['opencode', 'dsh']) {
   test(`worker ${harness} is refused: it hears the room from its own terminal`, async () => {
     const room = await setup(`${harness} refused room`);
     const w = startWorker(room.created.join, {}, harness);
@@ -704,17 +748,20 @@ test('the room state shows a requested stop and lists the supported harnesses', 
   const st = await (await fetch(`${room.created.page}/api/state`)).json();
   assert.equal(st.agents.find((a) => a.handle === 'codex-1').stopRequested, true);
   assert.equal(st.agents.find((a) => a.handle === 'claude-1').stopRequested, false);
-  assert.deepEqual(st.harnesses.map(([id]) => id), ['codex', 'gemini']);
+  assert.deepEqual(st.harnesses, [['claude', 'Claude Code'], ['codex', 'Codex'], ['gemini', 'Gemini CLI']]);
   await w.exit;
 });
 
 test('each worker harness launches its pinned adapter', () => {
   const cmd = (h) => WORKER_HARNESSES[h].argv();
+  assert.deepEqual(cmd('claude'), ['bunx', '@agentclientprotocol/claude-agent-acp@0.91.0']);
+  assert.equal(WORKER_HARNESSES.claude.mode, 'acceptEdits');
+  assert.ok(Object.hasOwn(WORKER_HARNESSES.claude.env, 'ANTHROPIC_API_KEY') && WORKER_HARNESSES.claude.env.ANTHROPIC_API_KEY === undefined);
   assert.deepEqual(cmd('codex'), ['bunx', '@agentclientprotocol/codex-acp@2.2.2']);
   assert.equal(WORKER_HARNESSES.codex.env.INITIAL_AGENT_MODE, 'workspace-write');
   assert.equal(cmd('gemini').at(-1), '--acp');
   assert.equal(WORKER_HARNESSES.gemini.mode, 'autoEdit');
-  assert.deepEqual(Object.keys(WORKER_HARNESSES), ['codex', 'gemini']);
+  assert.deepEqual(Object.keys(WORKER_HARNESSES), ['claude', 'codex', 'gemini']);
 });
 
 test('a headless worker starts with the room folder and the brief', async () => {
