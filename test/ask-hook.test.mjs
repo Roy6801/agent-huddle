@@ -222,8 +222,9 @@ test('AC-21.4: approvals claude|codex prints the hook; --write merges it once an
     hooks: [{ type: 'command', command: `node ${JSON.stringify(CLI)} ask-hook claude`, timeout: 200, statusMessage: 'Asking on the agent-huddle room page' }],
   }]);
 
+  assert.match((await cli(env, ['approvals', 'codex'])).stdout, /run \/hooks once to trust it/);
   const codex = await cli(env, ['approvals', 'codex', '--write']);
-  assert.match(codex.stdout, /run \/hooks once to trust it/);
+  assert.match(codex.stdout, /hook not trusted yet: run \/hooks in Codex once/);
   const hooks = JSON.parse(fs.readFileSync(path.join(env.CODEX_HOME, 'hooks.json'), 'utf8'));
   assert.equal(hooks.hooks.PermissionRequest[0].hooks[0].command, `node ${JSON.stringify(CLI)} ask-hook codex`);
 
@@ -232,6 +233,26 @@ test('AC-21.4: approvals claude|codex prints the hook; --write merges it once an
   assert.equal(broken.code, 1);
   assert.match(broken.stderr, /not valid JSON/);
   assert.equal(fs.readFileSync(settings, 'utf8'), '{oops');
+});
+
+test('AC-40.8: approvals codex tells whether Codex trusts the hook, from its config.toml', async () => {
+  const { env } = sandbox();
+  fs.mkdirSync(env.CODEX_HOME);
+  const other = { matcher: 'Bash', hooks: [{ type: 'command', command: 'audit.sh' }] };
+  fs.writeFileSync(path.join(env.CODEX_HOME, 'hooks.json'), JSON.stringify({ hooks: { PermissionRequest: [other] } }));
+  await cli(env, ['approvals', 'codex', '--write']);
+  const config = path.join(env.CODEX_HOME, 'config.toml');
+  const key = JSON.stringify(`${path.join(env.CODEX_HOME, 'hooks.json')}:permission_request:1:0`);
+  const status = async () => (await cli(env, ['approvals', 'codex'])).stdout;
+
+  fs.writeFileSync(config, `model = "gpt-5"\n\n[hooks.state.${JSON.stringify(`${path.join(env.CODEX_HOME, 'hooks.json')}:permission_request:0:0`)}]\ntrusted_hash = "sha256:aa"\n`);
+  assert.match(await status(), /Codex: hook not trusted yet: run \/hooks in Codex once/, 'trust of another hook does not count');
+  fs.writeFileSync(config, `[hooks.state.${key}]\nenabled = true\n`);
+  assert.match(await status(), /hook not trusted yet/, 'a state entry without a hash is not trust');
+  fs.writeFileSync(config, `model = "gpt-5"\n\n[hooks.state.${key}]\ntrusted_hash = "sha256:0123abcd"\n\n[tui]\nnotifications = true\n`);
+  assert.match(await status(), /Codex: hook trusted\./);
+  fs.writeFileSync(config, `[hooks.state]\n${key} = { trusted_hash = "sha256:0123abcd" }\n`);
+  assert.match(await status(), /Codex: hook trusted\./, 'an inline table counts too');
 });
 
 test('AC-21.5: terminal Claude Code and Codex agents are told about page approvals; others are not', async () => {

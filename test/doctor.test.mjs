@@ -121,6 +121,22 @@ test('doctor: found agent missing skills prints the install hint', async () => {
   t.cleanup();
 });
 
+test('AC-40.8: doctor says when Codex has not trusted the page-approvals hook, and only then', async () => {
+  const t = makeEnv();
+  t.stub('codex');
+  const codexHome = path.join(t.home, '.codex');
+  fs.mkdirSync(codexHome, { recursive: true });
+  const hooks = path.join(codexHome, 'hooks.json');
+  const command = `node "${CLI}" ask-hook codex`;
+  fs.writeFileSync(hooks, JSON.stringify({ hooks: { PermissionRequest: [{ matcher: '.*', hooks: [{ type: 'command', command }] }] } }));
+  assert.match((await t.run()).stdout, /! Codex: page approvals hook not trusted yet: run \/hooks in Codex once/);
+  fs.writeFileSync(path.join(codexHome, 'config.toml'), `[hooks.state.${JSON.stringify(`${hooks}:permission_request:0:0`)}]\ntrusted_hash = "sha256:ab"\n`);
+  assert.doesNotMatch((await t.run()).stdout, /not trusted/);
+  fs.rmSync(hooks);
+  assert.doesNotMatch((await t.run()).stdout, /not trusted/, 'no hook, nothing to trust');
+  t.cleanup();
+});
+
 test('doctor: detects by directory signal without a binary', async () => {
   const t = makeEnv();
   fs.mkdirSync(path.join(t.home, '.config', 'opencode'), { recursive: true });

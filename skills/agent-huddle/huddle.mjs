@@ -2864,15 +2864,51 @@ function permissionHook(harness) {
   };
 }
 
-const isOurHook = (group) => group?.hooks?.some?.((h) => typeof h.command === 'string' && /huddle\.mjs"? ask-hook /.test(h.command));
+const isOurHandler = (h) => typeof h?.command === 'string' && /huddle\.mjs"? ask-hook /.test(h.command);
+const isOurHook = (group) => group?.hooks?.some?.(isOurHandler);
+const CODEX_UNTRUSTED = 'hook not trusted yet: run /hooks in Codex once; Codex skips a hook it has not trusted.';
+
+// null when our hook is not in Codex's hooks.json. Codex keeps a reviewed hook's trust in config.toml as
+// hooks.state."<hooks.json path>:permission_request:<group>:<handler>".trusted_hash (openai/codex hooks hook_key).
+// The hash itself is not recomputed, so a hook edited after its review still reads as trusted here.
+function codexHookTrusted() {
+  const file = HOOK_FILES.codex();
+  let groups;
+  try {
+    groups = JSON.parse(fs.readFileSync(file, 'utf8')).hooks?.PermissionRequest;
+  } catch {
+    return null;
+  }
+  const g = Array.isArray(groups) ? groups.findIndex(isOurHook) : -1;
+  if (g === -1) return null;
+  const key = JSON.stringify(`${file}:permission_request:${g}:${groups[g].hooks.findIndex(isOurHandler)}`);
+  let toml = '';
+  try {
+    toml = fs.readFileSync(path.join(path.dirname(file), 'config.toml'), 'utf8');
+  } catch {}
+  let table = '';
+  for (const raw of toml.split('\n')) {
+    const line = raw.trim();
+    const header = /^\[\s*([^[\]]+?)\s*\]/.exec(line);
+    if (header) table = header[1];
+    else if (/^trusted_hash\s*=\s*"/.test(line) && table === `hooks.state.${key}`) return true;
+    else if (line.includes(key) && /trusted_hash\s*=\s*"/.test(line)) return true;
+  }
+  return false;
+}
 
 function approvalsSetup(harness, args) {
   const file = HOOK_FILES[harness]();
   const group = permissionHook(harness);
-  const trust = harness === 'codex' ? ['Then open Codex and run /hooks once to trust it; Codex skips a hook it has not trusted.'] : [];
+  const trust = () => {
+    if (harness !== 'codex') return [];
+    const trusted = codexHookTrusted();
+    if (trusted === null) return ['Then open Codex and run /hooks once to trust it; Codex skips a hook it has not trusted.'];
+    return [trusted ? 'Codex: hook trusted.' : `Codex: ${CODEX_UNTRUSTED}`];
+  };
   const perRoom = `In each room the agent turns it on for its session: ${HELP_PROG} approvals on <agent-link> (the huddle-join skill offers it).`;
   if (!args.includes('--write')) {
-    console.log([`Add this to ${file} (or run again with --write):`, JSON.stringify({ hooks: { PermissionRequest: [group] } }, null, 2), ...trust, perRoom].join('\n'));
+    console.log([`Add this to ${file} (or run again with --write):`, JSON.stringify({ hooks: { PermissionRequest: [group] } }, null, 2), ...trust(), perRoom].join('\n'));
     return;
   }
   let config = {};
@@ -2890,7 +2926,7 @@ function approvalsSetup(harness, args) {
   else groups[at] = group;
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`);
-  console.log([`Wrote the agent-huddle PermissionRequest hook to ${file}.`, ...trust, perRoom].join('\n'));
+  console.log([`Wrote the agent-huddle PermissionRequest hook to ${file}.`, ...trust(), perRoom].join('\n'));
 }
 
 async function approvalsOn(args) {
@@ -4008,6 +4044,7 @@ function checkAgents() {
     } else {
       console.log(`✓ ${row.label}: ${found}, skills installed at ${row.path}`);
     }
+    if (row.agent === 'codex' && codexHookTrusted() === false) console.log(`! Codex: page approvals ${CODEX_UNTRUSTED}`);
     if (row.agent === 'codex' && !codexNetworkAllowed()) {
       console.log(
         `! Codex: localhost may be blocked; ${CODEX_NETWORK_FIX}`,
