@@ -31,7 +31,7 @@ function subscribe(listener: () => void) {
 /** Fills each task's `after` and `blocked` the way the server reports them. */
 function withBlocked(r: RoomState): RoomState {
   const doneIds = new Set(r.tasks.filter((t) => t.status === "done").map((t) => t.id));
-  return { ...r, tasks: r.tasks.map((t) => ({ ...t, after: t.after ?? [], blocked: (t.after ?? []).filter((n) => !doneIds.has(n)) })) };
+  return { ...r, tasks: r.tasks.map((t) => ({ ...t, blocked: t.after.filter((n) => !doneIds.has(n)) })) };
 }
 
 function setRoom(r: RoomState) {
@@ -141,8 +141,8 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
     const after = [...new Set(b.after ?? [])].sort((x, y) => x - y);
     const missing = after.find((n) => !room.tasks.some((t) => t.id === n));
     if (missing !== undefined) return rejected("invalid_after", `There is no task #${missing}; a task can only come after tasks that already exist.`);
-    const task = createTask({ ...room, streak: 0 }, now, "you", b.title ?? "", b.assignee ?? null, b);
-    setRoom({ ...task.room, tasks: task.room.tasks.map((t) => (t.id === task.id ? { ...t, after } : t)) });
+    const task = createTask({ ...room, streak: 0 }, now, "you", b.title ?? "", b.assignee ?? null, { ...b, after });
+    setRoom(task.room);
     data = { id: task.id };
   } else if (path.startsWith("/api/tasks/")) {
     const id = Number(path.slice("/api/tasks/".length));

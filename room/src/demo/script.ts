@@ -99,13 +99,16 @@ function seen(s: RoomState, handle: string, at: number): Agent[] {
   return s.agents.map((a) => (a.handle === handle ? { ...a, presence: "listening" as const, lastSeen: new Date(at).toISOString() } : a));
 }
 
-export function createTask(s: RoomState, at: number, by: string, title: string, assignee: string | null, text: { description?: string | null; spec?: string | null } = {}) {
+export function createTask(s: RoomState, at: number, by: string, title: string, assignee: string | null, text: { description?: string | null; spec?: string | null; after?: number[] } = {}) {
   const id = s.tasks.length + 1;
+  const after = text.after ?? [];
+  const waiting = after.filter((n) => s.tasks.find((t) => t.id === n)?.status !== "done");
+  const order = after.length ? `, after ${after.map((n) => `#${n}`).join(", ")}${waiting.length ? ` (blocked by ${waiting.map((n) => `#${n}`).join(", ")})` : ""}` : "";
   const next = {
     ...s,
-    tasks: [...s.tasks, { id, title, status: "open" as const, owner: null, assignee, createdBy: by, note: null, description: text.description ?? null, spec: text.spec ?? null, specFile: null }],
+    tasks: [...s.tasks, { id, title, status: "open" as const, owner: null, assignee, createdBy: by, note: null, description: text.description ?? null, spec: text.spec ?? null, specFile: null, after, blocked: waiting }],
   };
-  return { id, room: system(next, at, `${by} created task #${id} "${title}"${assignee ? ` for @${assignee}` : ""}`) };
+  return { id, room: system(next, at, `${by} created task #${id} "${title}"${assignee ? ` for @${assignee}` : ""}${order}`) };
 }
 
 export function apply(s: RoomState, step: Step, at: number, sprite: () => FileMeta): RoomState {
