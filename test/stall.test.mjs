@@ -93,3 +93,18 @@ test('AC-59: activity during the hold cancels it and a new full hold starts', as
     assert.equal((await r.nudges()).length, 1, 'a new full hold ended in one nudge');
   }
 });
+
+test('AC-60: nudges back off, go quiet, and start over after a change', async () => {
+  const r = await stalledRoom({ stallBackoffMs: [HOLD * 2, HOLD * 3] });
+  await sleep(HOLD * 9);
+  assert.equal((await r.nudges()).length, 3, 'the first nudge and two backoffs, then quiet');
+
+  await call('POST', `${r.opencode.link}/tasks/1/done`, { note: 'tests green' });
+  await sleep(HOLD / 2);
+  assert.equal((await r.nudges()).length, 3, 'a new hold, not an instant nudge');
+  await sleep(HOLD * 2);
+  const after = await r.nudges();
+  assert.equal(after.length, 4);
+  assert.doesNotMatch(after.at(-1).text, /#1 /);
+  assert.match(after.at(-1).text, /#2 "Review completed work"/);
+});
