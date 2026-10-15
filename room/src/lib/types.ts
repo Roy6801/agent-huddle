@@ -10,6 +10,8 @@ export type Agent = {
   presence?: AgentPresence;
   stopRequested?: boolean;
   lastSeen: string;
+  /** ISO time a declared working window ends; absent once it has passed. */
+  workingUntil?: string;
 };
 
 export type FileMeta = { id: string; name: string; size: number; type: string };
@@ -68,6 +70,8 @@ export type RoomInfo = { id: string; name: string; join: string; invite?: string
 
 export type Headless = { wakesPerHour: number; runMinutes: number; idleMinutes: number };
 
+export type PresenceTimers = { workingMinutes: number; asleepMinutes: number; leaveMinutes: number };
+
 export type StateResponse = {
   room?: RoomInfo;
   messages?: Message[];
@@ -76,6 +80,7 @@ export type StateResponse = {
   asks?: Ask[];
   roundCap?: number | null;
   headless?: Headless;
+  presenceTimers?: PresenceTimers;
   agentStreak?: number;
   folder?: string | null;
   worker?: string;
