@@ -301,6 +301,7 @@ export function createHuddle(opts = {}) {
       toYou: extra.toYou ?? false,
       files: extra.files ?? [],
       ...(extra.ask && { ask: extra.ask }),
+      ...(extra.task && { task: extra.task }),
     };
     s.messages.push(m);
     while (s.messages.length > MAX_MESSAGES) s.messages.shift();
@@ -357,7 +358,7 @@ export function createHuddle(opts = {}) {
     for (const m of s.messages) {
       if (m.id <= agent.cursor) continue;
       if (m.from !== agent.handle) {
-        messages.push(m);
+        messages.push(m.task && m.to.includes(agent.handle) ? { ...m, taskDetail: taskDetail(s, agent, m.task) } : m);
         cursor = m.id;
         if (messages.length >= limit) break;
       } else {
@@ -568,6 +569,19 @@ export function createHuddle(opts = {}) {
     return { ...rest, specSize: spec ? spec.length : 0 };
   }
 
+  function agentTaskView(s, agent, task) {
+    const view = taskView(s, task, true);
+    if (view.specFile) {
+      view.specFile.download = `curl -s -o '${view.specFile.name}' ${agent.link}/files/${view.specFile.id}`;
+    }
+    return view;
+  }
+
+  function taskDetail(s, agent, n) {
+    const { id, title, description, spec, specFile } = agentTaskView(s, agent, getTask(s, n));
+    return { id, title, description, spec, specFile };
+  }
+
   function createTask(s, creator, body) {
     const title = cleanText(body.title, MAX_TITLE, 'title');
     let assignee = null;
@@ -596,6 +610,7 @@ export function createHuddle(opts = {}) {
     system(s, `${creator} created task #${task.id} "${title}"${assignee ? ` for @${assignee}` : ''}`, {
       mentions: assignee ? [assignee] : [],
       to: wake ? [assignee] : [],
+      task: task.id,
     });
     return taskView(s, task, true);
   }
@@ -611,7 +626,7 @@ export function createHuddle(opts = {}) {
     const h = agent.handle;
     if (action === 'claim') {
       if (task.status === 'done') throw new HttpError(409, 'task is done');
-      if (task.owner === h) return task;
+      if (task.owner === h) return agentTaskView(s, agent, task);
       if (task.owner) throw new HttpError(409, 'already claimed', { owner: task.owner });
       task.status = 'claimed';
       task.owner = h;
@@ -636,7 +651,7 @@ export function createHuddle(opts = {}) {
       task.owner = null;
       system(s, `${h} released task #${task.id}`);
     }
-    return task;
+    return agentTaskView(s, agent, task);
   }
 
   // ---- posting ----
@@ -985,12 +1000,10 @@ How the room works:
     return agentView(s, agent, base);
   }
 
-  const agentView = (s, agent, base) => ({
-    handle: agent.handle,
-    role: agent.role,
-    token: agent.token,
-    link: `${base}/s/${s.id}/as/${agent.token}`,
-  });
+  function agentView(s, agent, base) {
+    agent.link = `${base}/s/${s.id}/as/${agent.token}`;
+    return { handle: agent.handle, role: agent.role, token: agent.token, link: agent.link };
+  }
 
   function spawnChild(s, parent, body, base) {
     const role = cleanRole(body.role, true);
@@ -1028,7 +1041,7 @@ How the room works:
 
     if (method === 'GET') {
       if (fileMatch) return sendFile(res, getFile(s, fileMatch[1]));
-      if (taskGetMatch) return ok(taskView(s, getTask(s, taskGetMatch[1]), true));
+      if (taskGetMatch) return ok(agentTaskView(s, agent, getTask(s, taskGetMatch[1])));
       if (askMatch) {
         const ask = getAsk(s, agent, askMatch[1]);
         if (ask.status !== 'open') return ok(ask);
