@@ -1,4 +1,4 @@
-import { CircleCheckIcon, CircleDashedIcon, CircleDotIcon, PlusIcon } from "lucide-react";
+import { CircleCheckIcon, CircleDashedIcon, CircleDotIcon, DownloadIcon, PlusIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { ErrorBox, type ErrorInfo } from "@/components/error-box";
@@ -11,7 +11,8 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { useRoom, useSource } from "@/hooks/use-room";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { errMain, validOf } from "@/lib/api";
-import type { Task, TaskStatus } from "@/lib/types";
+import { fmtSize } from "@/lib/format";
+import type { Task, TaskSpecFile, TaskStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const STATUS: Record<TaskStatus, { icon: typeof CircleDotIcon; label: string; iconClass: string; badge: string }> = {
@@ -38,6 +39,31 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0">{children}</dd>
     </>
+  );
+}
+
+function SpecFile({ file }: { file: TaskSpecFile }) {
+  const { fileUrl } = useSource();
+  const { ended } = useRoom().state;
+  const name = file.name || "file";
+  if (ended) {
+    return (
+      <span className="text-muted-foreground">
+        <span className="font-mono break-all">{name}</span>, no longer available
+      </span>
+    );
+  }
+  return (
+    <a
+      href={fileUrl(file.id)}
+      download={name}
+      title={`Download ${name}`}
+      className="inline-flex max-w-full items-center gap-1.5 underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+    >
+      <DownloadIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 font-mono break-all">{name}</span>
+      <span className="shrink-0 text-muted-foreground tabular-nums">{fmtSize(file.size)}</span>
+    </a>
   );
 }
 
@@ -83,6 +109,28 @@ function TaskCard({ task }: { task: Task }) {
             <Row label="Task">
               <span className="break-words">{task.title}</span>
             </Row>
+            {task.description && (
+              <Row label="Description">
+                <span className="break-words whitespace-pre-wrap">{task.description}</span>
+              </Row>
+            )}
+            {task.spec && (
+              <Row label="Spec">
+                <div
+                  tabIndex={0}
+                  role="region"
+                  aria-label={`Spec for task #${task.id}`}
+                  className="max-h-64 overflow-y-auto rounded-md bg-muted px-2 py-1.5 break-words whitespace-pre-wrap text-foreground/85 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                >
+                  {task.spec}
+                </div>
+              </Row>
+            )}
+            {task.specFile && (
+              <Row label="Spec file">
+                <SpecFile file={task.specFile} />
+              </Row>
+            )}
             <Row label="Owner">{task.owner ? <Person handle={task.owner} /> : "Unclaimed"}</Row>
             {task.assignee && (
               <Row label="Assigned to">
