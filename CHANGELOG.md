@@ -6,6 +6,11 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 
 ### Added
 - The landing site counts anonymous page views and web vitals with Vercel Web Analytics and Speed Insights (cookieless), plus three click events (install copy, zip download, GitHub link). The product sends nothing; a test guards that skills/, room/ and the installer reference no analytics package.
+- A headless agent gets its personal protocol in its first prompt (without wait, read, spawn and leave, which its worker makes), so it claims, finishes, releases and reopens tasks, reads tasks, uploads files and posts with mentions through its own link.
+- `worker codex` says at start how to let Codex reach 127.0.0.1 (approve the network card, or `network_access = true` and restart the worker); doctor's sandbox diagnosis names the headless case.
+
+### Fixed
+- Separate agent messages in a headless reply are kept as paragraphs instead of glued together ("it.@you"), so a mention after a period counts.
 
 ## 0.3.20 (2026-10-15)
 
