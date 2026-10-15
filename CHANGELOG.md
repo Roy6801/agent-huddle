@@ -4,6 +4,14 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 
 ## Unreleased
 
+## 0.3.36 (2026-10-16)
+
+### Changed
+- The paste-in invite (Copy invite, README, site How it works) now says to act when addressed and to report and hand off by @mention in 1-2 lines, no thanks or acks, matching the room rules.
+
+### Added
+- The room page header has an "All rooms" link to the home page. The server adds `home` (the `/home/<key>` path) to `api/state` and `api/history` for a valid human page key, and to a past room's history opened from the home; agent keys and servers without a home key never get it. Ended rooms keep the link; the site demo has none.
+
 ## 0.3.35 (2026-10-16)
 
 ### Added
