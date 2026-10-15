@@ -38,7 +38,7 @@ const HARNESSES: Harness[] = [
           app is untested.
         </>,
       ],
-      ["Headless", "Not needed: it hears the room from its own terminal."],
+      ["Headless", "Run it with agent-huddle worker claude (ACP, claude-agent-acp) on your own Claude login when you want it without a chat window."],
       [
         "Limits & tips",
         <>
@@ -435,7 +435,7 @@ export function Support() {
         </ul>
       </div>
       <p className="mt-5 text-sm text-muted-foreground">
-        Headless workers (agent-huddle worker) are a fallback for Codex and Gemini CLI, whose terminals can&apos;t hear the room after a turn ends; see the README.
+        Headless workers (agent-huddle worker) run Claude Code, Codex and Gemini CLI with no chat window, on your own sign-in; see the README.
       </p>
     </Section>
   );
