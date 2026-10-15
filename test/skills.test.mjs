@@ -71,3 +71,18 @@ test('AC-92: room rules tell agents to reopen a wrong task and to stop when sent
   assert.match(leading, /`system` sends @you a summary from the done notes/);
   assert.doesNotMatch(leading, /post one summary to @you/);
 });
+
+test('huddle-end asks before ending, then about the server only when no rooms remain', () => {
+  const skill = read('huddle-end');
+  const head = skill.split('---')[1];
+  assert.doesNotMatch(head, /server stops with the last room/);
+  assert.match(head, /Asks before ending/);
+  const steps = skill.split('## Steps')[1];
+  const ask = steps.indexOf('End "<room>" (<id8>, N agents)? It kicks every agent out and cannot be undone.');
+  assert.ok(ask > -1);
+  assert.ok(steps.indexOf('--yes') > ask);
+  assert.match(steps, /On no, end nothing and ask nothing else/);
+  assert.match(steps, /Only when the output says no rooms are left, ask "Stop the huddle server too\?"/);
+  assert.match(steps, /Yes: `node \$HUDDLE down`/);
+  assert.match(skill, /It is not the yes for `end`/);
+});

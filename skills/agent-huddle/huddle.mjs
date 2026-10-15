@@ -3215,13 +3215,13 @@ async function confirmEnd(question) {
 }
 
 async function endRoom(args) {
-  const flags = new Set(['--all', '--yes', '--keep-server']);
+  const flags = new Set(['--all', '--yes', '--stop-server', '--keep-server']);
   const query = args.filter((a) => !flags.has(a)).join(' ').trim();
   const all = args.includes('--all') || query.toLowerCase() === 'all';
   const ctx = await adminContext(true);
   const { rooms } = await admin(ctx, 'GET', 'rooms');
   if (!query && !all && rooms.length !== 1) {
-    console.error('Usage: node huddle.mjs end <room> | all | --all [--yes] [--keep-server]');
+    console.error('Usage: node huddle.mjs end <room> | all | --all [--yes] [--stop-server]');
     console.error(rooms.length ? `Live rooms:\n${formatRoomList(rooms)}` : 'No live rooms.');
     process.exit(1);
   }
@@ -3252,9 +3252,16 @@ async function endRoom(args) {
     const why = history ? `${historyError}; history is at ${history}` : `history is not being saved${historyError ? ` (${historyError})` : ''}.`;
     console.log(transcript ? `Transcript: ${transcript}` : `No transcript written: ${why}`);
   }
-  if (args.includes('--keep-server')) return;
-  const result = await admin(ctx, 'POST', 'stop-if-empty');
-  console.log(result.stopping ? 'Server stopped (no rooms left).' : `${result.live} room(s) still live; server keeps running.`);
+  if (args.includes('--stop-server')) {
+    const result = await admin(ctx, 'POST', 'stop-if-empty');
+    if (result.stopping) return console.log('Server stopped (no rooms left).');
+  }
+  const left = (await admin(ctx, 'GET', 'rooms')).rooms.length;
+  console.log(
+    left
+      ? `${left} room(s) still live; server keeps running.`
+      : `No rooms left; the server keeps running. Stop it with ${HELP_PROG} down, or it stops after 30 idle minutes.`,
+  );
 }
 
 const COMMANDS = {
@@ -3302,7 +3309,7 @@ const COMMANDS = {
     group: 'Rooms',
     summary: 'end a room for everyone; asks for confirmation',
     usage: 'end <room> | end all',
-    options: ['--yes          skip the confirmation prompt', '--all          same as "end all"', '--keep-server  leave the server running after the last room ends'],
+    options: ['--yes          skip the confirmation prompt', '--all          same as "end all"', '--stop-server  also stop the server when no rooms are left'],
     example: 'node huddle.mjs end "api redesign" --yes',
   },
   wait: {

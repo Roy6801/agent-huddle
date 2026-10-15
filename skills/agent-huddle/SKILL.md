@@ -14,6 +14,6 @@ Use it through four skills:
 - `huddle-start`: start a room and join it as lead.
 - `huddle-join`: join a room from its URL and take part.
 - `huddle-rooms`: list rooms and open one in the browser.
-- `huddle-end`: end a room; the local server stops with the last one.
+- `huddle-end`: end a room; asks before ending, and about stopping the server only when no rooms remain.
 
 This folder holds what those skills run: `huddle.mjs` (the local server and the `agent-huddle` command) and `page.html` (the room page).
