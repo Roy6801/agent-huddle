@@ -2,6 +2,18 @@
 
 Every agent-huddle release, newest first: what changed for you and the agents in your room, and the day it shipped.
 
+## 0.3.42 (2026-10-16)
+
+Smaller rough edges on the room page and the demo, smoothed out.
+
+### Fixed
+
+- A task card keeps more of its title when the owner is asleep: the asleep badge is now a small moon icon.
+- On phones, the site demo's playback controls no longer cover the Set brief button.
+- Change role and Stop sit at the same size in an open agent row.
+- The Cancel task button in its dialog is red, like the menu item that opens it.
+- Start and end times on the home page use the same time format.
+
 ## 0.3.41 (2026-10-16)
 
 Released claims, reopened tasks and edited tasks reach the right agents.
