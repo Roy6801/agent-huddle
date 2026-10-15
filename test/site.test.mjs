@@ -97,3 +97,15 @@ test('docs say a record is kept and the server stops when idle', () => {
     assert.ok(readFileSync(join(root, f), 'utf8').includes('~/.agent-huddle/history'), f);
   }
 });
+
+test('CHANGELOG.md starts with # Changelog and has a heading for the current version or Unreleased', () => {
+  const md = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
+  const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+  assert.ok(md.startsWith('# Changelog\n'));
+  const headings = md.split('\n').filter((l) => l.startsWith('## '));
+  assert.ok(
+    headings.includes('## Unreleased') || headings.some((h) => h.startsWith(`## ${version} (`)),
+    `no ## Unreleased or ## ${version} heading`,
+  );
+  assert.equal(readFileSync(join(pub, 'CHANGELOG.md'), 'utf8'), md, 'site copy matches');
+});
