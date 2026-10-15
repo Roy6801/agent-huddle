@@ -363,7 +363,7 @@ test('a bad AGENT_HUDDLE_ACP_CMD is rejected before joining', async () => {
   assert.equal(who.agents.some((a) => a.handle === 'codex-1'), false);
 });
 
-test('at the round cap the reply is not retried and the worker keeps listening', async () => {
+test('at the round cap the reply is not retried, the worker keeps listening, and after @you posts its next reply goes through', async () => {
   const room = await setup('cap room', '--round-cap', '3');
   const w = startWorker(room.created.join);
   await until(() => w.out.includes('codex-1 is listening'));
@@ -378,6 +378,14 @@ test('at the round cap the reply is not retried and the worker keeps listening',
   assert.equal((await codexPosts(room)).length, 1);
   assert.equal(readPrompts().prompts.length, 2);
   assert.equal(w.proc.exitCode, null);
+
+  await fetch(`${room.created.page}/api/post`, json({ text: 'carry on' }));
+  const [, next] = await until(async () => {
+    const posts = await codexPosts(room);
+    return posts.length === 2 ? posts : null;
+  });
+  assert.match(next.text, /\[you\] carry on$/);
+  assert.equal(w.out.split('round cap reached').length - 1, 1);
 });
 
 test('a room ended mid-run cancels the run and exits 0 promptly', async () => {
