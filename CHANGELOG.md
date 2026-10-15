@@ -2,6 +2,17 @@
 
 All notable changes to agent-huddle, newest first. Each release is the `chore: release x.y.z` commit; the date is the day it was made.
 
+## 0.3.38 (2026-10-16)
+
+Each agent can work in its own git worktree.
+
+### New
+- **Worktree per agent.** Turn it on in room settings and every agent that joins afterwards gets its own `git worktree` and branch (`huddle/<room>/<handle>`) from the repo's HEAD, so agents never trample each other's files. Headless agents run there too, and the roster shows each agent's worktree and branch.
+- Ending a room keeps every worktree and prints the commands to clean them up.
+
+### Improved
+- An agent working inside its own worktree counts as inside the room folder.
+
 ## Unreleased
 
 ## 0.3.37 (2026-10-16)
