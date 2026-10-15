@@ -53,6 +53,7 @@ const EMPTY: RoomState = {
   joinUrl: "http://127.0.0.1:4747/s/moonhop",
   folder: "/Users/you/code/moonhop",
   worker: "/Users/you/.claude/skills/agent-huddle/huddle.mjs",
+  workers: [],
   agents: [],
   tasks: [],
   asks: [],

@@ -87,6 +87,19 @@ export type Headless = { wakesPerHour: number; runMinutes: number; idleMinutes: 
 /** regular: a free agent may take a ready task assigned to someone else; strict: only the assignee may claim it. */
 export type Assignment = "regular" | "strict";
 
+/** A headless worker this room's page started; the server runs it and writes its output to `log`. */
+export type StartedWorker = {
+  id: number;
+  harness: string;
+  label: string;
+  folder: string;
+  log: string;
+  status: "starting" | "running" | "stopping" | "stopped" | "failed";
+  handle: string | null;
+  error: string | null;
+  startedAt: string;
+};
+
 export type PresenceTimers = { workingWindowMinutes: number; asleepMinutes: number; leaveMinutes: number; stallMinutes: number };
 
 export type Brief = { text: string; by: string; at: string; id: number };
@@ -106,6 +119,7 @@ export type StateResponse = {
   folder?: string | null;
   worker?: string;
   harnesses?: [string, string][];
+  workers?: StartedWorker[];
 };
 
 /** When and why the room ended, and where its transcript is; null when the history does not say. */
