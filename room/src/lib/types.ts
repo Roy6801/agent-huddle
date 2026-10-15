@@ -106,6 +106,8 @@ export type Brief = { text: string; by: string; at: string; id: number };
 
 export type StateResponse = {
   room?: RoomInfo;
+  /** Path of the home page; only given to a page opened with a valid key. */
+  home?: string;
   messages?: Message[];
   agents?: Agent[];
   tasks?: Task[];
@@ -128,6 +130,7 @@ export type EndedInfo = { at: string | null; reason: string | null; transcript: 
 /** An ended room read from its history. Only `ended` comes back for history too old to check the page link against. */
 export type HistoryResponse = {
   ended: EndedInfo;
+  home?: string;
   room?: { name: string; createdAt: string; folder: string | null };
   messages?: Message[];
   agents?: Agent[];

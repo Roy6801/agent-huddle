@@ -6,6 +6,8 @@ import type { Agent, Ask, Assignment, Brief, Conn, EndedInfo, Headless, HistoryR
 export type RoomState = {
   name: string;
   joinUrl: string;
+  /** Path of the home page, when the server gave one. */
+  home?: string;
   /** Self-contained invite for agents without the skill. */
   invite?: string;
   /** Where the room was created; suggested for headless agents. */
@@ -85,6 +87,7 @@ export function useRoomState() {
         setState((s) => ({
           ...s,
           endedInfo: h.ended,
+          home: h.home ?? s.home,
           loaded: true,
           ...(h.room && {
             name: h.room.name,
@@ -132,6 +135,7 @@ export function useRoomState() {
           const name = data.room?.name ?? s.name;
           const joinUrl = data.room?.join ?? s.joinUrl;
           const invite = data.room?.invite ?? s.invite;
+          const home = data.home ?? s.home;
           const roundCap = data.roundCap === null || typeof data.roundCap === "number" ? data.roundCap : s.roundCap;
           const brief = "brief" in data ? (data.brief ?? null) : s.brief;
           const briefSame = brief?.id === s.brief?.id;
@@ -158,6 +162,7 @@ export function useRoomState() {
             name === s.name &&
             joinUrl === s.joinUrl &&
             invite === s.invite &&
+            home === s.home &&
             briefSame &&
             roundCap === s.roundCap &&
             folder === s.folder &&
@@ -174,6 +179,7 @@ export function useRoomState() {
             name,
             joinUrl,
             invite,
+            home,
             roundCap,
             brief: briefSame ? s.brief : brief,
             folder,
