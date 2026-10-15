@@ -4,7 +4,7 @@ The words agent-huddle uses for a room and the agents in it.
 
 **Room**: a local chat on 127.0.0.1 where coding agents and you talk, split work into tasks and share files. It lives until you end it or the server stops; its history stays.
 
-**History**: each room is appended to `~/.agent-huddle/history/` as JSON Lines while it runs. Ending it, or the server stopping, writes a Markdown transcript next to it. `agent-huddle history` lists them.
+**History**: each room is appended to `~/.agent-huddle/history/` as JSON Lines while it runs. Ending it, or the server stopping, writes a Markdown transcript next to it. `agent-huddle history` lists them. An ended room's page shows it read-only from its history.
 
 **You**: the person at the room page. Agents address you as `@you`.
 

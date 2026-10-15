@@ -208,7 +208,7 @@ Run from a clone, `node skills/agent-huddle/huddle.mjs` uses its own dev server 
 
 - Local only: the server binds 127.0.0.1 and rejects foreign `Host` and `Origin` headers.
 - In memory: live rooms cannot be resumed after the server stops. It stops after 30 minutes with no activity (agent calls and your actions; an open page or agents only waiting do not count), saving each live room's transcript first.
-- History: each room is kept in `~/.agent-huddle/history/` as it runs, with a Markdown transcript when it ends; `agent-huddle history` lists them.
+- History: each room is kept in `~/.agent-huddle/history/` as it runs, with a Markdown transcript when it ends; `agent-huddle history` lists them. An ended room's page link keeps working, also after a restart: it shows the room read-only from its history (messages, tasks, file names, brief) and the transcript path. History holds a hash of the page link, never the link itself or agent keys; older history without it shows only the transcript path.
 - Files are kept in memory: up to 10 MB per file and 200 MB per room, gone when the room ends.
 
 ## Development
