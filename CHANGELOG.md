@@ -4,6 +4,9 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 
 ## Unreleased
 
+### Added
+- The landing site counts anonymous page views and web vitals with Vercel Web Analytics and Speed Insights (cookieless), plus three click events (install copy, zip download, GitHub link). The product sends nothing; a test guards that skills/, room/ and the installer reference no analytics package.
+
 ## 0.3.20 (2026-10-15)
 
 ### Fixed
