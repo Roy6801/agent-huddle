@@ -1,5 +1,8 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { createHuddle } from '../skills/agent-huddle/huddle.mjs';
 
 const running = [];
@@ -153,5 +156,40 @@ test('GET brief returns the pin to any agent, null before', async () => {
   const claude = await join({ harness: 'claude' });
   assert.deepEqual((await call('GET', `${claude.link}/brief`)).json, { brief: null });
   await call('POST', `${codex.link}/brief`, { text: BRIEF });
+  assert.equal((await call('GET', `${claude.link}/brief`)).json.brief.text, BRIEF);
+});
+
+test('AC-66: every join reply, the personal reference and /me carry the folder and the brief', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-brief-'));
+  const { created, join } = await room({ folder: dir });
+  const codex = await join({ harness: 'codex', lead: created.lead });
+  await call('POST', `${codex.link}/brief`, { text: BRIEF });
+
+  const claude = await join({ harness: 'claude' });
+  assert.equal(claude.brief, BRIEF);
+  assert.equal(claude.folder, dir);
+  const reference = await (await fetch(claude.link)).text();
+  assert.ok(reference.includes(`Room folder: ${dir}`));
+  assert.ok(reference.includes(BRIEF));
+  assert.equal((await call('GET', `${claude.link}/me`)).json.folder, dir);
+
+  const child = (await call('POST', `${claude.link}/spawn`, { role: 'tester' })).json;
+  assert.equal(child.brief, BRIEF);
+  assert.equal(child.folder, dir);
+});
+
+test('AC-67: a joiner before the brief is told, then woken by it', async () => {
+  const { created, join } = await room();
+  const codex = await join({ harness: 'codex', lead: created.lead });
+  const claude = await join({ harness: 'claude' });
+  assert.equal(claude.brief, null);
+  assert.equal(claude.folder, null);
+  assert.match(claude.note, /No brief yet/);
+
+  const parked = call('GET', `${claude.link}/wait?wait=5`);
+  await new Promise((r) => setTimeout(r, 100));
+  await call('POST', `${codex.link}/brief`, { text: BRIEF });
+  const woken = (await parked).json;
+  assert.equal(woken.messages.find((m) => m.brief).text, BRIEF);
   assert.equal((await call('GET', `${claude.link}/brief`)).json.brief.text, BRIEF);
 });

@@ -110,8 +110,10 @@ test('new --dir stores the folder, defaults to the cwd, and the worker path is h
 
   const joined = await (await fetch(`${made.join}/join`, { method: 'POST', body: JSON.stringify({ harness: 'codex' }) })).json();
   const me = await (await fetch(`${joined.link}/me`)).json();
-  assert.ok(!('worker' in me) && !('folder' in me));
-  assert.ok(!(await (await fetch(joined.link)).text()).includes(dir));
+  assert.ok(!('worker' in me));
+  assert.equal(me.folder, dir);
+  assert.equal(joined.folder, dir);
+  assert.ok((await (await fetch(joined.link)).text()).includes(dir));
 });
 
 test('join --lead makes the joiner the room lead', async () => {
@@ -123,6 +125,8 @@ test('join --lead makes the joiner the room lead', async () => {
   const again = JSON.parse((await cli('join', room.join, '--harness', 'claude', '--lead', room.lead)).stdout);
   assert.equal(again.lead, joined.handle);
   assert.equal(again.role, null);
+  assert.equal(joined.brief, null);
+  assert.equal(joined.folder, process.cwd());
 });
 
 test('POST /new rejects a relative or oversized folder and accepts none', async () => {

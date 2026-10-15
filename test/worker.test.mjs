@@ -590,3 +590,14 @@ test('each worker harness launches its pinned adapter', () => {
   assert.equal(WORKER_HARNESSES.gemini.mode, 'autoEdit');
   assert.deepEqual(Object.keys(WORKER_HARNESSES), ['codex', 'gemini']);
 });
+
+test('a headless worker starts with the room folder and the brief', async () => {
+  const { created, claude } = await setup('brief room', '--dir', home);
+  assert.equal((await fetch(`${created.page}/api/brief`, json({ text: 'Build the sprite loader' }))).status, 200);
+  const w = startWorker(created.join);
+  await until(() => w.out.includes('codex-1 is listening'));
+  await say(claude, '@codex-1 go');
+  const prompt = await until(() => readPrompts().prompts[0]);
+  assert.ok(prompt.text.includes(`Room folder: ${home}`));
+  assert.ok(prompt.text.includes('Room brief:\nBuild the sprite loader'));
+});
