@@ -3072,7 +3072,8 @@ function codexNetworkAllowed() {
 
 function checkAgents() {
   console.log('Agents');
-  for (const row of agentRows()) {
+  const rows = agentRows();
+  for (const row of rows) {
     if (!row.found) {
       console.log(`  - ${row.label}: not found`);
       continue;
@@ -3099,6 +3100,11 @@ function checkAgents() {
         `! Codex: localhost may be blocked; ${CODEX_NETWORK_FIX}`,
       );
     }
+  }
+  const adapters = [...new Set(rows.filter((r) => r.found && ['claude', 'codex'].includes(r.agent)).map((r) => r.label))];
+  if (adapters.length && !which('bunx')) {
+    const uses = adapters.length > 1 ? 'start their ACP adapters' : 'starts its ACP adapter';
+    console.log(`! bunx: not found; headless ${adapters.join(' and ')} ${uses} with it (install Bun)`);
   }
 }
 

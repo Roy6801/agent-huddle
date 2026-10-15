@@ -193,6 +193,20 @@ test('doctor: Codex network hint appears unless network_access = true is set', a
   t.cleanup();
 });
 
+test('doctor: warns that headless Claude Code and Codex need bunx until it is on PATH', async () => {
+  const t = makeEnv();
+  let out = (await t.run()).stdout;
+  assert.doesNotMatch(out, /bunx/);
+  t.stub('claude');
+  t.stub('codex');
+  out = (await t.run()).stdout;
+  assert.match(out, /^! bunx: not found; headless Claude Code and Codex start their ACP adapters with it \(install Bun\)$/m);
+  t.stub('bunx');
+  out = (await t.run()).stdout;
+  assert.doesNotMatch(out, /bunx/);
+  t.cleanup();
+});
+
 test('doctor: corrupt install.json is ignored', async () => {
   const t = makeEnv();
   fs.writeFileSync(path.join(t.huddleHome, 'install.json'), '{not json');
