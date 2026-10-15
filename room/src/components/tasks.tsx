@@ -71,7 +71,8 @@ function SpecFile({ file }: { file: TaskSpecFile }) {
 const MAX_DESCRIPTION = 2000;
 const MAX_SPEC = 20000;
 
-function Count({ id, length, max }: { id: string; length: number; max: number }) {
+function Count({ id, text, max }: { id: string; text: string; max: number }) {
+  const length = text.trim().length;
   return (
     <span
       id={id}
@@ -82,22 +83,87 @@ function Count({ id, length, max }: { id: string; length: number; max: number })
   );
 }
 
+type TaskTextFieldsProps = {
+  id: string;
+  describedBy?: string;
+  description: string;
+  spec: string;
+  disabled?: boolean;
+  descriptionPlaceholder?: string;
+  specPlaceholder?: string;
+  onDescription: (v: string) => void;
+  onSpec: (v: string) => void;
+  children?: ReactNode;
+};
+
+function TaskTextFields({
+  id,
+  describedBy,
+  description,
+  spec,
+  disabled,
+  descriptionPlaceholder,
+  specPlaceholder,
+  onDescription,
+  onSpec,
+  children,
+}: TaskTextFieldsProps) {
+  return (
+    <>
+      <div className="grid gap-1.5">
+        <label htmlFor={`${id}-description`} className="text-xs font-medium text-muted-foreground">
+          Description
+        </label>
+        <Textarea
+          id={`${id}-description`}
+          aria-describedby={[`${id}-description-count`, describedBy].filter(Boolean).join(" ")}
+          value={description}
+          rows={3}
+          placeholder={descriptionPlaceholder}
+          disabled={disabled}
+          onChange={(e) => onDescription(e.target.value)}
+          className="font-normal text-foreground"
+        />
+        <Count id={`${id}-description-count`} text={description} max={MAX_DESCRIPTION} />
+      </div>
+      <div className="grid gap-1.5">
+        <label htmlFor={`${id}-spec`} className="text-xs font-medium text-muted-foreground">
+          Spec
+        </label>
+        <Textarea
+          id={`${id}-spec`}
+          aria-describedby={[`${id}-spec-count`, describedBy].filter(Boolean).join(" ")}
+          value={spec}
+          rows={5}
+          placeholder={specPlaceholder}
+          disabled={disabled}
+          onChange={(e) => onSpec(e.target.value)}
+          className="font-mono text-xs text-foreground md:text-xs"
+        />
+        <Count id={`${id}-spec-count`} text={spec} max={MAX_SPEC} />
+        {children}
+      </div>
+    </>
+  );
+}
+
 function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
-  const { state, pollNow, endHuddle } = useRoom();
+  const { pollNow, endHuddle } = useRoom();
   const { post } = useSource();
-  const [description, setDescription] = useState(task.description ?? "");
-  const [spec, setSpec] = useState(task.spec ?? "");
+  const [base] = useState(() => ({ description: task.description, spec: task.spec }));
+  const [description, setDescription] = useState(base.description ?? "");
+  const [spec, setSpec] = useState(base.spec ?? "");
   const [error, setError] = useState<ErrorInfo | null>(null);
   const id = useId();
   const describedBy = error ? `${id}-error` : undefined;
+  const changed = task.description !== base.description || task.spec !== base.spec;
 
   async function submit() {
-    if (state.ended) return;
     const body: { description?: string | null; spec?: string | null } = {};
     const nextDescription = description.trim() || null;
     const nextSpec = spec.trim() || null;
-    if (nextDescription !== task.description) body.description = nextDescription;
-    if (nextSpec !== task.spec) body.spec = nextSpec;
+    if (nextDescription !== base.description) body.description = nextDescription;
+    if (nextSpec !== base.spec) body.spec = nextSpec;
     if (!Object.keys(body).length) return onClose();
     try {
       const { r, data } = await post<{ id?: number }>(`/api/tasks/${task.id}`, body);
@@ -131,43 +197,23 @@ function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
         }
       }}
     >
-      <div className="grid gap-1.5">
-        <label htmlFor={`${id}-description`} className="text-xs font-medium text-muted-foreground">
-          Description
-        </label>
-        <Textarea
-          id={`${id}-description`}
-          aria-describedby={[`${id}-description-count`, describedBy].filter(Boolean).join(" ")}
-          value={description}
-          rows={3}
-          disabled={state.ended}
-          onChange={(e) => setDescription(e.target.value)}
-          className="font-normal text-foreground"
-        />
-        <Count id={`${id}-description-count`} length={description.length} max={MAX_DESCRIPTION} />
-      </div>
-      <div className="grid gap-1.5">
-        <label htmlFor={`${id}-spec`} className="text-xs font-medium text-muted-foreground">
-          Spec
-        </label>
-        <Textarea
-          id={`${id}-spec`}
-          aria-describedby={[`${id}-spec-count`, describedBy].filter(Boolean).join(" ")}
-          value={spec}
-          rows={5}
-          disabled={state.ended}
-          onChange={(e) => setSpec(e.target.value)}
-          className="font-mono text-xs text-foreground md:text-xs"
-        />
-        <Count id={`${id}-spec-count`} length={spec.length} max={MAX_SPEC} />
+      <TaskTextFields
+        id={id}
+        describedBy={describedBy}
+        description={description}
+        spec={spec}
+        onDescription={setDescription}
+        onSpec={setSpec}
+      >
         {task.specFile && <p className="text-[11px] text-muted-foreground">Typing a spec replaces the spec file.</p>}
-      </div>
+      </TaskTextFields>
       {error && <ErrorBox id={`${id}-error`} error={error} />}
+      {changed && <p className="text-[11px] text-muted-foreground">This task changed since you opened it.</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" size="sm" disabled={state.ended}>
+        <Button type="submit" size="sm">
           Save
         </Button>
       </div>
@@ -182,8 +228,16 @@ function TaskCard({ task }: { task: Task }) {
   const done = task.status === "done";
   const { ended } = useRoom().state;
   const [editing, setEditing] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
   const editTrigger = useRef<HTMLButtonElement>(null);
   const editable = !done && !ended;
+
+  useEffect(() => {
+    if (editing && !editable) {
+      setEditing(false);
+      trigger.current?.focus();
+    }
+  }, [editing, editable]);
 
   function closeEdit() {
     setEditing(false);
@@ -194,10 +248,14 @@ function TaskCard({ task }: { task: Task }) {
     <Collapsible
       asChild
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) setEditing(false);
+      }}
     >
       <li className={cn("rounded-lg border bg-background/60 transition-colors", done && "bg-transparent", open && "bg-background")}>
         <CollapsibleTrigger
+          ref={trigger}
           data-roving-item
           className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50"
         >
@@ -272,7 +330,14 @@ function TaskCard({ task }: { task: Task }) {
               <EditTask task={task} onClose={closeEdit} />
             ) : (
               <div className="flex justify-end px-3 pb-2.5">
-                <Button ref={editTrigger} type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
+                <Button
+                  ref={editTrigger}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Edit task #${task.id}`}
+                  onClick={() => setEditing(true)}
+                >
                   Edit
                 </Button>
               </div>
@@ -419,38 +484,17 @@ function NewTask() {
               ))}
             </NativeSelect>
           </div>
-          <div className="grid gap-1.5">
-            <label htmlFor={`${id}-description`} className="text-xs font-medium text-muted-foreground">
-              Description
-            </label>
-            <Textarea
-              id={`${id}-description`}
-              aria-describedby={[`${id}-description-count`, describedBy].filter(Boolean).join(" ")}
-              value={description}
-              rows={3}
-              placeholder="Optional context for whoever takes it"
-              disabled={state.ended}
-              onChange={(e) => setDescription(e.target.value)}
-              className="font-normal text-foreground"
-            />
-            <Count id={`${id}-description-count`} length={description.length} max={MAX_DESCRIPTION} />
-          </div>
-          <div className="grid gap-1.5">
-            <label htmlFor={`${id}-spec`} className="text-xs font-medium text-muted-foreground">
-              Spec
-            </label>
-            <Textarea
-              id={`${id}-spec`}
-              aria-describedby={[`${id}-spec-count`, describedBy].filter(Boolean).join(" ")}
-              value={spec}
-              rows={5}
-              placeholder="Optional detailed requirements"
-              disabled={state.ended}
-              onChange={(e) => setSpec(e.target.value)}
-              className="font-mono text-xs text-foreground md:text-xs"
-            />
-            <Count id={`${id}-spec-count`} length={spec.length} max={MAX_SPEC} />
-          </div>
+          <TaskTextFields
+            id={id}
+            describedBy={describedBy}
+            description={description}
+            spec={spec}
+            disabled={state.ended}
+            descriptionPlaceholder="Optional context for whoever takes it"
+            specPlaceholder="Optional detailed requirements"
+            onDescription={setDescription}
+            onSpec={setSpec}
+          />
           {error && <ErrorBox id={`${id}-error`} error={error} />}
           <div role="status" className="text-xs text-presence empty:hidden">
             {ok}

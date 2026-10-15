@@ -106,6 +106,20 @@ function useRoomState() {
 
 type Body = Partial<Headless> & { text?: string; files?: string[]; title?: string; assignee?: string; description?: string | null; spec?: string | null; roundCap?: number | null };
 
+const LIMITS = { description: 2000, spec: 20000 } as const;
+
+function overLimit(b: Body) {
+  for (const field of ["description", "spec"] as const) {
+    const text = b[field]?.trim();
+    if (text && text.length > LIMITS[field]) return `${field} must be 1-${LIMITS[field]} characters`;
+  }
+  return null;
+}
+
+function rejected<T>(error: string): Posted<T> {
+  return { r: new Response(null, { status: 400 }), data: { error } as Posted<T>["data"] };
+}
+
 /** Your actions change this page's copy of the room only; nothing leaves the browser. */
 async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T>> {
   const b = body as Body;
@@ -116,14 +130,16 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
     setRoom(addMessage({ ...room, streak: 0 }, now, "you", b.text ?? "", { files }));
     data = { id: room.messages.at(-1)?.id };
   } else if (path === "/api/tasks") {
-    const task = createTask({ ...room, streak: 0 }, now, "you", b.title ?? "", b.assignee ?? null);
-    const description = b.description ?? null;
-    const spec = b.spec ?? null;
-    setRoom({ ...task.room, tasks: task.room.tasks.map((t) => (t.id === task.id ? { ...t, description, spec } : t)) });
+    const tooLong = overLimit(b);
+    if (tooLong) return rejected(tooLong);
+    const task = createTask({ ...room, streak: 0 }, now, "you", b.title ?? "", b.assignee ?? null, b);
+    setRoom(task.room);
     data = { id: task.id };
   } else if (path.startsWith("/api/tasks/")) {
     const id = Number(path.slice("/api/tasks/".length));
     const old = room.tasks.find((t) => t.id === id);
+    const tooLong = overLimit(b);
+    if (tooLong) return rejected(tooLong);
     if (old) {
       const task = {
         ...old,

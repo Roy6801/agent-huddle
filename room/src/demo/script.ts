@@ -97,11 +97,11 @@ function seen(s: RoomState, handle: string, at: number): Agent[] {
   return s.agents.map((a) => (a.handle === handle ? { ...a, presence: "listening" as const, lastSeen: new Date(at).toISOString() } : a));
 }
 
-export function createTask(s: RoomState, at: number, by: string, title: string, assignee: string | null) {
+export function createTask(s: RoomState, at: number, by: string, title: string, assignee: string | null, text: { description?: string | null; spec?: string | null } = {}) {
   const id = s.tasks.length + 1;
   const next = {
     ...s,
-    tasks: [...s.tasks, { id, title, status: "open" as const, owner: null, assignee, createdBy: by, note: null, description: null, spec: null, specFile: null }],
+    tasks: [...s.tasks, { id, title, status: "open" as const, owner: null, assignee, createdBy: by, note: null, description: text.description ?? null, spec: text.spec ?? null, specFile: null }],
   };
   return { id, room: system(next, at, `${by} created task #${id} "${title}"${assignee ? ` for @${assignee}` : ""}`) };
 }
