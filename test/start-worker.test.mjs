@@ -138,6 +138,33 @@ test('AC-37.4: ending the room stops the workers it started', async () => {
   await until(() => !alive(pid));
 });
 
+test('AC-36.8: with a worktree per agent a page-started worker runs in its own worktree, and end prints how to remove it', async () => {
+  const r = await room();
+  const repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-start-repo-')));
+  const git = (...args) => new Promise((resolve, reject) => execFile('git', ['-C', repo, ...args], (e, out) => (e ? reject(e) : resolve(out.trim()))));
+  await git('init', '-q');
+  fs.writeFileSync(path.join(repo, 'a.txt'), 'a');
+  await git('add', '.');
+  await git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', 'init');
+  const created = JSON.parse((await cli(r.env, 'new', 'tree room', '--dir', repo)).stdout);
+  const page = created.page;
+  assert.equal((await fetch(`${page}/api/settings`, json({ worktrees: 'per-agent' }))).status, 200);
+  const w = await (await fetch(`${page}/api/workers`, json({ harness: 'codex' }))).json();
+  const id8 = created.id.slice(0, 8);
+  const tree = path.join(r.home, 'worktrees', id8, 'codex-1');
+  assert.equal(w.status, 'running');
+  assert.equal(w.folder, tree);
+  assert.match(fs.readFileSync(w.log, 'utf8'), new RegExp(`codex-1 is listening in ${tree.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `));
+  const agent = (await (await fetch(`${page}/api/state`)).json()).agents.find((a) => a.handle === 'codex-1');
+  assert.deepEqual([agent.worktree.path, agent.worktree.branch], [tree, `huddle/${id8}/codex-1`]);
+
+  const ended = await cli(r.env, 'end', 'tree room', '--yes');
+  assert.equal(ended.code, 0, ended.stderr);
+  assert.match(ended.stdout, /Worktrees kept \(1\)/);
+  assert.ok(ended.stdout.includes(`git -C ${repo} worktree remove ${tree} && git -C ${repo} branch -d huddle/${id8}/codex-1`));
+  assert.ok(fs.existsSync(path.join(tree, 'a.txt')));
+});
+
 test('AC-37.4: down stops the workers the server started', async () => {
   const r = await room();
   await r.start({ harness: 'claude' });
