@@ -68,11 +68,127 @@ function SpecFile({ file }: { file: TaskSpecFile }) {
   );
 }
 
+const MAX_DESCRIPTION = 2000;
+const MAX_SPEC = 20000;
+
+function Count({ id, length, max }: { id: string; length: number; max: number }) {
+  return (
+    <span
+      id={id}
+      className={cn("text-right text-[11px] text-muted-foreground tabular-nums", length > max && "text-destructive")}
+    >
+      {length.toLocaleString("en-US")} / {max.toLocaleString("en-US")}
+    </span>
+  );
+}
+
+function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
+  const { state, pollNow, endHuddle } = useRoom();
+  const { post } = useSource();
+  const [description, setDescription] = useState(task.description ?? "");
+  const [spec, setSpec] = useState(task.spec ?? "");
+  const [error, setError] = useState<ErrorInfo | null>(null);
+  const id = useId();
+  const describedBy = error ? `${id}-error` : undefined;
+
+  async function submit() {
+    if (state.ended) return;
+    const body: { description?: string | null; spec?: string | null } = {};
+    const nextDescription = description.trim() || null;
+    const nextSpec = spec.trim() || null;
+    if (nextDescription !== task.description) body.description = nextDescription;
+    if (nextSpec !== task.spec) body.spec = nextSpec;
+    if (!Object.keys(body).length) return onClose();
+    try {
+      const { r, data } = await post<{ id?: number }>(`/api/tasks/${task.id}`, body);
+      if (r.status === 410) {
+        endHuddle();
+      } else if (r.ok) {
+        pollNow();
+        onClose();
+      } else {
+        setError({ message: errMain(r, data), valid: validOf(data) });
+      }
+    } catch {
+      setError({ message: "Could not reach the server." });
+    }
+  }
+
+  return (
+    <form
+      autoComplete="off"
+      aria-label={`Edit task #${task.id}`}
+      className="grid gap-3 border-t px-3 py-2.5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && !e.defaultPrevented) {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+    >
+      <div className="grid gap-1.5">
+        <label htmlFor={`${id}-description`} className="text-xs font-medium text-muted-foreground">
+          Description
+        </label>
+        <Textarea
+          id={`${id}-description`}
+          aria-describedby={[`${id}-description-count`, describedBy].filter(Boolean).join(" ")}
+          value={description}
+          rows={3}
+          disabled={state.ended}
+          onChange={(e) => setDescription(e.target.value)}
+          className="font-normal text-foreground"
+        />
+        <Count id={`${id}-description-count`} length={description.length} max={MAX_DESCRIPTION} />
+      </div>
+      <div className="grid gap-1.5">
+        <label htmlFor={`${id}-spec`} className="text-xs font-medium text-muted-foreground">
+          Spec
+        </label>
+        <Textarea
+          id={`${id}-spec`}
+          aria-describedby={[`${id}-spec-count`, describedBy].filter(Boolean).join(" ")}
+          value={spec}
+          rows={5}
+          disabled={state.ended}
+          onChange={(e) => setSpec(e.target.value)}
+          className="font-mono text-xs text-foreground md:text-xs"
+        />
+        <Count id={`${id}-spec-count`} length={spec.length} max={MAX_SPEC} />
+        {task.specFile && <p className="text-[11px] text-muted-foreground">Typing a spec replaces the spec file.</p>}
+      </div>
+      {error && <ErrorBox id={`${id}-error`} error={error} />}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" size="sm" disabled={state.ended}>
+          Save
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function TaskCard({ task }: { task: Task }) {
   const [open, setOpen] = useState(false);
   const status = STATUS[task.status] ?? STATUS.open;
   const Icon = status.icon;
   const done = task.status === "done";
+  const { ended } = useRoom().state;
+  const [editing, setEditing] = useState(false);
+  const editTrigger = useRef<HTMLButtonElement>(null);
+  const editable = !done && !ended;
+
+  function closeEdit() {
+    setEditing(false);
+    requestAnimationFrame(() => editTrigger.current?.focus());
+  }
 
   return (
     <Collapsible
@@ -151,23 +267,19 @@ function TaskCard({ task }: { task: Task }) {
               </Row>
             )}
           </dl>
+          {editable &&
+            (editing ? (
+              <EditTask task={task} onClose={closeEdit} />
+            ) : (
+              <div className="flex justify-end px-3 pb-2.5">
+                <Button ref={editTrigger} type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
+                  Edit
+                </Button>
+              </div>
+            ))}
         </CollapsibleContent>
       </li>
     </Collapsible>
-  );
-}
-
-const MAX_DESCRIPTION = 2000;
-const MAX_SPEC = 20000;
-
-function Count({ id, length, max }: { id: string; length: number; max: number }) {
-  return (
-    <span
-      id={id}
-      className={cn("text-right text-[11px] text-muted-foreground tabular-nums", length > max && "text-destructive")}
-    >
-      {length.toLocaleString("en-US")} / {max.toLocaleString("en-US")}
-    </span>
   );
 }
 

@@ -104,7 +104,7 @@ function useRoomState() {
   return { state, pollNow: noop, endHuddle: noop };
 }
 
-type Body = Partial<Headless> & { text?: string; files?: string[]; title?: string; assignee?: string; description?: string; spec?: string; roundCap?: number | null };
+type Body = Partial<Headless> & { text?: string; files?: string[]; title?: string; assignee?: string; description?: string | null; spec?: string | null; roundCap?: number | null };
 
 /** Your actions change this page's copy of the room only; nothing leaves the browser. */
 async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T>> {
@@ -121,6 +121,19 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
     const spec = b.spec ?? null;
     setRoom({ ...task.room, tasks: task.room.tasks.map((t) => (t.id === task.id ? { ...t, description, spec } : t)) });
     data = { id: task.id };
+  } else if (path.startsWith("/api/tasks/")) {
+    const id = Number(path.slice("/api/tasks/".length));
+    const old = room.tasks.find((t) => t.id === id);
+    if (old) {
+      const task = {
+        ...old,
+        description: b.description === undefined ? old.description : b.description,
+        spec: b.spec === undefined ? old.spec : b.spec,
+        specFile: b.spec ? null : old.specFile,
+      };
+      setRoom(system({ ...room, streak: 0, tasks: room.tasks.map((t) => (t.id === id ? task : t)) }, now, `you edited task #${id} "${old.title}"`));
+      data = task;
+    }
   } else if (path === "/api/settings") {
     if (b.roundCap !== undefined) {
       const roundCap = b.roundCap;
