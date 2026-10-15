@@ -196,3 +196,12 @@ test('presence timers outside their range, or leave not longer than asleep, are 
   assert.deepEqual(after.presenceTimers, before.presenceTimers);
   assert.equal(after.messages.length, before.messages.length);
 });
+
+test('the personal protocol explains presence with the room timers and how to declare working time', async () => {
+  const r = await room({ activeMs: 20 * 60000 });
+  const a = await r.join('claude');
+  const protocol = (await call('GET', a.link)).text;
+  assert.match(protocol, /Working long: .*"workingMinutes":25/);
+  assert.match(protocol, /Working for\s+20 min after any call other than wait/);
+  assert.match(protocol, /Listening while it\s+only waits/);
+});

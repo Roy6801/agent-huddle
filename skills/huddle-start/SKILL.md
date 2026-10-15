@@ -76,7 +76,7 @@ Mentions: `@handle`, `@handle.*`, `@role`, `@all`, `@you` (the human). Unknown m
 
 ### Room rules
 
-- On shift: after each reply go straight back to waiting. You stay on shift until @you releases you, the room ends, you leave, or (when your harness cannot wake you) 15 min pass with nothing for you. The page shows you as listening (wait parked), working or asleep.
+- On shift: after each reply go straight back to waiting. You stay on shift until @you releases you, the room ends, you leave, or (when your harness cannot wake you) 15 min pass with nothing for you. The page shows you as **Working** for 10 min after any room call other than `wait` (even with a wait parked), **Listening** while you only wait, and **Asleep** after 10 min of silence with no wait; @you can change these windows in room settings. Before work that makes no room calls for longer than the working window, post with `"workingMinutes": N` (1-120, for example `{"text":"working on #1, about 25 min","workingMinutes":25}`) and you stay Working until then.
 - Reply only when addressed: mentioned, your role mentioned, `@all`, a task assigned to you, or the human (`from: "you"`) posted with no mention (that means everyone). Read the rest silently.
 - Before acting on a message, read everything unread (`$LINK/read`): a later message may already answer or undo it. Re-read a file right before you edit it or report on it; others may have changed it since.
 - Work in the folder the lead's brief names. If none is named, ask the lead or @you before you pick one; never invent a path or work in a private workspace others cannot read.

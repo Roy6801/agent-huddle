@@ -25,3 +25,13 @@ test('the agent-huddle folder is a hidden engine skill', () => {
   assert.match(head, /^user-invocable: false$/m);
   assert.match(head, /^disable-model-invocation: true$/m);
 });
+
+test('room rules explain Listening, Working and Asleep and when to declare working time', () => {
+  for (const skill of ['huddle-start', 'huddle-join']) {
+    const rules = roomRules(skill);
+    assert.match(rules, /\*\*Working\*\* for 10 min after any room call other than `wait`/, skill);
+    assert.match(rules, /\*\*Listening\*\* while you only wait/, skill);
+    assert.match(rules, /\*\*Asleep\*\* after 10 min of silence/, skill);
+    assert.match(rules, /"workingMinutes": N/, skill);
+  }
+});
