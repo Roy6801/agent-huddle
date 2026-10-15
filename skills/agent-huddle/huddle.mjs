@@ -347,6 +347,7 @@ export function createHuddle(opts = {}) {
     tombstoneMs = TOMBSTONE_MS,
     maxFileBytes = MAX_FILE_BYTES,
     maxRoomBytes = MAX_ROOM_BYTES,
+    historyDir,
   } = opts;
   const rooms = new Map();
   let lastRequest = Date.now();
@@ -434,10 +435,51 @@ export function createHuddle(opts = {}) {
       stall: null,
       folder,
       humanSeen: 0,
+      history: null,
     };
     rooms.set(s.id, s);
+    openHistory(s);
     return s;
   }
+
+  // ---- history ----
+
+  // One JSON line per change, appended as it happens. Only the short id is written: the full one is in every link.
+  function historyName(s) {
+    const slug = s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40).replace(/^-+|-+$/g, '') || 'room';
+    return `${s.createdAt.slice(0, 10)}-${slug}-${s.id.slice(0, 8)}.jsonl`;
+  }
+
+  function historyOff(s, err) {
+    s.history = null;
+    system(s, `History is not being saved for this room: ${err.code ?? err.message}.`, { toYou: true });
+  }
+
+  function openHistory(s) {
+    if (!historyDir) return;
+    try {
+      fs.mkdirSync(historyDir, { recursive: true, mode: 0o700 });
+    } catch (err) {
+      return historyOff(s, err);
+    }
+    s.history = { file: path.join(historyDir, historyName(s)) };
+    const { name, folder, createdAt } = s;
+    historyLine(s, { type: 'room', at: createdAt, name, id: s.id.slice(0, 8), folder, createdAt, version: VERSION });
+  }
+
+  function historyLine(s, entry) {
+    if (!s.history) return;
+    try {
+      fs.appendFileSync(s.history.file, JSON.stringify({ at: new Date().toISOString(), ...entry }) + '\n', { mode: 0o600 });
+    } catch (err) {
+      historyOff(s, err);
+    }
+  }
+
+  const historyTask = (s, task) => historyLine(s, { type: 'task', task: listView(s, task) });
+  const historyAgent = (s, a) =>
+    historyLine(s, { type: 'agent', handle: a.handle, harness: a.harness, role: a.role, status: a.status, folder: a.folder });
+  const historyAsk = (s, ask) => historyLine(s, { type: 'ask', ask });
 
   function endRoom(s) {
     s.ended = true;
@@ -507,6 +549,7 @@ export function createHuddle(opts = {}) {
       ...(extra.offShift && { offShift: true }),
     };
     s.messages.push(m);
+    historyLine(s, { type: 'message', ...m, files: m.files.map(({ name, size }) => ({ name, size })) });
     while (s.messages.length > MAX_MESSAGES) s.messages.shift();
     for (const agent of s.agents.values()) {
       if (agent.waiters.size && m.to.includes(agent.handle)) flushWaiters(s, agent);
@@ -684,9 +727,11 @@ export function createHuddle(opts = {}) {
     for (const t of s.tasks) {
       if (t.status === 'claimed' && t.owner === agent.handle) {
         moveTask(t, 'open', null);
+        historyTask(s, t);
         released.push(t.id);
       }
     }
+    historyAgent(s, agent);
     for (const a of s.asks) {
       if (a.status === 'open' && a.by === agent.handle) settleAsk(s, a, 'cancelled');
     }
@@ -698,6 +743,7 @@ export function createHuddle(opts = {}) {
 
   function settleAsk(s, ask, status) {
     ask.status = status;
+    historyAsk(s, ask);
     for (const w of s.askWaiters) {
       if (w.ask !== ask) continue;
       clearTimeout(w.timer);
@@ -720,6 +766,7 @@ export function createHuddle(opts = {}) {
     if (new Set(options.map((o) => o.optionId)).size !== options.length) throw new HttpError('duplicate_option');
     const ask = { id: s.asks.length + 1, by: agent.handle, title, detail, options, status: 'open', at: new Date().toISOString() };
     s.asks.push(ask);
+    historyAsk(s, ask);
     system(s, `${agent.handle} asks: ${title}`, { toYou: true, ask: ask.id });
     return ask;
   }
@@ -850,6 +897,7 @@ export function createHuddle(opts = {}) {
       ...fields,
     };
     s.tasks.push(task);
+    historyTask(s, task);
     const wake = assignee && assignee !== creator;
     const waiting = blockedBy(s, task);
     const order = after.length
@@ -881,6 +929,7 @@ export function createHuddle(opts = {}) {
     const fields = taskFields(s, body);
     if (!Object.keys(fields).length) throw new HttpError('empty_edit');
     Object.assign(task, fields);
+    historyTask(s, task);
     const target = task.owner ?? task.assignee;
     const notify = Boolean(target) && target !== editor && s.agents.get(target)?.status !== 'left';
     system(s, `${editor} edited task #${task.id} "${task.title}"`, {
@@ -923,6 +972,7 @@ export function createHuddle(opts = {}) {
     const back = owner && owner.status !== 'left' ? owner.handle : null;
     moveTask(task, back ? 'claimed' : 'open', back);
     task.reopened = { by, reason, at: new Date().toISOString() };
+    historyTask(s, task);
     const notify = back && back !== by;
     system(s, `${by} reopened task #${task.id} "${task.title}": ${reason}`, {
       mentions: notify ? [back] : [],
@@ -941,6 +991,7 @@ export function createHuddle(opts = {}) {
       if (task.owner) throw new HttpError('already_claimed', { n, owner: task.owner });
       assertUnblocked(s, task);
       moveTask(task, 'claimed', h);
+      historyTask(s, task);
       narrate(s, `${h} claimed task #${task.id}`);
     } else if (action === 'done') {
       if (task.status === 'done') throw new HttpError('task_done', { n });
@@ -949,6 +1000,7 @@ export function createHuddle(opts = {}) {
       const note = body.note === undefined || body.note === null ? null : cleanText(body.note, MAX_TEXT, 'note');
       moveTask(task, 'done', h);
       task.note = note;
+      historyTask(s, task);
       narrate(s, `${h} finished task #${task.id} "${task.title}"`);
       announceReady(s, task, h);
       if (task.createdBy !== h) {
@@ -970,6 +1022,7 @@ export function createHuddle(opts = {}) {
         throw new HttpError('not_owner', { n, owner: task.owner === h ? null : task.owner });
       }
       moveTask(task, 'open', null);
+      historyTask(s, task);
       narrate(s, `${h} released task #${task.id}`);
     }
     return task;
@@ -1394,6 +1447,7 @@ How the room works:
       s.lead = agent.handle;
       s.leadKey = null;
     }
+    historyAgent(s, agent);
     narrate(s, `${agent.handle} joined${role ? ` as ${role}` : ''}`);
     const outside = agent.folderCheck === 'outside';
     if (outside) system(s, `${agent.handle} joined from ${folder}, outside the room folder ${s.folder}.`, { toYou: true });
@@ -1426,6 +1480,7 @@ How the room works:
     let handle = `${parent.handle}.${role}`;
     for (let i = 2; s.agents.has(handle); i++) handle = `${parent.handle}.${role}-${i}`;
     const child = addAgent(s, handle, parent.harness, role, parent.handle, base, parent.folder);
+    historyAgent(s, child);
     narrate(s, `${parent.handle} spawned ${handle}`);
     return { ...agentView(s, child), parent: parent.handle, ...briefView(s, child) };
   }
@@ -1457,6 +1512,7 @@ How the room works:
     if (agent.status === 'left' && !leaving) {
       agent.status = 'active';
       agent.stopRequested = false;
+      historyAgent(s, agent);
       narrate(s, `${agent.handle} rejoined`);
     }
     const ok = (obj) => sendJson(res, 200, obj);
@@ -1835,6 +1891,7 @@ async function serve() {
     askMs: num('AGENT_HUDDLE_ASK_MS', 600000),
     roundCap: num('AGENT_HUDDLE_ROUND_CAP', ROUND_CAP_DEFAULT),
     maxFileBytes: num('AGENT_HUDDLE_MAX_FILE', MAX_FILE_BYTES),
+    historyDir: path.join(resolveHome(), 'history'),
     adminToken,
     onIdle: shutdown,
     onStop: shutdown,
