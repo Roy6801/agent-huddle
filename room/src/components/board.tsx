@@ -5,6 +5,7 @@ import { Tasks } from "@/components/tasks";
 import { Sidebar, SidebarContent, SidebarHeader, SidebarRail } from "@/components/ui/sidebar";
 import { useRoom, useSource } from "@/hooks/use-room";
 import { fmtSize, fmtTime, INLINE_TYPES } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 function SharedFiles() {
   const { files, state } = useRoom();
@@ -23,39 +24,38 @@ function SharedFiles() {
           const name = f.name || "file";
           const from = f.from === "you" ? "You" : f.from;
           const inline = INLINE_TYPES.has(f.type);
-          if (state.ended) {
-            return (
-              <li key={f.id} className="-mx-2 flex items-center gap-2.5 px-2 py-1.5 text-muted-foreground">
-                <FileTypeIcon type={f.type} name={name} className="size-7 border bg-background" />
-                <span className="grid min-w-0">
-                  <span className="truncate text-[13px]">{name}</span>
-                  <span className="text-[11px]">No longer available</span>
+          const body = (
+            <>
+              <FileTypeIcon type={f.type} name={name} className="size-7 border bg-background" />
+              <span className="grid min-w-0">
+                {!state.ended && <span className="sr-only">{inline ? "Open " : "Download "}</span>}
+                <span className="truncate text-[13px]">{name}</span>
+                <span className="flex gap-2 text-[11px] whitespace-nowrap text-muted-foreground">
+                  <span className="tabular-nums">{state.ended ? "No longer available" : fmtSize(f.size)}</span>
+                  <span className="truncate font-mono">
+                    <span className="sr-only">, shared by </span>
+                    {from}
+                  </span>
                 </span>
-              </li>
-            );
-          }
+                {inline && !state.ended && <span className="sr-only">, opens in a new tab</span>}
+              </span>
+            </>
+          );
+          const row = "-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5";
           return (
             <li key={f.id}>
-              <a
-                href={fileUrl(f.id)}
-                {...(inline ? { target: "_blank", rel: "noopener" } : { download: name })}
-                title={`${name}, shared by ${f.from === "you" ? "you" : f.from} at ${fmtTime(f.at)}`}
-                className="-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-sidebar-accent"
-              >
-                <FileTypeIcon type={f.type} name={name} className="size-7 border bg-background" />
-                <span className="grid min-w-0">
-                  <span className="sr-only">{inline ? "Open " : "Download "}</span>
-                  <span className="truncate text-[13px]">{name}</span>
-                  <span className="flex gap-2 text-[11px] whitespace-nowrap text-muted-foreground">
-                    <span className="tabular-nums">{fmtSize(f.size)}</span>
-                    <span className="truncate font-mono">
-                      <span className="sr-only">, shared by </span>
-                      {from}
-                    </span>
-                  </span>
-                  {inline && <span className="sr-only">, opens in a new tab</span>}
-                </span>
-              </a>
+              {state.ended ? (
+                <div className={cn(row, "text-muted-foreground")}>{body}</div>
+              ) : (
+                <a
+                  href={fileUrl(f.id)}
+                  {...(inline ? { target: "_blank", rel: "noopener" } : { download: name })}
+                  title={`${name}, shared by ${f.from === "you" ? "you" : f.from} at ${fmtTime(f.at)}`}
+                  className={cn(row, "transition-colors hover:bg-sidebar-accent")}
+                >
+                  {body}
+                </a>
+              )}
             </li>
           );
         })}
