@@ -35,7 +35,8 @@ const split = (sessionId, ids) => {
 };
 const save = () => {
   if (!FAKE_ACP_LOG) return;
-  fs.writeFileSync(`${FAKE_ACP_LOG}.tmp`, JSON.stringify({ prompts: log, cancels, outcomes, modes, calls, maxConcurrency }));
+  const env = { apiKey: 'ANTHROPIC_API_KEY' in process.env, authToken: 'ANTHROPIC_AUTH_TOKEN' in process.env };
+  fs.writeFileSync(`${FAKE_ACP_LOG}.tmp`, JSON.stringify({ prompts: log, cancels, outcomes, modes, calls, maxConcurrency, env }));
   fs.renameSync(`${FAKE_ACP_LOG}.tmp`, FAKE_ACP_LOG);
 };
 
@@ -51,6 +52,25 @@ async function roomCalls(text) {
   save();
   return calls.map((c) => `${c.route}: ${c.body.message ?? 'ok'}`).join('; ');
 }
+
+const CODEX_ASK = {
+  toolCall: { toolCallId: 't1', title: 'Write ../outside.txt', kind: 'edit', locations: [{ path: '/tmp/outside.txt' }] },
+  options: [
+    { optionId: 'allow_once', kind: 'allow_once', name: 'Allow' },
+    { optionId: 'allow_for_session', kind: 'allow_always', name: 'Always' },
+    { optionId: 'decline', kind: 'reject_once', name: 'Decline' },
+    { optionId: 'cancel', kind: 'reject_once', name: 'Cancel' },
+  ],
+};
+// claude-agent-acp 0.91.0 (src/permissions/options/shared.ts): a Bash call with the decline option first.
+const CLAUDE_ASK = {
+  toolCall: { toolCallId: 't1', title: '`rm -rf build`', kind: 'execute', rawInput: { command: 'rm -rf build' } },
+  options: [
+    { optionId: 'reject', kind: 'reject_once', name: 'No' },
+    { optionId: 'allow-once', kind: 'allow_once', name: 'Yes' },
+    { optionId: 'allow-with-updates', kind: 'allow_always', name: "Yes, and don't ask again for rm commands" },
+  ],
+};
 
 const methods = {
   initialize: () => ({ protocolVersion: 1, agentCapabilities: {} }),
@@ -79,13 +99,7 @@ const methods = {
         method: 'session/request_permission',
         params: {
           sessionId,
-          toolCall: { toolCallId: 't1', title: 'Write ../outside.txt', kind: 'edit', locations: [{ path: '/tmp/outside.txt' }] },
-          options: [
-            { optionId: 'allow_once', kind: 'allow_once', name: 'Allow' },
-            { optionId: 'allow_for_session', kind: 'allow_always', name: 'Always' },
-            { optionId: 'decline', kind: 'reject_once', name: 'Decline' },
-            { optionId: 'cancel', kind: 'reject_once', name: 'Cancel' },
-          ],
+          ...(FAKE_ACP_PERMISSION === 'claude' ? CLAUDE_ASK : CODEX_ASK),
         },
       });
       const outcome = (await answer).outcome;
