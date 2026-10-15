@@ -28,7 +28,7 @@ const STATUS: Record<View, { icon: typeof CircleDotIcon; label: string; iconClas
 };
 
 const ORDER: Record<View, number> = { open: 0, blocked: 1, claimed: 2, done: 3 };
-const viewOf = (t: Task): View => (t.status === "open" && t.blocked?.length ? "blocked" : t.status);
+const viewOf = (t: Task): View => (t.status === "open" && t.blocked.length ? "blocked" : t.status);
 const who = (h: string) => (h === "you" ? "You" : h);
 
 function Person({ handle }: { handle: string }) {
@@ -340,9 +340,9 @@ function TaskCard({ task }: { task: Task }) {
                 <SpecFile file={task.specFile} />
               </Row>
             )}
-            {!!task.after?.length && (
+            {!!task.after.length && (
               <Row label="After">
-                {task.after.map((n) => `#${n}${task.blocked?.includes(n) ? " (not done)" : ""}`).join(", ")}
+                {task.after.map((n) => `#${n}${task.blocked.includes(n) ? " (not done)" : ""}`).join(", ")}
               </Row>
             )}
             <Row label="Owner">{task.owner ? <Person handle={task.owner} /> : "Unclaimed"}</Row>
@@ -423,8 +423,11 @@ function NewTask() {
     if (state.ended) return;
     if (!t) return titleRef.current?.focus();
     const body: { title: string; assignee?: string; description?: string; spec?: string; after?: number[] } = { title: t };
-    const ids = after.match(/\d+/g)?.map(Number);
-    if (ids?.length) body.after = ids;
+    const tokens = after.split(/[\s,]+/).filter(Boolean);
+    if (!tokens.every((x) => /^#?\d+$/.test(x))) {
+      return setError({ message: "Use task numbers separated by commas, like 1, 2, 3." });
+    }
+    if (tokens.length) body.after = tokens.map((x) => Number(x.replace("#", "")));
     if (current) body.assignee = current;
     if (description.trim()) body.description = description.trim();
     if (spec.trim()) body.spec = spec.trim();
