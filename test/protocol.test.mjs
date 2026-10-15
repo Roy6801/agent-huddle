@@ -93,6 +93,7 @@ test('new returns the announce: page first, then a skill line per harness in cod
     assert.ok(json.announce.includes(`\n\`\`\`\n${line}\n\`\`\``), line);
   }
   assert.ok(!json.announce.includes('curl'));
+  assert.match(blocks.at(-1), /^To run Claude Code, Codex, Gemini CLI or opencode in the background instead, with its approvals on the page: Add agent → Headless\.$/);
   const state = (await call('GET', `${json.page}/api/state`)).json;
   assert.equal(state.room.invite, json.invite);
 });
