@@ -143,7 +143,7 @@ function Headless({ joinUrl, role }: { joinUrl: string; role: string | null }) {
     setError("");
     setStarting(true);
     try {
-      const { r, data } = await post("/api/workers", { harness, folder: folder.trim() || undefined });
+      const { r, data } = await post("/api/workers", { harness, folder: folder.trim() || undefined, role: role ?? undefined });
       // A worker that failed while starting shows its own error in its row below.
       if (!r.ok) setError(data?.error === "worker_failed" ? (data.instruction ?? "") : [errMain(r, data), data?.instruction].filter(Boolean).join(" "));
       pollNow();

@@ -99,6 +99,21 @@ test('AC-37.1-3: the page starts a headless worker in the room folder that joins
   await until(async () => (await r.get()).messages.some((m) => m.from === 'codex-1' && m.text.includes('hello')));
 });
 
+test('the page starts a worker with the role from Add agent and rejects a bad one before spawning', async () => {
+  const r = await room();
+  const bad = await r.start({ harness: 'codex', role: 'Not A Role' });
+  assert.equal(bad.status, 400);
+  assert.equal((await bad.json()).error, 'invalid_role');
+  assert.equal((await r.get()).workers.length, 0);
+
+  const res = await r.start({ harness: 'codex', role: 'builder' });
+  assert.equal(res.status, 201);
+  const { handle } = await res.json();
+  const agent = (await r.get()).agents.find((a) => a.handle === handle);
+  assert.equal(agent.role, 'builder');
+  assert.equal(agent.headless, true);
+});
+
 test('AC-37.4: the page stops a worker it started; it leaves and shows as stopped', async () => {
   const r = await room();
   const w = await (await r.start({ harness: 'gemini' })).json();
