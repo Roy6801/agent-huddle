@@ -1,5 +1,6 @@
 import { FileTypeIcon } from "@/components/files";
 import { HeadlessBudgets } from "@/components/headless-budgets";
+import { PresenceTimers } from "@/components/presence-timers";
 import { RoundCap } from "@/components/round-cap";
 import { Tasks } from "@/components/tasks";
 import { Sidebar, SidebarContent, SidebarHeader, SidebarRail } from "@/components/ui/sidebar";
@@ -74,6 +75,7 @@ export function Board() {
       <SidebarContent className="gap-6 p-4">
         <RoundCap />
         <HeadlessBudgets />
+        <PresenceTimers />
         <Tasks />
         <SharedFiles />
       </SidebarContent>

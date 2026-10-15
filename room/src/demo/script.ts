@@ -59,6 +59,7 @@ const EMPTY: RoomState = {
   roundCap: ROUND_CAP,
   streak: 0,
   headless: { wakesPerHour: 20, runMinutes: 10, idleMinutes: 60 },
+  presenceTimers: { workingMinutes: 10, asleepMinutes: 10, leaveMinutes: 15 },
   conn: "live",
   notice: "",
   loaded: true,

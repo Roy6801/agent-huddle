@@ -21,7 +21,7 @@ import { usePanels } from "@/hooks/use-panels";
 import { useRoom, useSource } from "@/hooks/use-room";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { errMain } from "@/lib/api";
-import { fmtAgo, fullTime, presenceOf } from "@/lib/format";
+import { fmtAgo, fmtTime, fullTime, presenceOf } from "@/lib/format";
 import type { Agent, AgentPresence } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -195,6 +195,13 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
                 {fmtAgo(agent.lastSeen)}
               </time>
             </Detail>
+            {agent.workingUntil && (
+              <Detail label="Expected done">
+                <time dateTime={agent.workingUntil} title={fullTime(agent.workingUntil)}>
+                  {`about ${fmtTime(agent.workingUntil)}`}
+                </time>
+              </Detail>
+            )}
             {agent.role === "headless" && presence !== "left" && <StopButton handle={agent.handle} requested={agent.stopRequested === true} />}
           </dl>
         </CollapsibleContent>

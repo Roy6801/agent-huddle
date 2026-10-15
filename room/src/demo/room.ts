@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import type { RoomSource, RoomState } from "@/hooks/use-room";
 import type { ApiError, Posted, Upload, UploadOutcome } from "@/lib/api";
-import type { FileMeta, Headless } from "@/lib/types";
+import type { FileMeta, Headless, PresenceTimers } from "@/lib/types";
 import { addMessage, apply, atCap, counts, createTask, INITIAL_STEPS, roomAt, SCRIPT, system, type Step } from "@/demo/script";
 import { sprite } from "@/demo/sprite";
 
@@ -104,7 +104,7 @@ function useRoomState() {
   return { state, pollNow: noop, endHuddle: noop };
 }
 
-type Body = Partial<Headless> & { text?: string; files?: string[]; title?: string; assignee?: string; description?: string | null; spec?: string | null; roundCap?: number | null };
+type Body = Partial<Headless> & Partial<PresenceTimers> & { text?: string; files?: string[]; title?: string; assignee?: string; description?: string | null; spec?: string | null; roundCap?: number | null };
 
 const LIMITS = { description: 2000, spec: 20000 } as const;
 
@@ -155,6 +155,10 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
       const roundCap = b.roundCap;
       const text = roundCap === null ? "you turned the round cap off (agents won't pause for you)" : `you set the round cap to ${roundCap}`;
       setRoom(system({ ...room, roundCap, streak: 0 }, now, text));
+    } else if (room.presenceTimers && (b.workingMinutes !== undefined || b.asleepMinutes !== undefined || b.leaveMinutes !== undefined)) {
+      const p = { ...room.presenceTimers, ...b };
+      if (p.leaveMinutes <= p.asleepMinutes) return rejected("leaveMinutes must be longer than asleepMinutes");
+      setRoom(system({ ...room, presenceTimers: p, streak: 0 }, now, `you set presence timers: working ${p.workingMinutes} min, asleep ${p.asleepMinutes} min, leave after ${p.leaveMinutes} min`));
     } else if (room.headless) {
       const h = { ...room.headless, ...b };
       setRoom(system({ ...room, headless: h, streak: 0 }, now, `you set headless budgets: ${h.wakesPerHour} wakes/h, ${h.runMinutes} min/run, stop after ${h.idleMinutes} min idle`));

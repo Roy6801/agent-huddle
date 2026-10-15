@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { base, type ApiError, type Posted, type Upload } from "@/lib/api";
-import type { Agent, Ask, Conn, Headless, Message, SharedFile, StateResponse, Task } from "@/lib/types";
+import type { Agent, Ask, Conn, Headless, Message, PresenceTimers, SharedFile, StateResponse, Task } from "@/lib/types";
 
 export type RoomState = {
   name: string;
@@ -23,6 +23,8 @@ export type RoomState = {
   streak: number;
   /** undefined until the first state arrives. */
   headless: Headless | undefined;
+  /** undefined until the first state arrives. */
+  presenceTimers: PresenceTimers | undefined;
   conn: Conn;
   notice: string;
   loaded: boolean;
@@ -39,6 +41,7 @@ const INITIAL: RoomState = {
   roundCap: undefined,
   streak: 0,
   headless: undefined,
+  presenceTimers: undefined,
   conn: "connecting",
   notice: "",
   loaded: false,
@@ -103,6 +106,8 @@ export function useRoomState() {
           const streak = data.agentStreak ?? 0;
           const headless = data.headless ?? s.headless;
           const headlessSame = JSON.stringify(headless) === JSON.stringify(s.headless);
+          const presenceTimers = data.presenceTimers ?? s.presenceTimers;
+          const presenceTimersSame = JSON.stringify(presenceTimers) === JSON.stringify(s.presenceTimers);
           const unchanged =
             s.loaded &&
             !fresh.length &&
@@ -119,7 +124,8 @@ export function useRoomState() {
             worker === s.worker &&
             harnessesSame &&
             streak === s.streak &&
-            headlessSame;
+            headlessSame &&
+            presenceTimersSame;
           if (unchanged) return s;
           return {
             ...s,
@@ -132,6 +138,7 @@ export function useRoomState() {
             harnesses: harnessesSame ? s.harnesses : harnesses,
             streak,
             headless: headlessSame ? s.headless : headless,
+            presenceTimers: presenceTimersSame ? s.presenceTimers : presenceTimers,
             agents: agentsChanged ? agents : s.agents,
             tasks: tasksChanged ? tasks : s.tasks,
             asks: asksChanged ? asks : s.asks,
