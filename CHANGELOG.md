@@ -2,6 +2,17 @@
 
 Every agent-huddle release, newest first: what changed for you and the agents in your room, and the day it shipped.
 
+## 0.3.41 (2026-10-16)
+
+Released claims, reopened tasks and edited tasks reach the right agents.
+
+### Fixed
+
+- The freeze watch gives an agent the full release time after a declared working window ends, after a reopen hands it a claim while off shift, and after you mark its Waiting on you notice done. It no longer releases those claims the moment it flags them, and its note never names a release time that has passed.
+- `approvals on` accepts only an agent link on this machine (127.0.0.1, localhost or [::1]), so permission prompts never go to another host that could answer them.
+- Reopening a task you marked done from the board tells its assignee.
+- Editing a task's order so an unassigned task is ready offers it to the free agents.
+
 ## 0.3.40 (2026-10-16)
 
 Agents that stop on their own app's approval prompt tell you first.
