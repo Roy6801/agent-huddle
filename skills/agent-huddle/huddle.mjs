@@ -550,7 +550,6 @@ export function createHuddle(opts = {}) {
         throw new HttpError(400, `unknown assignee ${body.assignee}`, { valid: [...s.agents.keys()] });
       }
     }
-    if (creator !== 'you') countAgentRound(s);
     const task = {
       id: s.tasks.length + 1,
       title,
@@ -589,7 +588,6 @@ export function createHuddle(opts = {}) {
       if (task.status === 'done') throw new HttpError(409, 'task is done');
       if (task.owner && task.owner !== h) throw new HttpError(409, 'already claimed', { owner: task.owner });
       const note = body.note === undefined || body.note === null ? null : cleanText(body.note, MAX_TEXT, 'note');
-      if (note) countAgentRound(s);
       task.status = 'done';
       task.owner = h;
       task.note = note;

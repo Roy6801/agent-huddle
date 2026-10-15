@@ -442,32 +442,51 @@ test('round cap: 4th agent post is 429, relayed does not reset, human resets', a
   assert.equal((await post(b, 'five')).status, 200);
 });
 
-test('round cap also counts agent task creation and task done with a note', async () => {
-  const r = await room({ roundCap: 2 });
+test('round cap counts only agent chat posts, not task bookkeeping', async () => {
+  const r = await room({ roundCap: 30 });
   const a = await r.join('claude');
   const b = await r.join('codex');
-  assert.equal((await call('POST', `${a.link}/tasks`, { title: 'one' })).status, 200);
-  assert.equal((await call('POST', `${a.link}/tasks`, { title: 'two' })).status, 200);
-  const capped = await call('POST', `${a.link}/tasks`, { title: 'three' });
-  assert.equal(capped.status, 429);
-  assert.equal(capped.json.error, 'waiting on @you');
-  assert.equal((await call('GET', `${a.link}/tasks`)).json.tasks.length, 2);
+  for (let i = 1; i <= 5; i++) {
+    assert.equal((await call('POST', `${a.link}/tasks`, { title: `task ${i}` })).status, 200);
+    assert.equal((await call('POST', `${b.link}/tasks/${i}/claim`)).status, 200);
+    assert.equal((await call('POST', `${b.link}/tasks/${i}/done`, { note: `finished ${i}` })).status, 200);
+  }
+  assert.equal((await r.state()).agentStreak, 0);
+  for (let i = 1; i <= 29; i++) assert.equal((await post(i % 2 ? a : b, `chat ${i}`)).status, 200);
+  assert.equal((await r.state()).agentStreak, 29);
+  assert.equal((await post(a, 'chat 30')).status, 200);
+  const blocked = await post(b, 'chat 31');
+  assert.equal(blocked.status, 429);
+  assert.equal(blocked.json.error, 'waiting on @you');
 
-  assert.equal((await call('POST', `${b.link}/tasks/1/claim`)).status, 200);
-  assert.equal((await call('POST', `${b.link}/tasks/1/done`, { note: 'finished' })).status, 429);
-  assert.equal((await call('GET', `${b.link}/tasks`)).json.tasks[0].status, 'claimed');
-  assert.equal((await call('POST', `${b.link}/tasks/1/release`)).status, 200);
-  assert.equal((await call('POST', `${b.link}/tasks/1/claim`)).status, 200);
-  assert.equal((await call('POST', `${b.link}/tasks/1/done`)).status, 200);
-  assert.equal((await post(b, 'hello')).status, 429);
-  await call('POST', `${b.link}/leave`);
+  assert.equal((await call('POST', `${a.link}/tasks`, { title: 'at the cap' })).status, 200);
+  assert.equal((await call('POST', `${b.link}/tasks/6/claim`)).status, 200);
+  assert.equal((await call('POST', `${b.link}/tasks/6/done`, { note: 'still fine' })).status, 200);
+  assert.equal((await r.state()).agentStreak, 30);
 
   await r.human('api/tasks', { title: 'human task' });
-  assert.equal((await r.state()).agentStreak, 2);
-  await r.human('api/post', { text: 'go on' });
-  assert.equal((await call('POST', `${a.link}/tasks`, { title: 'four' })).status, 200);
-  assert.equal((await call('POST', `${a.link}/tasks/2/done`, { note: 'ok' })).status, 200);
-  assert.equal((await call('POST', `${a.link}/tasks`, { title: 'five' })).status, 429);
+  assert.equal((await r.state()).agentStreak, 30);
+});
+
+test('a done note wakes the task creator without raising the streak', async () => {
+  const r = await room({ roundCap: 30 });
+  const creator = await r.join('dsh');
+  const worker = await r.join('claude');
+  assert.equal((await call('POST', `${creator.link}/tasks`, { title: 'EPIPE fix' })).status, 200);
+  assert.equal((await call('POST', `${worker.link}/tasks/1/claim`)).status, 200);
+  await read(creator);
+
+  const waiting = call('GET', `${creator.link}/wait?wait=10`);
+  await new Promise((res) => setTimeout(res, 200));
+  const before = (await r.state()).agentStreak;
+  const note = 'handled EPIPE in the writer, suite 35/35';
+  assert.equal((await call('POST', `${worker.link}/tasks/1/done`, { note })).status, 200);
+  const woke = await waiting;
+  assert.equal(woke.status, 200);
+  const message = woke.json.messages.at(-1);
+  assert.ok(message.text.includes(note));
+  assert.ok(message.to.includes('dsh-1'));
+  assert.equal((await r.state()).agentStreak, before);
 });
 
 test('server idle callback fires only without requests and waiters', async () => {
