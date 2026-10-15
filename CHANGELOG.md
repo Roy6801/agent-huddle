@@ -17,6 +17,8 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 
 ### Changed
 - On the room page, Edit and Reopen open in a dialog. Edit covers title, assignee, after, description and spec; a done task says it cannot be edited and offers Reopen with its reason field.
+### Added
+- A home page lists your live rooms (name, agents, started; each opens its page) and past rooms from history (started, when and why it ended, transcript path with Copy; each opens read-only, also history from before page hashes), newest first. `agent-huddle home [--print]` opens it; its link `/home/<key>` holds a home key kept in `<home>/home-key` (0600, stable across restarts), and a wrong key gets 401 `wrong_home_link`. `GET /` shows only a hint. Lead and agent keys are never listed.
 
 ## 0.3.22 (2026-10-15)
 

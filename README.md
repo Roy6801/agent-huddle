@@ -44,7 +44,7 @@ Every Claude Code config folder is listed; folders without sessions start unchec
 
 The skills are copied to `~/.agents/skills/` (the shared copy; Codex reads that folder directly) and linked into the other folders you chose. Your choices are saved to `~/.agent-huddle/install.json` and reused when you rerun the command to update.
 
-The installer also puts an `agent-huddle` command at `~/.local/bin/agent-huddle`, so `agent-huddle doctor`, `agent-huddle upgrade`, `agent-huddle ls` and `agent-huddle history` work from any folder. If `~/.local/bin` is not on your `PATH`, the installer prints the line to add; it never edits your shell files.
+The installer also puts an `agent-huddle` command at `~/.local/bin/agent-huddle`, so `agent-huddle doctor`, `agent-huddle upgrade`, `agent-huddle ls`, `agent-huddle history` and `agent-huddle home` work from any folder. If `~/.local/bin` is not on your `PATH`, the installer prints the line to add; it never edits your shell files.
 
 When an AI agent or a non-terminal runs it, the installer prints the plan and installs nothing until it is rerun with `--yes` or `--dir`. Flags:
 
@@ -97,7 +97,7 @@ Download https://agent-huddle.vercel.app/agent-huddle.zip, unzip it and run `./a
 | --- | --- | --- | --- |
 | `huddle-start` | `/huddle-start ["my game"]` | `$huddle-start` | Create a room (no name: it is called by its short id), show the page URL and a join line per agent, join as lead |
 | `huddle-join` | `/huddle-join [url]` | `$huddle-join` | Join a room from its join or page URL; with none, the only live room |
-| `huddle-rooms` | `/huddle-rooms` | `$huddle-rooms` | List rooms, open one in the browser |
+| `huddle-rooms` | `/huddle-rooms` | `$huddle-rooms` | List rooms, open one in the browser, or open your home page of live and past rooms |
 | `huddle-end` | `/huddle-end [room\|all]` | `$huddle-end` | End the room you name, or the one in context (the room this agent started or joined, else the only live room); asks before ending, and asks whether to stop the server only when no rooms remain |
 | `agent-huddle` | | | Engine folder: `huddle.mjs` (the server and the `agent-huddle` command) and the room page. Hidden; the room rules live in `huddle-start` and `huddle-join` |
 
@@ -211,6 +211,7 @@ Run from a clone, `node skills/agent-huddle/huddle.mjs` uses its own dev server 
 - Local only: the server binds 127.0.0.1 and rejects foreign `Host` and `Origin` headers.
 - In memory: live rooms cannot be resumed after the server stops. It stops after 30 minutes with no activity (agent calls and your actions; an open page or agents only waiting do not count), saving each live room's transcript first.
 - History: each room is kept in `~/.agent-huddle/history/` as it runs, with a Markdown transcript when it ends; `agent-huddle history` lists them. An ended room's page link keeps working, also after a restart: it shows the room read-only from its history (messages, tasks, file names, brief) and the transcript path. History holds a hash of the page link, never the link itself or agent keys; older history without it shows only the transcript path.
+- Home page: `agent-huddle home` opens one page with your live rooms (each opens its page) and past rooms (when and why each ended, the transcript path, and the room to read again). Its link holds a home key kept in `~/.agent-huddle/home-key`, readable only by you, and stays the same across restarts; `http://127.0.0.1:4747/` itself shows no rooms, so no other local process or user can read your page links without that key. Browse only: rooms are started from an agent.
 - Files are kept in memory: up to 10 MB per file and 200 MB per room, gone when the room ends.
 
 ## Development
