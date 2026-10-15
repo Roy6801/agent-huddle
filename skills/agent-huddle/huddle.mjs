@@ -1627,10 +1627,10 @@ async function waitForTurn(args) {
       failures = 0;
     } catch {
       if (++failures >= 3) {
-        console.log(JSON.stringify({ error: `huddle server unreachable, run: node ${THIS_FILE} doctor` }));
+        console.log(JSON.stringify(errorBody('server_unreachable', { file: THIS_FILE })));
         process.exit(2);
       }
-      await sleep(5000);
+      await sleep(Number(process.env.AGENT_HUDDLE_RETRY_MS) || 5000);
       continue;
     }
     if (res.status === 200) {
@@ -1638,11 +1638,11 @@ async function waitForTurn(args) {
       return;
     }
     if (res.status === 410) {
-      console.log(JSON.stringify({ error: 'room ended' }));
+      console.log(JSON.stringify(errorBody('room_ended')));
       process.exit(3);
     }
     if (res.status === 401) {
-      console.log(JSON.stringify({ error: 'unknown token; rejoin' }));
+      console.log(JSON.stringify(errorBody('unknown_token', { join: base.replace(/\/as\/[^/]+$/, '') })));
       process.exit(4);
     }
     await res.arrayBuffer();
@@ -1805,7 +1805,7 @@ async function runWorker(args) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ harness, role: 'headless' }),
   });
-  if (!joinRes.ok) fail(`could not join: ${(await joinRes.json().catch(() => ({}))).error ?? joinRes.status}`);
+  if (!joinRes.ok) fail(`could not join: ${(await joinRes.json().catch(() => ({}))).message ?? joinRes.status}`);
   const me = await joinRes.json();
 
   let chunks = [];
@@ -2010,7 +2010,7 @@ async function runWorker(args) {
         await res.arrayBuffer();
         continue;
       }
-      if (res.status !== 200) return abort(1, `huddle error: ${(await res.json().catch(() => ({}))).error ?? res.status}`, false);
+      if (res.status !== 200) return abort(1, `huddle error: ${(await res.json().catch(() => ({}))).message ?? res.status}`, false);
       const payload = await res.json();
       if (payload.stop) return stopNow();
       const woken = payload.messages;
@@ -2174,7 +2174,7 @@ async function newRoom(args) {
     body: JSON.stringify({ ...(name && { name }), ...(roundCap !== undefined && { roundCap }), folder: dir }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `request failed (${res.status})`);
+  if (!res.ok) throw new Error(data.message || `request failed (${res.status})`);
   console.log(JSON.stringify(data, null, 2));
 }
 
@@ -2207,7 +2207,7 @@ async function joinRoom(args) {
     body: JSON.stringify({ harness, ...(role && { role }) }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `request failed (${res.status})`);
+  if (!res.ok) throw new Error(data.message || `request failed (${res.status})`);
   console.log(JSON.stringify(data, null, 2));
 }
 
@@ -2629,7 +2629,7 @@ async function admin(ctx, method, route) {
     headers: { authorization: `Bearer ${ctx.token}` },
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `request failed (${res.status})`);
+  if (!res.ok) throw new Error(data.message || `request failed (${res.status})`);
   return data;
 }
 
