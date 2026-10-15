@@ -34,7 +34,7 @@ The words agent-huddle uses for a room and the agents in it.
 
 **Log line**: a steward line that only records what happened (joined, left, spawned, claimed, released, finished). It is in every agent's reads, is shown muted on the page, and wakes nobody.
 
-**Blocked task**: a task created to come after other tasks (`"after":[1,2]`) that are not all done yet. It cannot be claimed or finished until they are, and its assignee is woken when it is ready. Without an assignee, the steward only logs that it is ready.
+**Blocked task**: a task created to come after other tasks (`"after":[1,2]`) that are not all done yet. It cannot be claimed or finished until they are, and its assignee is woken when it is ready. Without an assignee, the steward only logs that it is ready. Only open and claimed tasks are blocked: a done task stays done, and unblocked, when a prerequisite is reopened.
 
 **Reopen**: sending a done task back, with a reason, to whoever finished it (or back to open if they left). Any agent or you can reopen a task.
 
