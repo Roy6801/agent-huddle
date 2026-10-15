@@ -1,4 +1,4 @@
-import { ArrowUpRightIcon, DownloadIcon } from "lucide-react";
+import { ArrowUpRightIcon, ChevronDownIcon, DownloadIcon } from "lucide-react";
 import { Fragment } from "react";
 
 import { CodeBlock, Hl, Out, Prompt } from "@/components/code-block";
@@ -45,6 +45,38 @@ const PLAN = [
 const CODEX_TOML = `[sandbox_workspace_write]
 network_access = true`;
 
+const TRANSCRIPT = (
+  <>
+    <Hl>◆</Hl>
+    {"  Install the skills for\n"}
+    {PICK_ROWS.map((row) => (
+      <Fragment key={row.label}>
+        <Out>{"│  "}</Out>
+        {row.on ? <Hl>◼</Hl> : "◻"}
+        {` ${row.label}`}
+        {"\n"}
+      </Fragment>
+    ))}
+    <Out>{"│  ↑/↓ to navigate • Space: select • Enter: confirm\n│\n◇  Folders\n│  "}</Out>
+    {"Continue\n"}
+    <Out>{"│\n◇  Plan\n"}</Out>
+    {PLAN.map((line) => (
+      <Fragment key={line}>
+        <Out>│  </Out>
+        {line}
+        {"\n"}
+      </Fragment>
+    ))}
+    <Out>{"│\n"}</Out>
+    <Hl>◆</Hl>
+    {"  Proceed?\n"}
+    <Out>{"│  "}</Out>
+    <Hl>●</Hl>
+    {" Yes / ○ No\n"}
+    <Out>└</Out>
+  </>
+);
+
 const TABS = [
   { value: "curl", label: "Installer" },
   { value: "skills", label: "skills CLI" },
@@ -67,7 +99,7 @@ export function Install() {
   return (
     <Section id="install" title="Install" intro="Every option installs the same five skills. The installer is interactive; the others are alternatives.">
       <Tabs defaultValue={repoPublic ? "skills" : "curl"} className="gap-5">
-        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <div className="-mx-4 overflow-x-auto px-4 [mask-image:linear-gradient(to_right,transparent,black_1rem,black_calc(100%-1rem),transparent)] sm:mx-0 sm:px-0 sm:[mask-image:none]">
           <TabsList className="h-12! w-max p-1 pointer-coarse:h-13!">
             {TABS.map((tab) => (
               <TabsTrigger key={tab.value} value={tab.value} className="h-full flex-none px-4">
@@ -82,47 +114,32 @@ export function Install() {
               <Prompt />
               {CURL_COMMAND}
             </CodeBlock>
-            <CodeBlock title="What you'll see">
-              <Hl>◆</Hl>
-              {"  Install the skills for\n"}
-              {PICK_ROWS.map((row) => (
-                <Fragment key={row.label}>
-                  <Out>{"│  "}</Out>
-                  {row.on ? <Hl>◼</Hl> : "◻"}
-                  {` ${row.label}`}
-                  {"\n"}
-                </Fragment>
-              ))}
-              <Out>{"│  ↑/↓ to navigate • Space: select • Enter: confirm\n│\n◇  Folders\n│  "}</Out>
-              {"Continue\n"}
-              <Out>{"│\n◇  Plan\n"}</Out>
-              {PLAN.map((line) => (
-                <Fragment key={line}>
-                  <Out>│  </Out>
-                  {line}
-                  {"\n"}
-                </Fragment>
-              ))}
-              <Out>{"│\n"}</Out>
-              <Hl>◆</Hl>
-              {"  Proceed?\n"}
-              <Out>{"│  "}</Out>
-              <Hl>●</Hl>
-              {" Yes / ○ No\n"}
-              <Out>└</Out>
+            <CodeBlock title="What you'll see" className="hidden sm:block">
+              {TRANSCRIPT}
             </CodeBlock>
-            <Note>
-              Nothing is written until you confirm the plan; choices are saved and reused when you rerun it to update.
-              Flags: <InlineCode>--yes</InlineCode>, <InlineCode>--dir agent[=path]</InlineCode>,{" "}
-              <InlineCode>--dry-run</InlineCode>, <InlineCode>--uninstall</InlineCode>.{" "}
+            <details className="group sm:hidden">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                What you&apos;ll see
+                <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden />
+              </summary>
+              <CodeBlock title="Installer prompts" className="mt-2">
+                {TRANSCRIPT}
+              </CodeBlock>
+            </details>
+            <Note>Nothing is written until you confirm the plan; choices are saved and reused when you rerun it to update.</Note>
+            <div className="-mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-muted-foreground">
+              Flags: <InlineCode>--yes</InlineCode>
+              <InlineCode>--dir agent[=path]</InlineCode>
+              <InlineCode>--dry-run</InlineCode>
+              <InlineCode>--uninstall</InlineCode>
               <a
                 href="/install.sh"
-                className="inline-flex min-h-11 items-center gap-0.5 font-medium text-foreground underline-offset-4 hover:underline"
+                className="ml-1.5 inline-flex min-h-11 items-center gap-0.5 font-medium text-foreground underline-offset-4 hover:underline"
               >
                 Read install.sh
                 <ArrowUpRightIcon className="size-3.5" aria-hidden />
               </a>
-            </Note>
+            </div>
           </TabsContent>
 
           <TabsContent value="skills" className="grid grid-cols-1 gap-4">
@@ -131,12 +148,10 @@ export function Install() {
               {SKILLS_COMMAND}
             </CodeBlock>
             {repoPublic ? (
-              <div className="flex min-w-0 items-center gap-1">
-                <p className="min-w-0 text-sm text-muted-foreground">
-                  Every agent, no prompts: <InlineCode wrap>{SKILLS_ALL}</InlineCode>
-                </p>
-                <CopyButton text={SKILLS_ALL} label="Copy non-interactive install for every agent" />
-              </div>
+              <CodeBlock title="Every agent, no prompts" copy={SKILLS_ALL} copyLabel="Copy non-interactive install for every agent" wrap>
+                <Prompt />
+                {SKILLS_ALL}
+              </CodeBlock>
             ) : (
               <Pending />
             )}
@@ -202,17 +217,17 @@ export function Install() {
           </TabsContent>
       </Tabs>
 
-      <ul className="mt-5 flex flex-col gap-3 text-sm text-muted-foreground lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-6">
+      <ul className="mt-8 flex flex-col divide-y border-y text-sm text-muted-foreground *:py-3 lg:mt-5 lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-6 lg:gap-y-3 lg:divide-y-0 lg:border-y-0 lg:*:py-0">
         <li>
           <span className="font-medium text-foreground">Node 20+</span> (installer: 20.12+)
         </li>
-        <li className="flex min-w-0 items-center gap-1">
+        <li className="flex min-w-0 items-start justify-between gap-1 lg:items-center lg:justify-start">
           <span className="min-w-0">
             <span className="font-medium text-foreground">Codex:</span> add{" "}
             <InlineCode wrap>[sandbox_workspace_write] network_access = true</InlineCode>{" "}
             to <InlineCode>~/.codex/config.toml</InlineCode>
           </span>
-          <CopyButton text={CODEX_TOML} label="Copy Codex config lines" />
+          <CopyButton text={CODEX_TOML} label="Copy Codex config lines" className="-my-3 lg:my-0" />
         </li>
         <li>
           <span className="font-medium text-foreground">Stuck?</span> <InlineCode>agent-huddle doctor</InlineCode> lists
