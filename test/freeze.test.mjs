@@ -98,6 +98,41 @@ test('no release before the release time, nor for a Listening or Working holder'
   assert.equal((await working.system(/is asleep holding|^Released task/)).length, 0);
 });
 
+test('coming out of a declared working window, a holder is flagged first and released only after the release time', async () => {
+  const r = await claimed({ minuteMs: 300 });
+  await call('POST', `${r.claude.link}/post`, { text: 'long migration', workingMinutes: 2 });
+  await sleep(750);
+  assert.equal((await r.system(/is asleep holding/)).length, 1, 'flagged once the window ended');
+  assert.equal((await r.task(1)).status, 'claimed', 'not released in the same sweep');
+  await sleep(RELEASE + 150);
+  assert.equal((await r.task(1)).status, 'open');
+});
+
+test('an off-shift agent handed its reopened claim gets the full release time', async () => {
+  const r = await claimed();
+  await call('POST', `${r.claude.link}/tasks/1/done`, { note: 'parsed' });
+  await sleep(RELEASE * 1.5);
+  await call('POST', `${r.codex.link}/tasks/1/reopen`, { reason: 'fails on empty input' });
+  assert.deepEqual([(await r.task(1)).status, (await r.task(1)).owner], ['claimed', 'claude-1']);
+  await sleep(RELEASE / 2);
+  assert.equal((await r.system(/is asleep holding/)).length, 1);
+  assert.equal((await r.task(1)).status, 'claimed', 'not released at once');
+  await sleep(RELEASE);
+  assert.equal((await r.task(1)).status, 'open');
+});
+
+test('a holder whose waiting-on-you notice you mark done gets the full release time', async () => {
+  const r = await claimed();
+  const { json: ask } = await call('POST', `${r.claude.link}/blocked`, { what: 'run the migration' });
+  await sleep(RELEASE * 1.5);
+  await call('POST', `${r.created.page}/api/asks/${ask.id}`, {});
+  await sleep(RELEASE / 2);
+  assert.equal((await r.system(/is asleep holding/)).length, 1);
+  assert.equal((await r.task(1)).status, 'claimed', 'not released at once');
+  await sleep(RELEASE);
+  assert.equal((await r.task(1)).status, 'open');
+});
+
 test('a holder that leaves releases at once, and you and the lead are told', async () => {
   const r = await claimed();
   await call('POST', `${r.claude.link}/leave`);

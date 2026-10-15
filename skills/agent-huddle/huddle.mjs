@@ -2500,6 +2500,14 @@ How the room works:
     return line.length > 80 ? `${line.slice(0, 79)}…` : line;
   };
 
+  // Silence toward a release counts from the latest of its last call, the end of its declared working window, the
+  // claim itself (a reopen hands one back to a sleeper) and the waiting-on-you notice you marked done.
+  function releaseAt(s, agent, task) {
+    const notice = s.asks.findLast((a) => a.kind === IN_TERMINAL && a.by === agent.handle && a.answeredAt);
+    const since = Math.max(agent.lastSeen, agent.workingUntil, Date.parse(task.since), notice ? Date.parse(notice.answeredAt) : 0);
+    return since + s.timers.releaseMs;
+  }
+
   // The room cannot see a harness's own prompts, so the note says what it knows: when the agent went quiet, its
   // last post and its declared working window.
   function asleepNote(s, agent, held) {
@@ -2511,7 +2519,7 @@ How the room works:
     const approvals = PAGE_APPROVALS.has(agent.harness) && !agent.headless
       ? ' In a Claude Code or Codex terminal, page approvals (approvals on) bring those prompts to this page.'
       : '';
-    return `@${agent.handle} is asleep holding ${tasks} (${facts.join('; ')}). The room cannot see why: it may be waiting on an approval or a question in its own terminal, so check there.${approvals} If it stays silent, the steward releases ${held.length > 1 ? 'them' : 'it'} at ${clock(agent.lastSeen + s.timers.releaseMs)}.`;
+    return `@${agent.handle} is asleep holding ${tasks} (${facts.join('; ')}). The room cannot see why: it may be waiting on an approval or a question in its own terminal, so check there.${approvals} If it stays silent, the steward releases ${held.length > 1 ? 'them' : 'it'} at ${clock(Math.min(...held.map((n) => releaseAt(s, agent, s.tasks[n - 1]))))}.`;
   }
 
   // Assignee kept: it is open again for the sleeper when it wakes. A regular room offers it to the free agents
@@ -2548,7 +2556,7 @@ How the room works:
   }
 
   // An agent Asleep holding claims is flagged to you once per sleep; once it has been silent for the release time
-  // its claims are released. One waiting on you is not asleep, so it keeps its claims. Left agents need no watch:
+  // (see releaseAt) its claims are released. One waiting on you is not asleep, so it keeps its claims. Left agents need no watch:
   // leaving releases their claims at once.
   function freezeWatch(s, now) {
     for (const agent of s.agents.values()) {
@@ -2561,7 +2569,7 @@ How the room works:
         flaggedAsleep.add(agent);
         system(s, asleepNote(s, agent, held), { toYou: true });
       }
-      if (now - agent.lastSeen >= s.timers.releaseMs) for (const n of held) releaseAsleep(s, agent, s.tasks[n - 1]);
+      for (const n of held) if (now >= releaseAt(s, agent, s.tasks[n - 1])) releaseAsleep(s, agent, s.tasks[n - 1]);
     }
     if (s.assignment === 'regular') offerUnclaimed(s, now);
   }
