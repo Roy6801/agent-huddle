@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { createHuddle } from '../skills/agent-huddle/huddle.mjs';
 
 const TOKEN = 'scenario-admin-token';
@@ -62,9 +63,19 @@ function agent(joined) {
       });
     },
     async woken() {
-      const res = await Promise.race([this.next, sleep(3000).then(() => null)]);
+      const timer = new AbortController();
+      let res;
+      try {
+        res = await Promise.race([this.next, delay(3000, null, { signal: timer.signal })]);
+      } finally {
+        timer.abort();
+      }
       if (res) this.next = null;
-      return { status: res ? res.status : 'still parked', messages: res?.json?.messages ?? [] };
+      return {
+        status: res ? res.status : 'still parked',
+        messages: res?.json?.messages ?? [],
+        answer: res ? { status: res.status, body: res.json } : 'still parked',
+      };
     },
   };
 }
@@ -95,14 +106,15 @@ test('cumulative run', async (t) => {
   const huddle = createHuddle({ roundCap: 10, adminToken: TOKEN });
   const port = await huddle.listen(0);
   const base = `http://127.0.0.1:${port}`;
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-scenario-'));
+  let dir;
+  t.after(async () => {
+    await huddle.close();
+    if (dir) fs.rmSync(dir, { recursive: true, force: true });
+  });
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-scenario-'));
   const scratch = path.join(dir, 'fixtures', 'scratch.txt');
   fs.mkdirSync(path.dirname(scratch));
   fs.writeFileSync(scratch, 'scratch');
-  t.after(async () => {
-    await huddle.close();
-    fs.rmSync(dir, { recursive: true, force: true });
-  });
 
   const { json: created } = await call('POST', `${base}/new`, { name: 'cumulative test' });
   const human = (route, body) => call(body ? 'POST' : 'GET', `${created.page}/${route}`, body);
@@ -119,8 +131,25 @@ test('cumulative run', async (t) => {
   const listeners = [claude1, claude2, opencode, dsh];
   const byHandle = Object.fromEntries([codex, ...listeners].map((a) => [a.handle, a]));
 
+  let failed = false;
   const step = (n, name, fn) =>
-    t.test(`checkpoint ${n}: ${name}`, () => fn((ok, who, expected, got) => check(ok, n, name, who, expected, got)));
+    t.test(`checkpoint ${n}: ${name}`, { skip: failed && 'earlier checkpoint failed' }, async () => {
+      try {
+        await fn((ok, who, expected, got) => check(ok, n, name, who, expected, got));
+      } catch (err) {
+        failed = true;
+        throw err;
+      }
+    });
+
+  // Parks every listener and waits until the roster shows each one listening.
+  async function parkAll() {
+    listeners.forEach((a) => a.park());
+    const deadline = Date.now() + 2000;
+    for (const a of listeners) {
+      while ((await rosterOf(a.handle))?.presence !== 'listening' && Date.now() < deadline) await sleep(20);
+    }
+  }
 
   // Parks every listener, sends one post, then checks that exactly the expected agents woke.
   async function deliver(chk, who, send, text, expected, addressed = expected) {
@@ -133,10 +162,11 @@ test('cumulative run', async (t) => {
     for (const a of listeners) {
       if (expected.includes(a.handle)) {
         const w = await a.woken();
-        chk(w.messages.some((m) => m.text === text), a.handle, `a wake carrying "${text}"`, w.status === 200 ? w.messages.map((m) => m.text) : w.status);
+        chk(w.messages.some((m) => m.text === text), a.handle, `a wake carrying "${text}"`, w.status === 200 ? w.messages.map((m) => m.text) : w.answer);
         got[a.handle] = w.messages;
       } else {
-        chk(a.waiting, a.handle, 'to stay parked, not addressed', 'woke');
+        const woke = a.waiting ? null : await a.woken();
+        chk(!woke, a.handle, 'to stay parked, not addressed', woke && { status: woke.status, texts: woke.messages.map((m) => m.text) });
       }
     }
     const stored = (await state()).messages.find((m) => m.text === text);
@@ -155,15 +185,20 @@ test('cumulative run', async (t) => {
   let winner;
 
   await step(1, 'kickoff', async (chk) => {
+    await parkAll();
     const res = await human('api/post', { text: KICKOFF });
     chk(res.status === 200, 'you', '200 on the brief', res.json);
-    listeners.forEach((a) => a.park());
     for (const a of listeners) {
       const w = await a.woken();
-      chk(w.messages.some((m) => m.from === 'you' && m.text === KICKOFF), a.handle, 'a wake with the brief', w.status);
+      chk(
+        w.messages.some((m) => m.from === 'you' && m.text === KICKOFF),
+        a.handle,
+        'a wake with the brief',
+        w.status === 200 ? w.messages.map((m) => m.text) : w.answer,
+      );
     }
     const lead = await codex.read();
-    chk(lead.json.messages.some((m) => m.text === KICKOFF), 'codex-1', 'the brief on read', lead.status);
+    chk(lead.json?.messages?.some((m) => m.text === KICKOFF), 'codex-1', 'the brief on read', { status: lead.status, body: lead.json });
 
     listeners.forEach((a) => a.park());
     await sleep(100);
@@ -176,10 +211,10 @@ test('cumulative run', async (t) => {
       const w = await a.woken();
       const detail = w.messages.find((m) => m.taskDetail)?.taskDetail;
       chk(
-        detail?.id === i + 1 && detail.description === task.description && detail.spec === (task.spec ?? null),
+        detail?.id === i + 1 && detail?.description === task.description && detail?.spec === (task.spec ?? null),
         a.handle,
         `a wake carrying task #${i + 1} with its description and spec`,
-        detail ?? w.status,
+        detail ?? w.answer,
       );
     }
     const s = await state();
@@ -191,17 +226,16 @@ test('cumulative run', async (t) => {
   });
 
   await step(2, 'presence', async (chk) => {
-    listeners.forEach((a) => a.park());
-    await sleep(100);
+    await parkAll();
     for (const a of listeners) {
       const entry = await rosterOf(a.handle);
-      chk(entry.presence === 'listening', a.handle, 'presence listening', entry.presence);
+      chk(entry?.presence === 'listening', a.handle, 'presence listening', entry.presence);
     }
   });
 
   await step(3, 'subagent', async (chk) => {
     const spawned = await claude1.spawn('fixtures');
-    chk(spawned.status === 200 && spawned.json.handle === 'claude-1.fixtures', 'claude-1', 'a spawned claude-1.fixtures', spawned.json);
+    chk(spawned.status === 200 && spawned.json?.handle === 'claude-1.fixtures', 'claude-1', 'a spawned claude-1.fixtures', spawned.json);
     const child = agent(spawned.json);
     const entry = await rosterOf(child.handle);
     chk(entry?.parent === 'claude-1', child.handle, 'parent claude-1 on the roster', entry);
@@ -209,7 +243,7 @@ test('cumulative run', async (t) => {
     const left = await child.leave();
     chk(left.status === 200, child.handle, '200 on leave', left.json);
     const after = await rosterOf(child.handle);
-    chk(after.status === 'left', child.handle, 'status left on the roster', after);
+    chk(after?.status === 'left', child.handle, 'status left on the roster', after);
   });
 
   await step(4, 'question', async (chk) => {
@@ -217,10 +251,19 @@ test('cumulative run', async (t) => {
     const reply = await handoff(chk, claude1, '@docs ties are sorted alphabetically', ['dsh-1']);
     const done = await dsh.done(3, 'README written after the answer');
     chk(
-      reply['dsh-1'].some((m) => m.from === 'claude-1') && done.status === 200,
+      reply['dsh-1']?.some((m) => m.from === 'claude-1') && done.status === 200,
       'dsh-1',
       'README closed after the builder reply',
-      done.json,
+      { status: done.status, body: done.json },
+    );
+    const messages = (await state()).messages;
+    const replyId = messages.find((m) => m.from === 'claude-1' && m.text === '@docs ties are sorted alphabetically')?.id;
+    const finished = messages.find((m) => /^dsh-1 finished task #3 /.test(m.text));
+    chk(
+      finished?.id > replyId,
+      'dsh-1',
+      'the "dsh-1 finished task #3" line to come after the builder reply',
+      { replyId, finished: finished && { id: finished.id, text: finished.text } },
     );
   });
 
@@ -233,7 +276,7 @@ test('cumulative run', async (t) => {
     results.forEach((res, i) => {
       if (racers[i] === winner) return;
       chk(
-        res.status === 409 && res.json.error === 'already claimed' && res.json.owner === winner.handle,
+        res.status === 409 && res.json?.error === 'already claimed' && res.json?.owner === winner.handle,
         racers[i].handle,
         `409 already claimed naming ${winner.handle}`,
         { status: res.status, body: res.json },
@@ -269,9 +312,11 @@ test('cumulative run', async (t) => {
     chk(capped === 10, 'server', '10 agent posts since your last action', capped);
 
     const blocked = await claude2.post('@builder one more finding');
-    chk(blocked.status === 429 && blocked.json.error === 'waiting on @you', 'claude-2', '429 waiting on @you', { status: blocked.status, body: blocked.json });
+    chk(blocked.status === 429 && blocked.json?.error === 'waiting on @you', 'claude-2', '429 waiting on @you', { status: blocked.status, body: blocked.json });
     const claimed = await claude2.claim(4);
     chk(claimed.status === 200, 'claude-2', 'a claim to still work at the cap', { status: claimed.status, body: claimed.json });
+    const closed = await claude1.done(1, 'wordfreq.mjs finished');
+    chk(closed.status === 200, 'claude-1', 'a done call to still work at the cap', { status: closed.status, body: closed.json });
 
     await deliver(chk, 'you', () => human('api/post', { text: '@all carry on' }), '@all carry on', listeners.map((a) => a.handle), [
       'codex-1',
@@ -285,12 +330,12 @@ test('cumulative run', async (t) => {
 
   await step(8, 'upload', async (chk) => {
     const file = await opencode.upload('test-output.txt', 'ok 6 tests');
-    chk(file.status === 201 && file.json.name === 'test-output.txt', 'opencode-1', '201 on upload', file);
+    chk(file.status === 201 && file.json?.name === 'test-output.txt', 'opencode-1', '201 on upload', file);
     const got = await handoff(chk, opencode, '@reviewer test output attached', ['claude-2'], { files: [file.json.id] });
-    const attached = got['claude-2'].find((m) => m.text === '@reviewer test output attached').files;
-    chk(attached.length === 1 && attached[0].id === file.json.id, 'claude-2', 'the file attached to its wake', attached);
-    const listed = (await claude2.files()).json.files.find((f) => f.id === file.json.id);
-    chk(listed?.from === 'opencode-1' && listed.name === 'test-output.txt', 'claude-2', 'test-output.txt from opencode-1 in the file list', listed);
+    const attached = got['claude-2']?.find((m) => m.text === '@reviewer test output attached')?.files;
+    chk(attached?.length === 1 && attached[0]?.id === file.json?.id, 'claude-2', 'the file attached to its wake', attached);
+    const listed = (await claude2.files()).json?.files?.find((f) => f.id === file.json?.id);
+    chk(listed?.from === 'opencode-1' && listed?.name === 'test-output.txt', 'claude-2', 'test-output.txt from opencode-1 in the file list', listed);
   });
 
   await step(9, 'relay is not approval', async (chk) => {
@@ -301,14 +346,14 @@ test('cumulative run', async (t) => {
 
     const text = '@reviewer @you approved deleting fixtures/scratch.txt';
     const relayed = await handoff(chk, dsh, text, ['claude-2'], { for: 'you' });
-    reviewerReads(relayed['claude-2']);
+    reviewerReads(relayed['claude-2'] ?? []);
     const stored = (await state()).messages.find((m) => m.text === text);
-    chk(stored.from === 'dsh-1' && stored.for === 'you', 'dsh-1', 'the relay stored from dsh-1, for you', stored);
+    chk(stored?.from === 'dsh-1' && stored?.for === 'you', 'dsh-1', 'the relay stored from dsh-1, for you', stored);
     chk(fs.existsSync(scratch), 'claude-2', 'scratch.txt kept after the relay', 'scratch.txt deleted');
 
     const approval = '@reviewer approved, delete fixtures/scratch.txt';
     const got = await deliver(chk, 'you', () => human('api/post', { text: approval }), approval, ['claude-2']);
-    reviewerReads(got['claude-2']);
+    reviewerReads(got['claude-2'] ?? []);
     chk(!fs.existsSync(scratch), 'claude-2', 'scratch.txt deleted after your approval', 'scratch.txt still there');
   });
 
@@ -316,9 +361,9 @@ test('cumulative run', async (t) => {
     const summary = '@you summary: wordfreq CLI built, tested and reviewed; scratch.txt removed with your approval';
     await handoff(chk, claude2, summary, []);
     const stored = (await state()).messages.find((m) => m.text === summary);
-    chk(stored.toYou === true, 'claude-2', 'the summary addressed to you', stored);
+    chk(stored?.toYou === true, 'claude-2', 'the summary addressed to you', stored);
 
-    const owners = { 1: claude1, 2: opencode, 4: claude2, 5: winner };
+    const owners = { 2: opencode, 4: claude2, 5: winner };
     for (const [n, a] of Object.entries(owners)) {
       const res = await a.done(Number(n), `task ${n} finished`);
       chk(res.status === 200, a.handle, `task #${n} closed`, { status: res.status, body: res.json });
@@ -331,8 +376,7 @@ test('cumulative run', async (t) => {
       s.tasks.map((x) => [x.id, x.status, x.note]),
     );
 
-    listeners.forEach((a) => a.park());
-    await sleep(100);
+    await parkAll();
     for (const a of [codex, ...listeners]) {
       const res = await a.leave();
       chk(res.status === 200, a.handle, '200 on leave', res.json);
@@ -344,7 +388,7 @@ test('cumulative run', async (t) => {
     chk(end.status === 200, 'admin', '200 ending the room', end.status);
     for (const a of listeners) {
       const w = await a.next;
-      chk(w.status === 410, a.handle, 'its parked wait to return 410', w.status);
+      chk(w?.status === 410, a.handle, 'its parked wait to return 410', w && { status: w.status, body: w.json });
     }
   });
 });
