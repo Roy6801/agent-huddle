@@ -350,6 +350,8 @@ export function createHuddle(opts = {}) {
       ended: false,
       tombstone: null,
       humanToken: newToken(),
+      leadKey: newToken(),
+      lead: null,
       agents: new Map(),
       byToken: new Map(),
       counters: new Map(),
@@ -537,6 +539,7 @@ export function createHuddle(opts = {}) {
         harness: a.harness,
         role: a.role,
         parent: a.parent,
+        ...(s.lead === a.handle && { lead: true }),
         status: agentStatus(s, a),
         presence: presence(s, a),
         stopRequested: a.stopRequested === true,
@@ -1140,6 +1143,7 @@ How the room works:
       return sendJson(res, 200, {
         id: s.id,
         name: s.name,
+        lead: s.leadKey,
         join: `${base}/s/${s.id}`,
         page: `${base}/s/${s.id}/h/${s.humanToken}`,
         invite: inviteText(s.name, `${base}/s/${s.id}`),
@@ -1177,12 +1181,17 @@ How the room works:
     const harness = sanitizeHarness(body.harness);
     if (!harness) throw new HttpError('harness_required');
     if (RESERVED_ROLES.has(harness)) throw new HttpError('reserved_harness');
-    const role = cleanRole(body.role, false);
+    const leads = typeof body.lead === 'string' && s.lead === null && body.lead === s.leadKey;
+    const role = cleanRole(body.role, false) ?? (leads ? 'lead' : null);
     const n = (s.counters.get(harness) ?? 0) + 1;
     s.counters.set(harness, n);
     const agent = addAgent(s, `${harness}-${n}`, harness, role, null, base);
+    if (leads) {
+      s.lead = agent.handle;
+      s.leadKey = null;
+    }
     system(s, `${agent.handle} joined${role ? ` as ${role}` : ''}`);
-    return agentView(s, agent);
+    return { ...agentView(s, agent), lead: s.lead };
   }
 
   function agentView(s, agent) {
@@ -1240,6 +1249,7 @@ How the room works:
           return ok({
             handle: agent.handle,
             role: agent.role,
+            lead: s.lead,
             parent: agent.parent,
             children: childrenOf(s, agent.handle),
             status: agentStatus(s, agent),
@@ -2187,12 +2197,14 @@ async function joinRoom(args) {
   const words = [];
   let harness;
   let role;
+  let lead;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--harness' || args[i].startsWith('--harness=')) harness = args[i] === '--harness' ? args[++i] : args[i].slice(10);
     else if (args[i] === '--role' || args[i].startsWith('--role=')) role = args[i] === '--role' ? args[++i] : args[i].slice(7);
+    else if (args[i] === '--lead' || args[i].startsWith('--lead=')) lead = args[i] === '--lead' ? args[++i] : args[i].slice(7);
     else words.push(args[i]);
   }
-  if (!words.length) throw new Error(`usage: ${HELP_PROG} join <url> --harness <harness> [--role <role>]`);
+  if (!words.length) throw new Error(`usage: ${HELP_PROG} join <url> --harness <harness> [--role <role>] [--lead <key>]`);
   if (!HARNESS_IDS.includes(harness)) throw new Error(`--harness is required; one of: ${HARNESS_IDS.join(', ')}`);
   let url;
   try {
@@ -2206,7 +2218,7 @@ async function joinRoom(args) {
   const res = await fetch(`${url.origin}/s/${id}/join`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ harness, ...(role && { role }) }),
+    body: JSON.stringify({ harness, ...(role && { role }), ...(lead && { lead }) }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || `request failed (${res.status})`);
@@ -2821,10 +2833,11 @@ const COMMANDS = {
   join: {
     group: 'Agents',
     summary: 'join a room as an agent, print your handle and link (keep the link)',
-    usage: 'join <url> --harness <harness> [--role <role>]',
+    usage: 'join <url> --harness <harness> [--role <role>] [--lead <key>]',
     options: [
       `--harness <harness>  your own harness: ${HARNESS_IDS.join(', ')}`,
       '--role <role>  optional, [a-z0-9-]{1,20}',
+      '--lead <key>   the "lead" key that start printed; makes you the room\'s lead',
       'url          join URL, page URL or agent link of a room on this machine',
     ],
     example: 'node huddle.mjs join http://127.0.0.1:4747/s/<id> --harness codex --role tester',
