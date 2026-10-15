@@ -210,3 +210,34 @@ test('AC-30.4: the home key is created once, owner-only, and read back the same'
   assert.equal(fs.statSync(path.join(home, 'home-key')).mode & 0o777, 0o600);
   assert.deepEqual(fs.readdirSync(home), ['home-key']);
 });
+
+test('AC-39.2: a room page gets the home path only with a valid human key, and an ended room keeps it', async () => {
+  const { huddle, base } = await serve(tmpDir());
+  const { created } = await room(base, 'linked');
+  const state = await call('GET', `${created.page}/api/state`);
+  assert.equal(state.json.home, `/home/${KEY}`);
+
+  const lead = await call('GET', `${created.join}/as/${created.lead}/api/state`);
+  assert.ok(!JSON.stringify(lead.json ?? lead.text).includes(KEY), 'no home path through an agent key');
+  const wrong = await call('GET', `${created.page.replace(/\/h\/.*/, '/h/wrong')}/api/state`);
+  assert.equal(wrong.status, 401);
+  assert.ok(!wrong.text.includes(KEY));
+  assert.ok(!(await call('GET', `${created.join}`)).text.includes(KEY));
+
+  await end(base, created.id);
+  const history = await call('GET', `${created.page}/api/history`);
+  assert.equal(history.json.home, `/home/${KEY}`);
+
+  const noHome = await serve(tmpDir(), { homeKey: undefined });
+  const other = (await call('POST', `${noHome.base}/new`, { name: 'x' })).json;
+  assert.equal((await call('GET', `${other.page}/api/state`)).json.home, undefined);
+  await huddle.close();
+});
+
+test('AC-39.2: a past room opened from the home carries the home path', async () => {
+  const { base, home } = await serve(tmpDir());
+  const { created } = await room(base, 'gone');
+  await end(base, created.id);
+  const past = (await call('GET', `${home}/api/rooms`)).json.past[0];
+  assert.equal((await call('GET', `${base}${past.page}/api/history`)).json.home, `/home/${KEY}`);
+});
