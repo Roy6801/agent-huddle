@@ -104,7 +104,7 @@ function useRoomState() {
   return { state, pollNow: noop, endHuddle: noop };
 }
 
-type Body = Partial<Headless> & Partial<PresenceTimers> & { text?: string; files?: string[]; title?: string; assignee?: string; description?: string | null; spec?: string | null; roundCap?: number | null };
+type Body = Partial<Headless> & Partial<PresenceTimers> & { text?: string; files?: string[]; title?: string; assignee?: string; description?: string | null; spec?: string | null; roundCap?: number | null; folder?: string };
 
 const LIMITS = { description: 2000, spec: 20000, brief: 20000 } as const;
 
@@ -159,7 +159,10 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
     setRoom({ ...set, brief });
     data = brief;
   } else if (path === "/api/settings") {
-    if (b.roundCap !== undefined) {
+    if (typeof b.folder === "string") {
+      if (!b.folder.startsWith("/")) return rejected("invalid_folder", "folder must be an absolute path.");
+      setRoom(system({ ...room, folder: b.folder, streak: 0 }, now, `you moved the room folder to ${b.folder}`));
+    } else if (b.roundCap !== undefined) {
       const roundCap = b.roundCap;
       const text = roundCap === null ? "you turned the round cap off (agents won't pause for you)" : `you set the round cap to ${roundCap}`;
       setRoom(system({ ...room, roundCap, streak: 0 }, now, text));

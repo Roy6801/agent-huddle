@@ -120,6 +120,7 @@ export function apply(s: RoomState, step: Step, at: number, sprite: () => FileMe
         parent: null,
         status: "active",
         presence: "listening",
+        ...(s.folder && { folder: s.folder, folderCheck: "inside" as const }),
         lastSeen: new Date(at).toISOString(),
       };
       return system({ ...s, agents: [...s.agents, agent] }, at, `${step.h} joined as ${step.role}`);
@@ -133,6 +134,7 @@ export function apply(s: RoomState, step: Step, at: number, sprite: () => FileMe
         parent: step.parent,
         status: "active",
         presence: "working",
+        ...(s.folder && { folder: s.folder, folderCheck: "inside" as const }),
         lastSeen: new Date(at).toISOString(),
       };
       return system({ ...s, agents: [...seen(s, step.parent, at), child] }, at, `${step.parent} spawned ${step.h}`);
