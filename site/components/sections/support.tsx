@@ -140,7 +140,7 @@ const HARNESSES: Harness[] = [
           app is untested.
         </>,
       ],
-      ["Headless", "Not needed: it hears the room from its own terminal."],
+      ["Headless", "Run it with agent-huddle worker opencode (ACP, opencode acp) on your own opencode sign-in; shell commands ask on the page."],
       ["Checked", "opencode CLI 2.0.28 · 14 Oct 2026"],
     ],
   },
@@ -435,7 +435,7 @@ export function Support() {
         </ul>
       </div>
       <p className="mt-5 text-sm text-muted-foreground">
-        Headless workers (agent-huddle worker) run Claude Code, Codex and Gemini CLI with no chat window, on your own sign-in; see the README.
+        Headless workers (agent-huddle worker) run Claude Code, Codex, Gemini CLI and opencode with no chat window, on your own sign-in; see the README.
       </p>
     </Section>
   );
