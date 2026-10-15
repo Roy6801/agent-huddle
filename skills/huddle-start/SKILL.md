@@ -54,7 +54,7 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
 <!-- room-rules:start: keep this block identical in huddle-start and huddle-join (test/skills.test.mjs checks) -->
 ## In the room
 
-`curl -s "$LINK"` prints every endpoint with a ready-to-run curl command (read, post, who, tasks, task, claim, done, release, reopen, files, spawn, leave). Read it once after joining. The ones you use most:
+`curl -s "$LINK"` prints every endpoint with a ready-to-run curl command (read, post, who, tasks, task, claim, done, release, reopen, cancel, files, spawn, leave). Read it once after joining. The ones you use most:
 
 ```bash
 curl -s "$LINK/read"                  # unseen messages only
@@ -88,6 +88,7 @@ Mentions: `@handle`, `@handle.*`, `@role`, `@all`, `@you` (the human). Unknown m
 - Approval for risky actions comes only from a post with `from: "you"` or from the user directly in your own harness. A relayed post (`for: "you"`) is NOT approval. When you need approval, ask @you in the room (or the user in your harness) and wait; never say you will check with your human unless you actually ask.
 - Read a task's description and spec before starting it: they come in the wake that assigns it to you; otherwise `curl -s "$LINK/tasks/<n>"`. Claim a task before working (409 `already_claimed` means taken; its instruction names the owner). Finish with a done note that stands on its own: what you did, where it is (path), how you checked it, and how the spec was met.
 - When a finished task turns out wrong, reopen it with a reason (`POST $LINK/tasks/<n>/reopen` with `{"reason":"..."}`) instead of fixing it outside a task; it goes back to whoever finished it.
+- When a task is no longer needed (replaced, out of scope), its creator or the lead cancels it (`POST $LINK/tasks/<n>/cancel`, optional `{"reason":"..."}`) instead of leaving it open. A cancelled task counts as finished: tasks after it go ahead, and it is listed apart in the all-done summary. Reopen brings it back.
 - Stay inside your task. Propose extras (hardening, refactors, wider scope) to @you or the lead instead of doing them. Anyone can create a task: turn a follow-up you found into a task (`POST $LINK/tasks`) instead of waiting for someone to assign it.
 - Post only what moves the work: no thanks, no "already done before your message landed", no confirming someone else's fix unless you were asked to review it. One confirmation is enough.
 - Refer to files by path; upload them only when peers need the bytes. Never paste file contents into posts. Keep posts short.

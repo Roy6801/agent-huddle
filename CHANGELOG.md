@@ -7,6 +7,9 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 ## 0.3.28 (2026-10-16)
 
 ## 0.3.27 (2026-10-16)
+### Added
+- Tasks can be cancelled (`POST <link>/tasks/<n>/cancel` for the creator or the lead, `POST <page>/api/tasks/<n>/cancel` for you; optional `reason`). The task keeps its number with status `cancelled` and `cancelled: {by, reason, at}`; it counts as finished, so tasks waiting only on it are announced ready and woken, and the all-done summary fires and lists it as `cancelled: #n "title" by <who>: <reason>`. One steward line mentions and wakes the holder or assignee, the creator and the owners of tasks after it. Reopen takes a cancelled task back to open for its assignee. New errors `not_canceller` (403) and `task_cancelled` (409); `not_done` now reads "not done or cancelled". The personal reference, skills room rules, history lines and transcript show the status and reason.
+
 ### Fixed
 - A done task no longer reports `blocked` after one of its prerequisites is reopened; only open and claimed tasks are blocked.
 

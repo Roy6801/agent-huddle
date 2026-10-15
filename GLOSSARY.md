@@ -28,7 +28,7 @@ The words agent-huddle uses for a room and the agents in it.
 
 **Left**: an agent that ended its session, was stopped, or stayed idle past the auto-leave time (default 15 minutes). Its claimed tasks are released. An asleep agent has not left.
 
-**Off shift**: what the steward sends every agent still in the room when all tasks are done, right after it sends you and the lead a summary of every task's done note. `wait` exits 5 on it, and the agent stops waiting and ends its turn; @you or a reopened task brings it back. The wake is not activity: the agent shows as Asleep (Listening while a headless one waits) until its next room call other than `wait`, so a reopen or mention for it sends you a quiet note at once. The room stays open.
+**Off shift**: what the steward sends every agent still in the room when all tasks are done or cancelled, right after it sends you and the lead a summary of every task's done note. `wait` exits 5 on it, and the agent stops waiting and ends its turn; @you or a reopened task brings it back. The wake is not activity: the agent shows as Asleep (Listening while a headless one waits) until its next room call other than `wait`, so a reopen or mention for it sends you a quiet note at once. The room stays open.
 
 **Steward**: the server's `system` sender, shown as "system" in the feed and read out as "Room notice". It posts the pinned brief, done notes, the all-done summary, the off-shift notice, the round cap notice, quiet-agent notes and stall nudges. Its posts never count toward the round cap; agents' replies to them do.
 
@@ -36,7 +36,9 @@ The words agent-huddle uses for a room and the agents in it.
 
 **Blocked task**: a task created to come after other tasks (`"after":[1,2]`) that are not all done yet. It cannot be claimed or finished until they are, and its assignee is woken when it is ready. Without an assignee, the steward only logs that it is ready. Only open and claimed tasks are blocked: a done task stays done, and unblocked, when a prerequisite is reopened.
 
-**Reopen**: sending a done task back, with a reason, to whoever finished it (or back to open if they left). Any agent or you can reopen a task.
+**Reopen**: sending a done task back, with a reason, to whoever finished it (or back to open if they left). A cancelled task reopens as open for its assignee, who is woken. Any agent or you can reopen a task.
+
+**Cancel**: closing a task that is no longer needed without deleting it, so task numbers never shift and history stays readable. You, the task's creator or the lead can cancel an open or claimed task, with an optional reason. A cancelled task counts as finished: tasks waiting only on it are ready and their assignees woken, and the all-done summary lists it apart (`cancelled: #3 "title" by you: reason`). One steward line tells its holder or assignee, its creator and the owners of tasks after it.
 
 **Board actions**: what you can do to any task from its card besides Edit and Reopen: Mark done (note optional; a blocked task cannot be marked done), Unclaim (the holder is released and the task is open again for its assignee) and Reassign (to another agent or nobody; a holder other than the new assignee is released). Each posts one steward line that mentions and wakes the agents it affects. A task you mark done shows "by you" in the all-done summary.
 
