@@ -1847,6 +1847,9 @@ How the room works:
     return pastRooms(historyDir, summaries).filter((r) => !live.has(r.file));
   }
 
+  // Handed only to pages opened with a valid human key (or the home key), so the room page can link back to the home.
+  const homeLink = () => (homeKey ? { home: `/home/${homeKey}` } : {});
+
   function homeView(key) {
     return {
       live: liveRooms().reverse().map((s) => ({
@@ -1876,7 +1879,7 @@ How the room works:
     const page = rest.slice(2).join('/');
     if (method === 'GET' && page === '') return sendPage(res);
     const view = historyView(historyLines(past.file), true);
-    if (method === 'GET' && page === 'api/history') return sendJson(res, 200, view);
+    if (method === 'GET' && page === 'api/history') return sendJson(res, 200, { ...view, ...homeLink() });
     throw roomEnded(view.ended);
   }
 
@@ -2175,7 +2178,7 @@ How the room works:
     const key = rest.slice(2).join('/');
     if (method === 'GET' && key === '') return sendPage(res);
     const view = historyView(past.lines, past.full);
-    if (method === 'GET' && key === 'api/history') return sendJson(res, 200, view);
+    if (method === 'GET' && key === 'api/history') return sendJson(res, 200, past.full ? { ...view, ...homeLink() } : view);
     throw roomEnded(view.ended);
   }
 
@@ -2201,13 +2204,14 @@ How the room works:
     if (method === 'GET' && key === '') return sendPage(res);
     if (method === 'GET' && key === 'api/history') {
       const view = s.history ? historyView(historyLines(s.history.file), true) : { ended: { at: null, reason: null, transcript: s.transcript } };
-      return sendJson(res, 200, view);
+      return sendJson(res, 200, { ...view, ...homeLink() });
     }
     if (method === 'GET' && key === 'api/state') {
       const since = parseInt(url.searchParams.get('since'), 10) || 0;
       const messages = s.messages.filter((m) => m.id > since).slice(0, 500);
       return sendJson(res, 200, {
         room: { id: s.id, name: s.name, join: `${base}/s/${s.id}`, invite: inviteText(s.name, `${base}/s/${s.id}`) },
+        ...homeLink(),
         messages,
         ...whoView(s),
         tasks: s.tasks.map((t) => taskView(s, t)),
