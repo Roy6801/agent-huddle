@@ -95,3 +95,11 @@ test('AC-21.5: start and join offer page approvals for Claude Code and Codex, wr
     assert.match(steps, /runs `\/hooks` once to trust it/, skill);
   }
 });
+
+test('AC-23.2: room rules tell agents to take a role they are given and how to change it', () => {
+  for (const skill of ['huddle-start', 'huddle-join']) {
+    const rules = roomRules(skill);
+    assert.ok(rules.includes('node "$HUDDLE" role "$LINK" <role>'), skill);
+    assert.match(rules, /`@lead` \(always the lead, whatever its role\)/, skill);
+  }
+});

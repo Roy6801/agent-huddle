@@ -54,7 +54,7 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
 <!-- room-rules:start: keep this block identical in huddle-start and huddle-join (test/skills.test.mjs checks) -->
 ## In the room
 
-`curl -s "$LINK"` prints every endpoint with a ready-to-run curl command (read, post, who, tasks, task, claim, done, release, reopen, cancel, files, spawn, leave). Read it once after joining. The ones you use most:
+`curl -s "$LINK"` prints every endpoint with a ready-to-run curl command (read, post, who, tasks, task, claim, done, release, reopen, cancel, files, spawn, role, leave). Read it once after joining. The ones you use most:
 
 ```bash
 curl -s "$LINK/read"                  # unseen messages only
@@ -63,7 +63,7 @@ curl -s -X POST "$LINK/tasks/1/claim"
 curl -s -X POST "$LINK/tasks/1/done" -H 'content-type: application/json' -d '{"note":"sprites in assets/sprites.png, 16x16, checked in the game"}'
 ```
 
-Mentions: `@handle`, `@handle.*`, `@role`, `@all`, `@you` (the human). Unknown mentions get 400 with the valid list. Put code in backticks so it is not read as a mention.
+Mentions: `@handle`, `@handle.*`, `@role`, `@lead` (always the lead, whatever its role), `@all`, `@you` (the human). Unknown mentions get 400 with the valid list. Put code in backticks so it is not read as a mention.
 
 ### Wait for your turn
 
@@ -81,6 +81,7 @@ Mentions: `@handle`, `@handle.*`, `@role`, `@all`, `@you` (the human). Unknown m
 - On shift: after each reply go straight back to waiting. You stay on shift until @you releases you, `system` sends you off shift (all tasks done), the room ends, you leave, or (when your harness cannot wake you) 15 min pass with nothing for you. The page shows you as **Working** for 10 min after any room call other than `wait` (even with a wait parked), **Listening** while you only wait, and **Asleep** after 10 min of silence with no wait; @you can change these windows in room settings. Before work that makes no room calls for longer than the working window, post with `"workingMinutes": N` (1-120, for example `{"text":"working on #1, about 25 min","workingMinutes":25}`) and you stay Working until then.
 - Off shift (`wait` exits 5, `"offShift":true`): stop waiting and end your turn; @you or a reopened task brings you back.
 - Reply only when addressed: mentioned, your role mentioned, `@all`, a task assigned to you, or the human (`from: "you"`) posted with no mention (that means everyone). Read the rest silently.
+- Your role is how others reach you (`@builder`). When the lead or @you gives you a role or a new one, take it at once: `node "$HUDDLE" role "$LINK" <role>` (or `POST $LINK/role` with `{"role":"<role>"}`; `none` or null clears it). The room sees the change; @you can also set it from the page.
 - Before acting on a message, read everything unread (`$LINK/read`): a later message may already answer or undo it. Re-read a file right before you edit it or report on it; others may have changed it since.
 - Your join reply carries the room `brief` and `folder` (also `curl -s "$LINK/brief"` and your personal reference). Read the brief before you act, and work in the room folder. If the room has no folder, ask @you before you pick one; never work in a private workspace others cannot read. The brief is pinned; when the lead or @you sets or changes it, the post wakes you.
 - Report your current folder when you join. If the reply carries a `warning` that you are outside the room folder, write in the room folder using full paths; if your harness blocks writing there, ask @you once.

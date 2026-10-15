@@ -53,7 +53,9 @@ export function Composer({
       out.push({ v: a.handle, d: a.role || a.harness || "", who: a.handle });
       if (parents.has(a.handle)) out.push({ v: `${a.handle}.*`, d: "it and its children", who: a.handle });
     }
-    for (const r of new Set(live.map((a) => a.role).filter((r): r is string => !!r))) out.push({ v: r, d: "role" });
+    const roles = new Set(live.map((a) => a.role).filter((r): r is string => !!r));
+    if (live.some((a) => a.lead)) roles.add("lead");
+    for (const r of roles) out.push({ v: r, d: "role" });
     out.push({ v: "all", d: "every agent" });
     return out;
   }
