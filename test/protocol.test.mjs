@@ -368,7 +368,7 @@ test('tasks: concurrent claims, assignment wakes, done, release', async () => {
   const done = await call('POST', `${winnerAgent.link}/tasks/1/done`, { note: 'saved to sprite.png' });
   assert.equal(done.json.status, 'done');
   assert.equal(done.json.note, 'saved to sprite.png');
-  const [finished, notice] = (await read(a)).messages.slice(-2);
+  const [finished, notice] = (await read(a)).messages.filter((m) => m.task === 1 || m.kind === 'log').slice(-2);
   assert.equal(finished.text, `${winner} finished task #1 "draw player sprite"`);
   assert.equal(finished.kind, 'log');
   assert.deepEqual(finished.to, []);
@@ -531,7 +531,7 @@ test('a done note for a creator who left addresses nobody; an asleep creator is 
 
   assert.equal((await call('POST', `${creator.link}/leave`)).status, 200);
   assert.equal((await call('POST', `${worker.link}/tasks/1/done`, { note: 'CLI done, 12 tests pass' })).status, 200);
-  const left = (await r.state()).messages.at(-1);
+  const left = (await r.state()).messages.findLast((m) => m.task === 1);
   assert.equal(left.text, 'Task #1 "Write the CLI" is done by claude-1: CLI done, 12 tests pass');
   assert.equal(left.toYou, true);
   assert.deepEqual(left.mentions, []);

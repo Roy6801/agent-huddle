@@ -166,6 +166,24 @@ test('POST /new rejects a relative or oversized folder and accepts none', async 
   assert.equal((await (await fetch(`${none.page}/api/state`)).json()).folder, null);
 });
 
+test('wait prints the off-shift wake and exits 5 when the last task is done', async () => {
+  const room = JSON.parse((await cli('new', 'shift')).stdout);
+  const join = async (harness) =>
+    (await fetch(`${room.join}/join`, { method: 'POST', body: JSON.stringify({ harness }) })).json();
+  const a = await join('claude');
+  const b = await join('codex');
+  await fetch(`${b.link}/tasks`, { method: 'POST', body: JSON.stringify({ title: 'only task' }) });
+  await fetch(`${a.link}/read`);
+  const waiting = cli('wait', a.link, '--minutes', '1');
+  await new Promise((r) => setTimeout(r, 500));
+  await fetch(`${b.link}/tasks/1/done`, { method: 'POST', body: JSON.stringify({ note: 'done' }) });
+  const r = await waiting;
+  assert.equal(r.code, 5, r.stdout + r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.offShift, true);
+  assert.ok(out.messages.some((m) => m.offShift && /you are off shift/.test(m.text)));
+});
+
 test('doctor passes while the server runs, down stops it', async () => {
   const doctor = await cli('doctor');
   assert.equal(doctor.code, 0, doctor.stdout);

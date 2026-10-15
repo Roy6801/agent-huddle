@@ -181,6 +181,7 @@ test('AC-63: narrator lines are quiet log lines; the done note is a separate ste
   const claude = await r.join({ harness: 'claude' });
   const claude2 = await r.join({ harness: 'claude' });
   await fetch(`${codex.link}/tasks`, { method: 'POST', body: JSON.stringify({ title: 'Implement wordfreq CLI' }) });
+  await fetch(`${codex.link}/tasks`, { method: 'POST', body: JSON.stringify({ title: 'Write the README' }) });
   await fetch(`${claude2.link}/read`);
   await sleep(90);
   const parked = fetch(`${claude2.link}/wait?wait=1`).then((res) => res.status);
