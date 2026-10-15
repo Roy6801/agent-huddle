@@ -1860,7 +1860,7 @@ async function runWorker(args) {
       const { runMs } = limits();
       wakeGate.record();
       const messages = unread.slice(-30);
-      const lines = messages.map((m) => `${m.to?.includes(me.handle) ? '→ you ' : ''}[${m.from}] ${m.text}`);
+      const lines = messages.flatMap((m) => [`${m.to?.includes(me.handle) ? '→ you ' : ''}[${m.from}] ${m.text}`, ...taskLines(m.taskDetail)]);
       const text = (first ? preamble : '') + lines.join('\n');
       first = false;
       chunks = [];
@@ -1934,6 +1934,15 @@ async function runWorker(args) {
 }
 
 // The line to paste into each agent that has the skill. Mirrored in room/src/lib/join-lines.ts.
+function taskLines(detail) {
+  if (!detail) return [];
+  return [
+    detail.description && `  Description: ${detail.description}`,
+    detail.spec && `  Spec:\n${detail.spec}`,
+    detail.specFile && `  Spec file: ${detail.specFile.name} (${detail.specFile.size} bytes, a room file)`,
+  ].filter(Boolean);
+}
+
 export function joinLines(join) {
   return [
     ['Claude Code', `/huddle-join ${join}`],

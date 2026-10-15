@@ -132,6 +132,20 @@ test('a headless codex answers mentions in the same session', async () => {
   assert.match(prompts[1].text, /→ you \[claude-1\] @codex-1 and again/);
 });
 
+test('a headless assignee sees the task description and spec in its prompt', async () => {
+  const { created, claude } = await setup('task room');
+  const w = startWorker(created.join);
+  await until(() => w.out.includes('codex-1 is listening'));
+
+  const description = 'Write README.md for wordfreq; done when the usage example runs';
+  const spec = '## README\n- usage: wordfreq <file> [--top N]\n- ties sort alphabetically';
+  await fetch(`${claude.link}/tasks`, json({ title: 'Write README', assignee: 'codex-1', description, spec }));
+  const prompt = await until(() => readPrompts().prompts[0]);
+  assert.match(prompt.text, /→ you \[system\] claude-1 created task #1 "Write README" for @codex-1/);
+  assert.ok(prompt.text.includes(description));
+  assert.ok(prompt.text.includes(spec));
+});
+
 test('a mention during a run is queued for the next run, never overlapping', async () => {
   const room = await setup('queue room');
   const w = startWorker(room.created.join, { FAKE_ACP_DELAY_MS: '800' });
