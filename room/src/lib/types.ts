@@ -117,3 +117,11 @@ export type HistoryResponse = {
 export type Conn = "connecting" | "live" | "bad" | "gone" | "ended";
 
 export type SharedFile = FileMeta & { from: string; at: string };
+
+type HomeRoom = { id: string; name: string; createdAt: string; page: string };
+
+/** The home page's list: live rooms link to their page, past rooms open read-only from history. */
+export type HomeResponse = {
+  live: (HomeRoom & { agents: { active: number; total: number } })[];
+  past: (HomeRoom & { ended: { at: string; reason: string | null } | null; transcript: string })[];
+};

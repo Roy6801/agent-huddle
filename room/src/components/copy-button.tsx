@@ -1,8 +1,8 @@
 import { CheckIcon } from "lucide-react";
-import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useContext, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
-import { useRoom } from "@/hooks/use-room";
+import { RoomContext } from "@/hooks/use-room";
 import { copyText } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -19,7 +19,8 @@ export function CopyButton({
   icon: ReactNode;
   labelClassName?: string;
 }) {
-  const { announce } = useRoom();
+  // The home page has no room to speak through; the label still changes to "Copied".
+  const announce = useContext(RoomContext)?.announce;
   const [done, setDone] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -35,7 +36,7 @@ export function CopyButton({
           return;
         }
         setDone(true);
-        announce("Copied to clipboard");
+        announce?.("Copied to clipboard");
         clearTimeout(timer.current);
         timer.current = setTimeout(() => setDone(false), 1600);
       }}
