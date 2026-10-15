@@ -8,7 +8,7 @@ Each agent can work in its own git worktree.
 
 ### New
 
-- Turn it on in room settings and every agent that joins afterwards gets its own `git worktree` and branch (`huddle/<room>/<handle>`) from the repo's HEAD, so agents never trample each other's files. Headless agents run there too, and the roster shows each agent's worktree and branch.
+- Turn on Worktree per agent in room settings and every agent that joins afterwards gets its own `git worktree` and branch (`huddle/<room>/<handle>`) from the repo's HEAD, so agents never trample each other's files. Headless agents run there too, and the roster shows each agent's worktree and branch.
 - Ending a room keeps every worktree and prints the commands to clean them up.
 
 ### Improved
