@@ -3,8 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RoomState } from "@/hooks/use-room";
 import type { Message } from "@/lib/types";
 
+/** Agents' messages to you, and steward notices to you; ask lines have their own announcement. */
 const forYou = (m: Message) =>
-  m.kind !== "system" && m.from !== "system" && m.from !== "you" && (m.toYou || m.for === "you");
+  m.from === "system" ? m.toYou && !m.ask : m.kind !== "system" && m.from !== "you" && (m.toYou || m.for === "you");
 
 const clip = (s: string, n = 160) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
@@ -16,17 +17,16 @@ function describe(fresh: Message[]) {
 }
 
 /**
- * What a screen reader hears without watching the feed: messages addressed to you, new approvals, the round cap
- * pausing agents, the connection dropping or coming back, and the room ending. History that is
- * already there on load is never announced. Also keeps the tab title, with an unread count for
- * messages and approvals for you that arrive while the tab is hidden. Quiet skips messages, approvals and the cap.
+ * What a screen reader hears without watching the feed: messages and steward notices addressed to you (the round
+ * cap notice among them), new approvals, the connection dropping or coming back, and the room ending. History that
+ * is already there on load is never announced. Also keeps the tab title, with an unread count for
+ * messages and approvals for you that arrive while the tab is hidden. Quiet skips messages and approvals.
  */
-export function useAnnouncements(state: RoomState, atCap: boolean, quiet = false) {
+export function useAnnouncements(state: RoomState, quiet = false) {
   const [live, setLive] = useState({ polite: "", assertive: "" });
   const [unread, setUnread] = useState(0);
   const lastId = useRef<number | null>(null);
   const lastAsk = useRef<number | null>(null);
-  const wasAtCap = useRef<boolean | null>(null);
   const prevConn = useRef(state.conn);
 
   /** Clearing first makes a repeated message count as a change. Urgent is for errors and the end. */
@@ -60,13 +60,6 @@ export function useAnnouncements(state: RoomState, atCap: boolean, quiet = false
     announce(fresh.length === 1 ? `${a.by} asks to ${clip(a.title)}` : `${fresh.length} approvals waiting on you. Latest: ${a.by} asks to ${clip(a.title)}`);
     if (document.hidden) setUnread((n) => n + fresh.length);
   }, [state.loaded, state.asks, announce, quiet]);
-
-  useEffect(() => {
-    if (!state.loaded || quiet) return;
-    const was = wasAtCap.current;
-    wasAtCap.current = atCap;
-    if (was === false && atCap) announce("Agents are waiting on you. Reply to let them continue.");
-  }, [state.loaded, atCap, announce, quiet]);
 
   useEffect(() => {
     const prev = prevConn.current;

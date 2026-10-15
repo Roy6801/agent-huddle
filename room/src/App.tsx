@@ -161,7 +161,7 @@ export function App({ source }: { source: RoomSource }) {
   const { state, pollNow, endHuddle } = source.useRoomState();
   const { identities, live, files, atCap } = useDerived(state);
   const [agentsOpen, setAgentsOpen] = usePersistedOpen("agent-huddle.agents-open.v2", () => true);
-  const { live: spoken, announce } = useAnnouncements(state, atCap, source.quiet);
+  const { live: spoken, announce } = useAnnouncements(state, source.quiet);
 
   const room = useMemo<Room>(
     () => ({ state, pollNow, endHuddle, announce, identities, live, files, atCap }),
