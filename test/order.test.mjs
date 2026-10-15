@@ -120,6 +120,29 @@ test('AC-80, AC-81: an unknown, future or itself task number is refused and noth
   assert.equal((await r.state()).tasks.length, 4);
 });
 
+test('an after that is not a list of positive whole numbers is refused', async () => {
+  const r = await ordered();
+  for (const after of ['1', ['x'], [1.5], [null], ['2'], [0], [-1]]) {
+    const res = await call('POST', `${r.codex.link}/tasks`, { title: 'review', after });
+    assert.equal(res.status, 400, JSON.stringify(after));
+    assert.equal(res.json.error, 'invalid_after_list', JSON.stringify(after));
+  }
+  assert.equal((await r.state()).tasks.length, 3);
+});
+
+test('finishing the last task narrates the ready line when the assignee finished it', async () => {
+  const r = await ordered();
+  await call('POST', `${r.codex.link}/tasks`, { title: 'review', assignee: 'claude-1', after: [1] });
+  const parked = call('GET', `${r.c1.link}/wait?wait=1`);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  await call('POST', `${r.c1.link}/tasks/1/done`);
+  const line = (await r.state()).messages.find((m) => /task #4 "review" is ready/.test(m.text));
+  assert.equal(line.kind, 'log');
+  assert.deepEqual(line.to, []);
+  const res = await parked;
+  assert.ok(!res.json?.messages?.some((m) => /is ready/.test(m.text)));
+});
+
 test('an unassigned blocked task logs when it is ready and wakes nobody', async () => {
   const r = await ordered();
   await call('POST', `${r.codex.link}/tasks`, { title: 'review', after: [1] });

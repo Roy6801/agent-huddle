@@ -65,6 +65,8 @@ const ROUND_CAP_DEFAULT = 30;
 const ROUND_CAP_MAX = 100;
 const OPTION_SHAPE = '{"optionId":"yes","kind":"allow_once","name":"Yes"}';
 
+const refs = (ns) => ns.map((n) => `#${n}`).join(', ');
+
 // Every error reply is { error, message, instruction }: a stable snake_case code, what went wrong
 // and the viable next step, filled with the branch's specifics.
 export const ERRORS = {
@@ -129,8 +131,8 @@ export const ERRORS = {
   task_done: [409, (p) => `Task #${p.n} is already done.`, 'Create a new task for any follow-up work.'],
   invalid_after: [400, (p) => `There is no task #${p.n}; a task can only come after tasks that already exist.`,
     'Use task numbers from GET tasks, or leave after out.'],
-  invalid_after_list: [400, 'after must be a list of task numbers.', 'Send after as [1,2] using task numbers from GET tasks.'],
-  task_blocked: [409, (p) => `Task #${p.n} is blocked by ${p.blocked.map((b) => `#${b}`).join(', ')}.`,
+  invalid_after_list: [400, 'after must be a list of task numbers, like [1,2].', 'Send after as [1,2] using task numbers from GET tasks.'],
+  task_blocked: [409, (p) => `Task #${p.n} is blocked by ${refs(p.blocked)}.`,
     'Wait until those tasks are done (you are woken when it is ready if it is assigned to you), or pick another task from GET tasks.'],
   empty_edit: [400, 'The edit has nothing to change.', 'Send description, spec or specFile.'],
   already_claimed: [409, (p) => `Task #${p.n} is claimed by @${p.owner}.`,
@@ -801,11 +803,11 @@ export function createHuddle(opts = {}) {
   function taskOrder(s, value) {
     if (value === undefined || value === null) return [];
     if (!Array.isArray(value)) throw new HttpError('invalid_after_list');
-    const ns = value.map((v) => (typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : v));
-    for (const n of ns) {
-      if (!Number.isInteger(n) || n < 1 || n > s.tasks.length) throw new HttpError('invalid_after', { n });
+    if (!value.every((n) => Number.isInteger(n) && n > 0)) throw new HttpError('invalid_after_list');
+    for (const n of value) {
+      if (n > s.tasks.length) throw new HttpError('invalid_after', { n });
     }
-    return [...new Set(ns)].sort((a, b) => a - b);
+    return [...new Set(value)].sort((a, b) => a - b);
   }
 
   function createTask(s, creator, body) {
@@ -838,7 +840,7 @@ export function createHuddle(opts = {}) {
     const wake = assignee && assignee !== creator;
     const waiting = blockedBy(s, task);
     const order = after.length
-      ? `, after ${after.map((n) => `#${n}`).join(', ')}${waiting.length ? ` (blocked by ${waiting.map((n) => `#${n}`).join(', ')})` : ''}`
+      ? `, after ${refs(after)}${waiting.length ? ` (blocked by ${refs(waiting)})` : ''}`
       : '';
     system(s, `${creator} created task #${task.id} "${title}"${assignee ? ` for @${assignee}` : ''}${order}`, {
       mentions: assignee ? [assignee] : [],
@@ -881,12 +883,12 @@ export function createHuddle(opts = {}) {
     if (blocked.length) throw new HttpError('task_blocked', { n: task.id, blocked });
   }
 
-  function announceReady(s, done) {
+  function announceReady(s, done, finisher) {
     for (const t of s.tasks) {
       if (t.status === 'done' || !t.after.includes(done.id) || blockedBy(s, t).length) continue;
-      const text = `Task #${t.id} "${t.title}" is ready: ${t.after.map((n) => `#${n}`).join(', ')} ${t.after.length > 1 ? 'are' : 'is'} done.`;
-      const who = t.owner ?? t.assignee;
-      if (who && s.agents.get(who)?.status !== 'left') system(s, text, { mentions: [who], to: [who], task: t.id });
+      const text = `Task #${t.id} "${t.title}" is ready: ${refs(t.after)} ${t.after.length > 1 ? 'are' : 'is'} done.`;
+      const who = t.assignee;
+      if (who && who !== finisher && s.agents.get(who)?.status !== 'left') system(s, text, { mentions: [who], to: [who], task: t.id });
       else narrate(s, text.charAt(0).toLowerCase() + text.slice(1));
     }
   }
@@ -909,7 +911,7 @@ export function createHuddle(opts = {}) {
       moveTask(task, 'done', h);
       task.note = note;
       narrate(s, `${h} finished task #${task.id} "${task.title}"`);
-      announceReady(s, task);
+      announceReady(s, task, h);
       if (task.createdBy !== h) {
         const creator = s.agents.get(task.createdBy);
         const notify = creator !== undefined && creator.status !== 'left';
@@ -1577,10 +1579,10 @@ How the room works:
   }
 
   // Tasks are pending and no agent is Working: after the hold, nudge the Listening holders about their tasks and
-  // you about the rest; the last backoff, and any nudge while paused at the round cap, goes to you with every task.
+  // you about the rest (a blocked task is not pending; what it waits on is); the last backoff, and any nudge while paused at the round cap, goes to you with every task.
   // A Working window (one the nudge itself woke, say) pauses the cycle; only activity restarts it.
   function checkStall(s, now) {
-    const pending = s.tasks.filter((t) => t.status !== 'done');
+    const pending = s.tasks.filter((t) => t.status !== 'done' && !blockedBy(s, t).length);
     if (!pending.length) {
       s.stall = null;
       return;
