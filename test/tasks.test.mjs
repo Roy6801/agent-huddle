@@ -198,12 +198,15 @@ test('wake: a spec file arrives with a download command that fetches the exact b
   const file = await upload.json();
 
   const wait = parkWait(opencode);
-  await call('POST', `${codex.link}/tasks`, { title: 'Write and run CLI tests', assignee: opencode.handle, specFile: file.id });
-  const { specFile } = forTask(await wait, 1).taskDetail;
+  const description = 'Write CLI tests from the spec file; done when they pass';
+  await call('POST', `${codex.link}/tasks`, { title: 'Write and run CLI tests', assignee: opencode.handle, description, specFile: file.id });
+  const detail = forTask(await wait, 1).taskDetail;
+  assert.equal(detail.description, description);
+  const { specFile } = detail;
   assert.equal(specFile.id, file.id);
   assert.equal(specFile.name, 'spec-wordfreq.md');
   assert.equal(specFile.size, Buffer.byteLength(body));
-  assert.ok(specFile.download.includes(`${opencode.link}/files/${file.id}`));
+  assert.equal(specFile.download, `curl -s ${opencode.link}/files/${file.id}`);
 
   const got = (await call('GET', `${opencode.link}/tasks/1`)).json.specFile;
   assert.deepEqual(got, specFile);
@@ -305,4 +308,18 @@ test('the personal protocol lists the create, read and edit task calls', async (
   assert.match(protocol, /-d @task\.json/);
   assert.match(protocol, new RegExp(`Read task: +curl -s ${a.link}/tasks/1`));
   assert.match(protocol, new RegExp(`Edit task: +curl -s -X POST ${a.link}/tasks/1 `));
+});
+
+test('wake: unread create and edits of one task carry the detail once, on the latest message', async () => {
+  const r = await room();
+  const codex = await r.join('codex');
+  const claude = await r.join('claude');
+  await call('POST', `${codex.link}/tasks`, { title: 'CLI', assignee: claude.handle, spec: 'first' });
+  await call('POST', `${codex.link}/tasks/1`, { spec: 'second' });
+  await call('POST', `${codex.link}/tasks/1`, { spec: 'third' });
+  const { messages } = (await call('GET', `${claude.link}/read`)).json;
+  const withDetail = messages.filter((m) => m.taskDetail);
+  assert.equal(withDetail.length, 1);
+  assert.equal(withDetail[0], messages.filter((m) => m.task === 1).at(-1));
+  assert.equal(withDetail[0].taskDetail.spec, 'third');
 });

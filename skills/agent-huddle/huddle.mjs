@@ -358,13 +358,16 @@ export function createHuddle(opts = {}) {
     for (const m of s.messages) {
       if (m.id <= agent.cursor) continue;
       if (m.from !== agent.handle) {
-        messages.push(m.task && m.to.includes(agent.handle) ? { ...m, taskDetail: taskDetail(s, agent, m.task) } : m);
+        messages.push(m);
         cursor = m.id;
         if (messages.length >= limit) break;
       } else {
         cursor = m.id;
       }
     }
+    const latest = new Map();
+    messages.forEach((m, i) => m.task && m.to.includes(agent.handle) && latest.set(m.task, i));
+    for (const [n, i] of latest) messages[i] = { ...messages[i], taskDetail: taskDetail(s, agent, n) };
     agent.cursor = cursor;
     return { messages, cursor };
   }
@@ -572,7 +575,7 @@ export function createHuddle(opts = {}) {
   function agentTaskView(s, agent, task) {
     const view = taskView(s, task, true);
     if (view.specFile) {
-      view.specFile.download = `curl -s -o '${view.specFile.name}' ${agent.link}/files/${view.specFile.id}`;
+      view.specFile.download = `curl -s ${agent.link}/files/${view.specFile.id}`;
     }
     return view;
   }
