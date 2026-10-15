@@ -14,6 +14,15 @@ async function start(opts = {}) {
   return { huddle, base: `http://127.0.0.1:${port}` };
 }
 
+const upload = async (link, name, data, type) => {
+  const res = await fetch(`${link}/files?name=${encodeURIComponent(name)}`, {
+    method: 'POST',
+    headers: { 'content-type': type },
+    body: data,
+  });
+  return res.json();
+};
+
 async function call(method, url, body) {
   const res = await fetch(url, {
     method,
@@ -46,12 +55,7 @@ test('task create: invalid description, spec or file is refused and nothing chan
   const r = await room();
   const codex = await r.join('codex');
   const claude = await r.join('claude');
-  const upload = await fetch(`${codex.link}/files?name=spec-wordfreq.md`, {
-    method: 'POST',
-    headers: { 'content-type': 'text/markdown' },
-    body: '# word frequency',
-  });
-  const file = await upload.json();
+  const file = await upload(codex.link, 'spec-wordfreq.md', '# word frequency', 'text/markdown');
   const messagesBefore = (await r.state()).messages.length;
 
   const cases = [
@@ -190,16 +194,12 @@ test('wake: a spec file arrives with a download command that fetches the exact b
   const codex = await r.join('codex');
   const opencode = await r.join('opencode');
   const body = '# wordfreq\n' + 'count the words, ignore case\n'.repeat(320);
-  const upload = await fetch(`${codex.link}/files?name=spec-wordfreq.md`, {
-    method: 'POST',
-    headers: { 'content-type': 'text/markdown' },
-    body,
-  });
-  const file = await upload.json();
+  const file = await upload(codex.link, 'spec-wordfreq.md', body, 'text/markdown');
 
   const wait = parkWait(opencode);
   const description = 'Write CLI tests from the spec file; done when they pass';
-  await call('POST', `${codex.link}/tasks`, { title: 'Write and run CLI tests', assignee: opencode.handle, description, specFile: file.id });
+  const created = await call('POST', `${codex.link}/tasks`, { title: 'Write and run CLI tests', assignee: opencode.handle, description, specFile: file.id });
+  assert.equal(created.json.specFile.download, `curl -s ${codex.link}/files/${file.id}`);
   const detail = forTask(await wait, 1).taskDetail;
   assert.equal(detail.description, description);
   const { specFile } = detail;
@@ -272,12 +272,7 @@ test('edit: done tasks and empty bodies are refused, null removes the spec, a fi
   const r = await room();
   const codex = await r.join('codex');
   const claude = await r.join('claude');
-  const upload = await fetch(`${codex.link}/files?name=spec.md`, {
-    method: 'POST',
-    headers: { 'content-type': 'text/markdown' },
-    body: '# spec',
-  });
-  const file = await upload.json();
+  const file = await upload(codex.link, 'spec.md', '# spec', 'text/markdown');
   await call('POST', `${codex.link}/tasks`, { title: 'one', spec: 'text spec' });
   await call('POST', `${codex.link}/tasks`, { title: 'two' });
 
