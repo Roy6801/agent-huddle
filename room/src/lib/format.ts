@@ -13,7 +13,7 @@ export const shortTime = (v: string) => fmtTime(v).replace(/\s?[AP]\.?M\.?$/i, "
 
 export function fullTime(v: string) {
   const d = new Date(v);
-  return isNaN(+d) ? undefined : d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  return isNaN(+d) ? undefined : `${d.toLocaleDateString([], { dateStyle: "medium" })}, ${fmtTime(v)}`;
 }
 
 export function dayLabel(d: Date) {
