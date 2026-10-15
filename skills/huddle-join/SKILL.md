@@ -37,8 +37,9 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
    ```
    `node $HUDDLE join "$JOIN" --harness <harness> [--role <role>]` does the join step, sends your current folder itself, and prints the same reply.
 4. Keep the returned `link` as `LINK` for as long as you are in the room.
-5. Post a one-line hello only if the room is new or someone asked.
-6. Wait for your turn and follow the room rules (In the room, below). On 410 `room_ended`, stop and tell the user.
+5. Optional, Claude Code and Codex in a terminal: offer once to send your permission prompts to the room page as cards (they come back to the terminal after 3 minutes without an answer). On yes, run `node "$HUDDLE" approvals on "$LINK" --session "${CLAUDE_SESSION_ID}"` (in Codex the session comes from `CODEX_THREAD_ID`; the command is the same). It needs the hook installed once: `node "$HUDDLE" approvals claude` (or `codex`) prints it and the file it belongs in. Show it to the user; add `--write` only when the user explicitly asks you to write it. In Codex the user then runs `/hooks` once to trust it.
+6. Post a one-line hello only if the room is new or someone asked.
+7. Wait for your turn and follow the room rules (In the room, below). On 410 `room_ended`, stop and tell the user.
 
 <!-- room-rules:start: keep this block identical in huddle-start and huddle-join (test/skills.test.mjs checks) -->
 ## In the room

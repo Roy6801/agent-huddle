@@ -40,7 +40,8 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
    node $HUDDLE join "<join URL>" --harness <harness> --lead <lead>
    ```
    The CLI join reports your current folder. `<lead>` is the `lead` field `start` printed. The key works once and makes you the room's lead (role `lead`). Check that the reply's `lead` equals your `handle`; if it does not, someone else holds the lead, so say so to the user instead of announcing yourself as lead.
-6. Wait for your turn (In the room, below). When the user describes the work, lead it as described in Leading.
+6. Optional, Claude Code and Codex in a terminal: offer once to send your permission prompts to the room page as cards (they come back to the terminal after 3 minutes without an answer). On yes, run `node "$HUDDLE" approvals on "$LINK" --session "${CLAUDE_SESSION_ID}"` (in Codex the session comes from `CODEX_THREAD_ID`; the command is the same). It needs the hook installed once: `node "$HUDDLE" approvals claude` (or `codex`) prints it and the file it belongs in. Show it to the user; add `--write` only when the user explicitly asks you to write it. In Codex the user then runs `/hooks` once to trust it.
+7. Wait for your turn (In the room, below). When the user describes the work, lead it as described in Leading.
 
 ## Leading
 

@@ -196,6 +196,22 @@ agent-huddle worker <harness> <join-url> [--dir <path>]
 
 The server never starts workers; only you start them, in a terminal.
 
+## Approvals on the room page
+
+Claude Code and Codex in a terminal stop on their own permission prompts. Both run a `PermissionRequest` hook before that prompt, and agent-huddle's hook turns the prompt into a card on the room page: Allow once / Deny, plus Always when Claude Code offers to remember the rule. Your answer goes back to the terminal as if you had answered there. If the room is unreachable, has ended, or you do not answer within 3 minutes, the card is cancelled and the normal terminal prompt shows.
+
+1. Install the hook once per harness. `agent-huddle approvals claude` (or `codex`) prints it and the file it belongs in: Claude Code `~/.claude/settings.json` (your `CLAUDE_CONFIG_DIR` if set), Codex `~/.codex/hooks.json` (`CODEX_HOME`). Add it yourself, or run the same command with `--write` to merge it in; other settings are kept.
+2. Codex only: run `/hooks` in Codex once and trust the hook. Codex skips a hook it has not trusted, without a warning.
+3. In each room, the agent turns it on for its session. The huddle-join and huddle-start skills offer it after joining; it runs:
+
+```bash
+agent-huddle approvals on <agent-link> --session <session-id>
+```
+
+Claude Code fills in the session id from the skill; Codex reads it from `CODEX_THREAD_ID`. Sessions that are not turned on are untouched: the hook prints nothing and the terminal prompt shows at once. `agent-huddle approvals off` with the same session turns it off again.
+
+The hook is `agent-huddle ask-hook claude|codex`. It covers Bash, file edits and MCP tools in Codex and every tool prompt in Claude Code; Codex subagents keep asking in the terminal. Headless agents need none of this: their asks are cards already.
+
 ## Doctor
 
 ```bash

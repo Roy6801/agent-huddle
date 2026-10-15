@@ -86,3 +86,12 @@ test('huddle-end asks before ending, then about the server only when no rooms re
   assert.match(steps, /Yes: `node \$HUDDLE down`/);
   assert.match(skill, /It is not the yes for `end`/);
 });
+
+test('AC-21.5: start and join offer page approvals for Claude Code and Codex, writing the hook only on request', () => {
+  for (const skill of ['huddle-start', 'huddle-join']) {
+    const steps = read(skill).split('## Steps')[1].split('<!-- room-rules:start')[0];
+    assert.ok(steps.includes('node "$HUDDLE" approvals on "$LINK" --session "${CLAUDE_SESSION_ID}"'), skill);
+    assert.match(steps, /add `--write` only when the user explicitly asks you to write it/, skill);
+    assert.match(steps, /runs `\/hooks` once to trust it/, skill);
+  }
+});
