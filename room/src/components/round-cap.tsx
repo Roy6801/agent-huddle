@@ -1,13 +1,11 @@
-import { MinusIcon, PlusIcon, Settings2Icon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { MinusIcon, PlusIcon } from "lucide-react";
+import { useState } from "react";
 
-import { ErrorBox, type ErrorInfo } from "@/components/error-box";
+import { SettingsEditor } from "@/components/minutes-settings";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { usePanels } from "@/hooks/use-panels";
-import { useRoom, useSource } from "@/hooks/use-room";
-import { errMain } from "@/lib/api";
+import { useRoom } from "@/hooks/use-room";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_CAP = 30;
@@ -125,98 +123,36 @@ export function CapRing() {
 }
 
 export function RoundCap() {
-  const { state, pollNow } = useRoom();
-  const { post } = useSource();
+  const { state } = useRoom();
   const { capRequest } = usePanels();
-  const { roundCap, ended } = state;
-  const [open, setOpen] = useState(false);
+  const { roundCap } = state;
   const [value, setValue] = useState(String(DEFAULT_CAP));
   const [off, setOff] = useState(false);
-  const [error, setError] = useState<ErrorInfo | null>(null);
-  const [saving, setSaving] = useState(false);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const input = useRef<HTMLInputElement>(null);
-  const offBox = useRef<HTMLButtonElement>(null);
-
-  function show(next: boolean, refocus = true) {
-    if (next && ended) return;
-    if (next) {
-      setOff(roundCap === null);
-      setValue(String(roundCap ?? DEFAULT_CAP));
-      setError(null);
-      requestAnimationFrame(() => (roundCap === null ? offBox.current : input.current)?.focus());
-    } else if (refocus) {
-      requestAnimationFrame(() => trigger.current?.focus());
-    }
-    setOpen(next);
-  }
-
-  useEffect(() => {
-    // Only a new request opens the editor; a cap change from elsewhere must not.
-    if (capRequest) show(true);
-  }, [capRequest]);
-
-  useEffect(() => {
-    if (ended) setOpen(false);
-  }, [ended]);
-
-  async function save() {
-    if (ended) return;
-    const n = off ? null : Number(value);
-    if (n !== null && !(Number.isInteger(n) && n >= 1 && n <= MAX_CAP)) {
-      setError({ message: `Enter a whole number from 1 to ${MAX_CAP}.` });
-      input.current?.focus();
-      return;
-    }
-    setSaving(true);
-    try {
-      const { r, data } = await post("/api/settings", { roundCap: n });
-      if (!r.ok) return setError({ message: errMain(r, data) });
-      show(false);
-      pollNow();
-    } catch {
-      setError({ message: "Could not reach the room server." });
-    } finally {
-      setSaving(false);
-    }
-  }
 
   if (roundCap === undefined) return null;
 
+  function toBody() {
+    const n = off ? null : Number(value);
+    if (n !== null && !(Number.isInteger(n) && n >= 1 && n <= MAX_CAP)) return `Enter a whole number from 1 to ${MAX_CAP}.`;
+    return { roundCap: n };
+  }
+
   return (
-    <Collapsible
-      open={open}
-      onOpenChange={(o) => show(o)}
-      className="flex flex-col gap-2"
+    <SettingsEditor
+      id="cap"
+      lead={<CapMeter />}
+      label="Round cap"
+      noun="round cap"
+      summary={<span>{roundCap === null ? "No limit set" : `Pause agents after ${roundCap} posts in a row`}</span>}
+      onOpen={() => {
+        setOff(roundCap === null);
+        setValue(String(roundCap ?? DEFAULT_CAP));
+      }}
+      openRequest={capRequest}
+      toBody={toBody}
     >
-      <CapMeter />
-      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <span>{roundCap === null ? "No limit set" : `Pause agents after ${roundCap} posts in a row`}</span>
-        <CollapsibleTrigger asChild>
-          <Button ref={trigger} variant="ghost" size="xs" disabled={ended} className="-mr-2 text-muted-foreground">
-            <Settings2Icon aria-hidden />
-            {open ? "Close" : "Change"}
-            <span className="sr-only"> round cap</span>
-          </Button>
-        </CollapsibleTrigger>
-      </div>
-      <CollapsibleContent className="overflow-hidden motion-safe:data-open:animate-collapsible-down motion-safe:data-closed:animate-collapsible-up">
-        <form
-          autoComplete="off"
-          aria-label="Round cap"
-          className="mb-1 grid gap-3 rounded-lg border bg-background p-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            save();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              e.stopPropagation();
-              show(false);
-            }
-          }}
-        >
+      {(errorId) => (
+        <>
           <label htmlFor="cap-input" className="text-xs font-medium text-muted-foreground">
             Pause agents after
           </label>
@@ -233,7 +169,6 @@ export function RoundCap() {
               <MinusIcon aria-hidden />
             </Button>
             <input
-              ref={input}
               id="cap-input"
               type="number"
               min={1}
@@ -241,8 +176,8 @@ export function RoundCap() {
               step={1}
               inputMode="numeric"
               disabled={off}
-              aria-invalid={!!error || undefined}
-              aria-describedby={cn("cap-unit", error && "cap-error")}
+              aria-invalid={!!errorId || undefined}
+              aria-describedby={cn("cap-unit", errorId)}
               value={value}
               onChange={(e) => setValue(e.target.value)}
               className="h-8 w-14 [appearance:textfield] rounded-lg border border-input bg-transparent text-center text-sm tabular-nums outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 dark:bg-input/30 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
@@ -264,7 +199,7 @@ export function RoundCap() {
           </div>
           <label className="flex items-center gap-2 text-xs text-foreground/80">
             <Checkbox
-              ref={offBox}
+              data-autofocus={off || undefined}
               checked={off}
               aria-describedby={off ? "cap-off-warning" : undefined}
               onCheckedChange={(c) => setOff(c === true)}
@@ -276,17 +211,8 @@ export function RoundCap() {
               Agents can keep posting without you. Your only stop is ending the room.
             </p>
           )}
-          {error && <ErrorBox id="cap-error" error={error} />}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => show(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" disabled={saving}>
-              Save
-            </Button>
-          </div>
-        </form>
-      </CollapsibleContent>
-    </Collapsible>
+        </>
+      )}
+    </SettingsEditor>
   );
 }
