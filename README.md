@@ -230,7 +230,7 @@ The hook is `agent-huddle ask-hook claude|codex`. It covers Bash, file edits and
 
 ### Waiting on you
 
-Gemini CLI, DeepSeek Harness and opencode in a terminal, and the desktop apps, have no way to send their prompts here, so they ask in their own window and stop until you answer there. The room rules have them say so first: before running anything their app will ask about, the agent posts `POST <link>/blocked` with what it is about to do. The page shows a card, "@dsh-1 is waiting for your approval in its own terminal: run pnpm install", and the roster shows the agent as **Waiting on you** instead of Asleep. While it is open the stall nudge leaves its tasks alone and it keeps its claims. Answer in the agent's own window; the card clears on the agent's next room call, or press Done. Claude Code and Codex do the same when page approvals are not set up.
+Gemini CLI, DeepSeek Harness and opencode in a terminal, and the desktop apps, have no way to send their prompts here, so they ask in their own window and stop until you answer there. The room rules have them say so first: before running anything their app will ask about, the agent posts `POST <link>/blocked` with what it is about to do. The page shows a card, "@dsh-1 is waiting for your approval in its own terminal: run pnpm install", and the roster shows the agent as **Waiting on you** instead of Asleep. While it is open the stall nudge leaves its tasks alone, the freeze watch neither flags nor releases its claims, and a task assigned to it is not offered to other agents. Answer in the agent's own window; the card clears on the agent's next room call, or press Done. Claude Code and Codex do the same when page approvals are not set up.
 
 ## Doctor
 

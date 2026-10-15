@@ -2534,12 +2534,12 @@ How the room works:
   }
 
   // Regular rooms: an assigned, ready task its assignee leaves unclaimed for the stall window goes to the free
-  // agents once; the clock restarts when the task or its assignee changes.
+  // agents once; the clock restarts when the task or its assignee changes, and after its assignee waits on you.
   function offerUnclaimed(s, now) {
     for (const t of s.tasks) {
       const assignee = t.status === 'open' && !blockedBy(s, t).length ? liveAssignee(s, t) : null;
       const seen = unclaimedSince.get(t);
-      if (!assignee) unclaimedSince.delete(t);
+      if (!assignee || waitingOnYou(s, s.agents.get(assignee))) unclaimedSince.delete(t);
       else if (seen?.assignee !== assignee || seen.since !== t.since) unclaimedSince.set(t, { assignee, since: t.since, at: now, offered: false });
       else if (!seen.offered && now - seen.at >= s.timers.stallMs) {
         seen.offered = offerReady(s, t, { skip: [assignee], givenUp: true, why: `@${assignee} has not claimed it in ${minutes(s.timers.stallMs)} min` });
@@ -2548,10 +2548,11 @@ How the room works:
   }
 
   // An agent Asleep holding claims is flagged to you once per sleep; once it has been silent for the release time
-  // its claims are released. Left agents need no watch: leaving releases their claims at once.
+  // its claims are released. One waiting on you is not asleep, so it keeps its claims. Left agents need no watch:
+  // leaving releases their claims at once.
   function freezeWatch(s, now) {
     for (const agent of s.agents.values()) {
-      const held = asleepHolding(s, agent);
+      const held = waitingOnYou(s, agent) ? [] : asleepHolding(s, agent);
       if (!held.length) {
         flaggedAsleep.delete(agent);
         continue;

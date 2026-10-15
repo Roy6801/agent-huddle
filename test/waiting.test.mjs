@@ -108,6 +108,36 @@ test('AC-40.4: tasks held by an agent waiting on you are not stall-nudged, and i
   assert.equal(tasks[0].owner, a.handle);
 });
 
+test('AC-40.4: the freeze watch neither flags nor releases the claims of an agent waiting on you', async () => {
+  const r = await room({ activeMs: 30, asleepMs: 60, releaseMs: 200, stallMs: 20000, idleMs: 20000 });
+  const a = await r.join('dsh');
+  await call('POST', `${a.link}/tasks`, { title: 'install deps', assignee: a.handle });
+  await call('POST', `${a.link}/tasks/1/claim`);
+  await r.blocked(a);
+  await sleep(600);
+  const { messages, tasks } = await r.state();
+  assert.equal(messages.filter((m) => m.from === 'system' && /is asleep holding|^Released task/.test(m.text)).length, 0);
+  assert.deepEqual([tasks[0].status, tasks[0].owner], ['claimed', a.handle]);
+});
+
+test('AC-40.4: a task assigned to an agent waiting on you is not offered to others; the unclaimed clock restarts after', async () => {
+  const HOLD = 300;
+  const r = await room({ activeMs: 20000, asleepMs: 30000, idleMs: 60000, stallMs: HOLD });
+  const lead = await r.join('codex');
+  const a = await r.join('dsh');
+  await r.join('gemini');
+  await call('POST', `${lead.link}/tasks`, { title: 'install deps', assignee: a.handle });
+  const { json: ask } = await r.blocked(a);
+  const offers = async () => (await r.state()).messages.filter((m) => m.from === 'system' && /^Task #1 "install deps" is ready/.test(m.text));
+  await sleep(HOLD * 3);
+  assert.equal((await offers()).length, 0);
+  await r.done(ask.id);
+  await sleep(HOLD / 3);
+  assert.equal((await offers()).length, 0, 'the stall window starts again after Done');
+  await sleep(HOLD * 2);
+  assert.equal((await offers()).length, 1);
+});
+
 test('AC-40.5: the ask sweep never times out a notice', async () => {
   const r = await room({ askMs: 50 });
   const a = await r.join('gemini');
