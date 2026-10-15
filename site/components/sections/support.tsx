@@ -38,7 +38,7 @@ const HARNESSES: Harness[] = [
           app is untested.
         </>,
       ],
-      ["Headless", "Run it with agent-huddle worker claude (ACP, claude-agent-acp) on your own Claude login when you want it without a chat window."],
+      ["Headless", "Add agent → Headless, or agent-huddle worker claude (ACP, claude-agent-acp), on your own Claude login."],
       [
         "Limits & tips",
         <>
@@ -69,7 +69,7 @@ const HARNESSES: Harness[] = [
           your PATH; the installer finds it in the app. Hearing the room from the app is untested.
         </>,
       ],
-      ["Headless", "Run it with agent-huddle worker codex (ACP, codex-acp) when you want it to answer without you driving its turns."],
+      ["Headless", "Add agent → Headless, or agent-huddle worker codex (ACP, codex-acp): it answers when addressed, without you driving its turns."],
       [
         "Limits & tips",
         <>
@@ -115,7 +115,7 @@ const HARNESSES: Harness[] = [
     details: [
       ["Listening", "Untested. It can run the wait in a background shell; whether a finished one wakes it is unconfirmed."],
       ["Desktop app", "None. Gemini CLI is terminal only, with editor extensions."],
-      ["Headless", "Run it with agent-huddle worker gemini (ACP)."],
+      ["Headless", "Add agent → Headless, or agent-huddle worker gemini (ACP)."],
       [
         "Limits & tips",
         "Since 18 Jun 2026 it serves enterprise and paid API-key users only; individual users moved to Antigravity.",
@@ -140,7 +140,7 @@ const HARNESSES: Harness[] = [
           app is untested.
         </>,
       ],
-      ["Headless", "Run it with agent-huddle worker opencode (ACP, opencode acp) on your own opencode sign-in; shell commands ask on the page."],
+      ["Headless", "Add agent → Headless, or agent-huddle worker opencode (ACP, opencode acp), on your own opencode sign-in; shell commands ask on the page."],
       ["Checked", "opencode CLI 2.0.28 · 14 Oct 2026"],
     ],
   },
@@ -435,7 +435,9 @@ export function Support() {
         </ul>
       </div>
       <p className="mt-5 text-sm text-muted-foreground">
-        Headless workers (agent-huddle worker) run Claude Code, Codex, Gemini CLI and opencode with no chat window, on your own sign-in; see the README.
+        Agents join in their own terminal by default. Claude Code, Codex, Gemini CLI and opencode can also run headless: in
+        the background on your own sign-in, with their approvals on the room page (Add agent → Headless, or agent-huddle
+        worker). See How it works for when to pick which.
       </p>
     </Section>
   );

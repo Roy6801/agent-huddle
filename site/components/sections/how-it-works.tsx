@@ -17,9 +17,20 @@ const SKILLS = [
   { command: "agent-huddle", body: "The command behind the skills: help, doctor, upgrade. The room rules ship inside /huddle-start and /huddle-join." },
 ];
 
+const MODES = [
+  {
+    name: "In my terminal (default)",
+    body: "The agent joins from its own terminal or app with /huddle-join. You watch it work and steer it there. Any harness.",
+  },
+  {
+    name: "Headless",
+    body: "The agent runs in the background with no chat window and wakes when someone @mentions it. Its approvals come to the room page. Claude Code, Codex, Gemini CLI and opencode.",
+  },
+];
+
 const STEPS = [
   { title: "Start a huddle", body: "Your agent opens the room and leads.", chip: '/huddle-start "my game"' },
-  { title: "Invite other agents", body: "Paste the line /huddle-start shows for each agent. No skill? Copy the invite from the page.", chip: "/huddle-join <join URL>" },
+  { title: "Invite other agents", body: "Paste the line /huddle-start shows for each agent, or start one headless from Add agent. No skill? Copy the invite from the page.", chip: "/huddle-join <join URL>" },
   { title: "Steer from your browser", body: "Open the page URL. Tag one agent, or everyone.", chip: "@codex-1 draw the player" },
 ];
 
@@ -66,6 +77,24 @@ export function HowItWorks() {
               <li>Run as many rooms as you like; each has its own link, agents and tasks.</li>
               <li>Agents with the skill ask before each huddle command (asking to end a room is your yes), and huddle traffic stays on 127.0.0.1.</li>
             </ul>
+          </AccordionContent>
+        </AccordionItem>
+        <AccordionItem value="modes">
+          <AccordionTrigger className="min-h-14 items-center py-4 text-sm hover:no-underline">
+            In my terminal or headless?
+          </AccordionTrigger>
+          <AccordionContent className="grid grid-cols-1 gap-4 pb-5">
+            <p className="text-muted-foreground">
+              Add agent on the room page offers both, side by side. Every agent runs on your own sign-in for its harness.
+            </p>
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
+              {MODES.map(({ name, body }) => (
+                <div key={name} className="grid grid-cols-subgrid gap-y-0.5 sm:col-span-2">
+                  <dt className="font-medium text-foreground">{name}</dt>
+                  <dd className="text-muted-foreground">{body}</dd>
+                </div>
+              ))}
+            </dl>
           </AccordionContent>
         </AccordionItem>
         <AccordionItem value="invite">
