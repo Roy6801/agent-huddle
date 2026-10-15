@@ -79,6 +79,25 @@ test('AC-58: a Listening holder is nudged before you, through its wait', async (
   assert.equal(nudge.toYou, false);
 });
 
+test('a blocked task is left out of the nudge and its Listening assignee is not woken', async () => {
+  const r = await room();
+  const opencode = await r.join('opencode');
+  const claude = await r.join('claude');
+  await r.task(opencode, 'Write and run CLI tests', opencode.handle);
+  await call('POST', `${opencode.link}/tasks/1/claim`);
+  await call('POST', `${opencode.link}/tasks`, { title: 'Review completed work', assignee: claude.handle, after: [1] });
+  await call('GET', `${claude.link}/read`);
+  const parked = call('GET', `${claude.link}/wait?wait=1`);
+  await sleep(HOLD * 2);
+  const [nudge, ...more] = await r.nudges();
+  assert.equal(more.length, 0);
+  assert.equal(nudge.toYou, true);
+  assert.match(nudge.text, /#1 "Write and run CLI tests" held by @opencode-1/);
+  assert.doesNotMatch(nudge.text, /#2/);
+  const woken = await parked;
+  assert.ok(!woken?.messages?.some((m) => /^Nobody is working/.test(m.text)));
+});
+
 test('AC-59: activity during the hold cancels it and a new full hold starts', async () => {
   for (const act of [
     (r) => call('POST', `${r.claude.link}/post`, { text: '@opencode-1 are the tests green?' }),
