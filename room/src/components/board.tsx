@@ -3,6 +3,7 @@ import { HeadlessBudgets } from "@/components/headless-budgets";
 import { PresenceTimers } from "@/components/presence-timers";
 import { RoomFolder } from "@/components/room-folder";
 import { RoundCap } from "@/components/round-cap";
+import { SettingsAccordion } from "@/components/settings-accordion";
 import { Tasks } from "@/components/tasks";
 import { Sidebar, SidebarContent, SidebarHeader, SidebarRail } from "@/components/ui/sidebar";
 import { useRoom, useSource } from "@/hooks/use-room";
@@ -66,7 +67,7 @@ function SharedFiles() {
   );
 }
 
-/** Right panel: the round cap and tasks, as in the demo's board, plus shared files. */
+/** Right panel: the round cap, collapsed settings and tasks, as in the demo's board, plus shared files. */
 export function Board() {
   return (
     <Sidebar side="right" collapsible="offcanvas" role="complementary" aria-label="Board">
@@ -75,9 +76,11 @@ export function Board() {
       </SidebarHeader>
       <SidebarContent className="gap-6 p-4">
         <RoundCap />
-        <HeadlessBudgets />
-        <PresenceTimers />
-        <RoomFolder />
+        <SettingsAccordion>
+          <HeadlessBudgets />
+          <PresenceTimers />
+          <RoomFolder />
+        </SettingsAccordion>
         <Tasks />
         <SharedFiles />
       </SidebarContent>
