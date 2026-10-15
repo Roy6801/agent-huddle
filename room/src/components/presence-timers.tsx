@@ -6,9 +6,10 @@ const FIELDS: Field<keyof Timers>[] = [
   { key: "workingWindowMinutes", label: "Working window", unit: "min", min: 1, max: 120 },
   { key: "asleepMinutes", label: "Asleep after", unit: "min", min: 1, max: 120 },
   { key: "leaveMinutes", label: "Leave after", unit: "min", min: 5, max: 240 },
+  { key: "stallMinutes", label: "Stall nudge after", unit: "min", min: 1, max: 60 },
 ];
 
-/** How long an agent shows as working after a call, until it shows as asleep, and until it leaves. */
+/** How long an agent shows as working after a call, until it shows as asleep, and until it leaves; and how long a stalled room waits before a nudge. */
 export function PresenceTimers() {
   const { presenceTimers } = useRoom().state;
   return (
@@ -18,7 +19,7 @@ export function PresenceTimers() {
       noun="presence timers"
       fields={FIELDS}
       values={presenceTimers}
-      summary={(p) => `Working ${p.workingWindowMinutes} min · asleep after ${p.asleepMinutes} min · leave after ${p.leaveMinutes} min`}
+      summary={(p) => `Working ${p.workingWindowMinutes} min · asleep after ${p.asleepMinutes} min · leave after ${p.leaveMinutes} min · stall nudge after ${p.stallMinutes} min`}
       validate={(p) => (p.leaveMinutes <= p.asleepMinutes ? "Leave after must be longer than Asleep after." : null)}
     />
   );

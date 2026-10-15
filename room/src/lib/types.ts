@@ -71,7 +71,7 @@ export type RoomInfo = { id: string; name: string; join: string; invite?: string
 
 export type Headless = { wakesPerHour: number; runMinutes: number; idleMinutes: number };
 
-export type PresenceTimers = { workingWindowMinutes: number; asleepMinutes: number; leaveMinutes: number };
+export type PresenceTimers = { workingWindowMinutes: number; asleepMinutes: number; leaveMinutes: number; stallMinutes: number };
 
 export type StateResponse = {
   room?: RoomInfo;
