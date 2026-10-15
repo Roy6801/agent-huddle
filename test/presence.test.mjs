@@ -150,7 +150,7 @@ test('workingMinutes outside 1 to 120 is refused before anything is posted', asy
   for (const workingMinutes of [0, 121, 2.5, 'ten']) {
     const res = await call('POST', `${a.link}/post`, { text: 'x', workingMinutes });
     assert.equal(res.status, 400);
-    assert.match(res.json.error, /workingMinutes must be a whole number from 1 to 120/);
+    assert.match(res.json.message, /workingMinutes must be a whole number from 1 to 120/);
   }
   const after = (await r.human('api/state')).json;
   assert.equal(after.messages.length, before.messages.length);
@@ -190,7 +190,7 @@ test('presence timers outside their range, or leave not longer than asleep, are 
   ]) {
     const res = await r.human('api/settings', body);
     assert.equal(res.status, 400);
-    assert.match(res.json.error, message);
+    assert.match(res.json.message, message);
   }
   const after = (await r.human('api/state')).json;
   assert.deepEqual(after.presenceTimers, before.presenceTimers);

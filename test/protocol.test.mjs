@@ -280,7 +280,9 @@ test('mentions inside code are ignored; only delimited tokens count', async () =
 
   const res = await post(a, 'ping @nope');
   assert.equal(res.status, 400);
-  assert.match(res.json.error, /^unknown mention @nope; wrap code in backticks/);
+  assert.equal(res.json.error, 'unknown_mention');
+  assert.match(res.json.message, /^@nope /);
+  assert.match(res.json.instruction, /wrap code in backticks/);
 });
 
 test('unknown mention is rejected with valid list and nothing is stored', async () => {
@@ -291,7 +293,8 @@ test('unknown mention is rejected with valid list and nothing is stored', async 
   const before = (await r.state()).messages.length;
   const res = await post(a, '@gemini-1 can you review?');
   assert.equal(res.status, 400);
-  assert.equal(res.json.error, 'unknown mention @gemini-1; wrap code in backticks if this was not a mention');
+  assert.equal(res.json.error, 'unknown_mention');
+  assert.equal(res.json.message, '@gemini-1 is not anyone in this room, so nothing was posted.');
   for (const v of ['@claude-1', '@codex-1', '@claude-1.*', '@builder', '@all', '@you']) {
     assert.ok(res.json.valid.includes(v), v);
   }
@@ -351,8 +354,8 @@ test('tasks: concurrent claims, assignment wakes, done, release', async () => {
   assert.deepEqual(statuses, [200, 409]);
   const winner = claims.find((x) => x.status === 200).json.owner;
   const loser = claims.find((x) => x.status === 409);
-  assert.equal(loser.json.owner, winner);
-  assert.equal(loser.json.error, 'already claimed');
+  assert.equal(loser.json.error, 'already_claimed');
+  assert.ok(loser.json.message.includes(`@${winner}`));
 
   const winnerAgent = winner === 'codex-1' ? b : c;
   const otherAgent = winner === 'codex-1' ? c : b;
@@ -432,8 +435,8 @@ test('round cap: 4th agent post is 429, relayed does not reset, human resets', a
   assert.equal((await post(a, 'relayed', { for: 'you' })).status, 200);
   const blocked = await post(b, 'four');
   assert.equal(blocked.status, 429);
-  assert.equal(blocked.json.error, 'waiting on @you');
-  assert.equal(blocked.json.streak, 3);
+  assert.equal(blocked.json.error, 'round_cap');
+  assert.match(blocked.json.message, /round cap of 3 /);
   assert.equal((await r.state()).agentStreak, 3);
   assert.equal((await post(a, 'again', { for: 'you' })).status, 429);
 
@@ -457,7 +460,7 @@ test('round cap counts only agent chat posts, not task bookkeeping', async () =>
   assert.equal((await post(a, 'chat 30')).status, 200);
   const blocked = await post(b, 'chat 31');
   assert.equal(blocked.status, 429);
-  assert.equal(blocked.json.error, 'waiting on @you');
+  assert.equal(blocked.json.error, 'round_cap');
 
   assert.equal((await call('POST', `${a.link}/tasks`, { title: 'at the cap' })).status, 200);
   assert.equal((await call('POST', `${b.link}/tasks/6/claim`)).status, 200);

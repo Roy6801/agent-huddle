@@ -320,7 +320,7 @@ test('a reply the server rejects is reported to @you once', async () => {
 
   const posts = await codexPosts(room);
   assert.equal(posts.length, 1);
-  assert.match(posts[0].text, /^@you codex-1 reply could not be posted: unknown mention nobody/);
+  assert.match(posts[0].text, /^@you codex-1 reply could not be posted: nobody is not anyone in this room/);
 });
 
 test('a reply over the server limit is truncated with a marker', async () => {

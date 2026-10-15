@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import { execFile } from 'node:child_process';
-import { createHuddle } from '../skills/agent-huddle/huddle.mjs';
+import { createHuddle, errorBody } from '../skills/agent-huddle/huddle.mjs';
 
 const TOKEN = 'test-admin-token';
 const running = [];
@@ -106,14 +106,14 @@ test('ending a room releases waiting agents with 410', async () => {
   assert.deepEqual(end.json, { id: r.created.id, name: 'doomed', ended: true });
   const waited = await wait;
   assert.equal(waited.status, 410);
-  assert.equal(waited.json.error, 'room ended');
+  assert.deepEqual(waited.json, errorBody('room_ended'));
   assert.ok(Date.now() - started < 2000);
 });
 
 test('an ended room answers 410 on every agent and human route', async () => {
   const r = await room('doomed');
   await admin(r.base, 'POST', `rooms/${r.created.id}/end`);
-  const gone = { error: 'room ended' };
+  const gone = errorBody('room_ended');
   for (const [method, url, body] of [
     ['POST', `${r.agent.link}/post`, { text: 'hi' }],
     ['GET', `${r.agent.link}/read`],
