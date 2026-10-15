@@ -103,7 +103,7 @@ test('ending a room releases waiting agents with 410', async () => {
   await new Promise((resolve) => setTimeout(resolve, 50));
   const started = Date.now();
   const end = await admin(r.base, 'POST', `rooms/${r.created.id}/end`);
-  assert.deepEqual(end.json, { id: r.created.id, name: 'doomed', ended: true, transcript: null, historyError: null });
+  assert.deepEqual(end.json, { id: r.created.id, name: 'doomed', ended: true, transcript: null, history: null, historyError: null });
   const waited = await wait;
   assert.equal(waited.status, 410);
   assert.deepEqual(waited.json, errorBody('room_ended'));

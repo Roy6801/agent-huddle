@@ -178,20 +178,28 @@ export function errorBody(code, p = {}) {
 const clock = (iso) => new Date(iso).toTimeString().slice(0, 5);
 const stamp = (iso) => `${new Date(iso).toLocaleDateString('sv')} ${clock(iso)}`;
 
-// The readable end-of-room transcript, built from the history lines so messages the room dropped are kept.
-function transcriptMarkdown(lines, endedAt) {
-  const [room] = lines;
-  const latest = (type, key) => [...new Map(lines.filter((l) => l.type === type).map((l) => [key(l), l])).values()];
-  const agents = latest('agent', (l) => l.handle).map((a) => `- ${a.handle} (${a.harness}${a.role ? `, ${a.role}` : ''})`);
-  const tasks = latest('task', (l) => l.task.id).map(({ task: t }) =>
+// Every line of a history file that parses; a line cut short by a crash mid-write is skipped.
+const historyLines = (file) =>
+  fs.readFileSync(file, 'utf8').split('\n').flatMap((l) => {
+    try {
+      return [JSON.parse(l)];
+    } catch {
+      return [];
+    }
+  });
+
+// The readable end-of-room transcript: the room's final state, and every message from history, even those the room dropped.
+function transcriptMarkdown(s, lines, endedAt) {
+  const agents = [...s.agents.values()].map((a) => `- ${a.handle} (${a.harness}${a.role ? `, ${a.role}` : ''})`);
+  const tasks = s.tasks.map((t) =>
     `- #${t.id} ${t.title} (${t.status}${t.owner ? ` by ${t.owner}` : ''})${t.note ? `: ${t.note.replace(/\s*\n\s*/g, ' ')}` : ''}`);
-  const messages = lines.filter((l) => l.type === 'message').map((m) => {
+  const messages = lines.filter((l) => l?.type === 'message').map((m) => {
     const tags = [m.toYou && '(for you)', m.files.length && `[files: ${m.files.map((f) => f.name).join(', ')}]`].filter(Boolean);
     return `- ${clock(m.at)} ${m.from}: ${[m.text.replace(/\n/g, '\n    '), ...tags].join(' ')}`;
   });
   return [
-    `# ${room.name}`, '',
-    `Folder: ${room.folder ?? 'none'} · Started ${stamp(room.createdAt)} · Ended ${stamp(endedAt)}`, '',
+    `# ${s.name}`, '',
+    `Folder: ${s.folder ?? 'none'} · Started ${stamp(s.createdAt)} · Ended ${stamp(endedAt)}`, '',
     '## Agents', '', ...agents, '',
     '## Tasks', '', ...tasks, '',
     '## Messages', '', ...messages, '',
@@ -206,6 +214,8 @@ class HttpError extends Error {
     this.body = { ...body, ...extra };
   }
 }
+
+const roomEnded = ({ transcript }) => new HttpError('room_ended', { transcript }, transcript ? { transcript } : undefined);
 
 const newToken = () => crypto.randomBytes(16).toString('base64url');
 
@@ -472,7 +482,7 @@ export function createHuddle(opts = {}) {
   // One JSON line per change, appended as it happens. Only the short id is written: the full one is in every link.
   function historyName(s) {
     const slug = s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40).replace(/^-+|-+$/g, '') || 'room';
-    return `${s.createdAt.slice(0, 10)}-${slug}-${s.id.slice(0, 8)}.jsonl`;
+    return `${new Date(s.createdAt).toLocaleDateString('sv')}-${slug}-${s.id.slice(0, 8)}.jsonl`;
   }
 
   function historyOff(s, err) {
@@ -510,34 +520,33 @@ export function createHuddle(opts = {}) {
   function writeTranscript(s) {
     if (!s.history) return;
     const at = new Date().toISOString();
+    const file = s.history.file.replace(/\.jsonl$/, '.md');
     try {
-      const lines = fs.readFileSync(s.history.file, 'utf8').trimEnd().split('\n').map((l) => JSON.parse(l));
-      const file = s.history.file.replace(/\.jsonl$/, '.md');
-      fs.writeFileSync(file, transcriptMarkdown(lines, at), { mode: 0o600 });
+      fs.writeFileSync(file, transcriptMarkdown(s, historyLines(s.history.file), at), { mode: 0o600 });
       s.transcript = file;
-      historyLine(s, { type: 'end', at, transcript: file });
     } catch (err) {
       s.historyError = err.code ?? err.message;
     }
+    historyLine(s, { type: 'end', at, transcript: s.transcript });
   }
 
   function endRoom(s) {
     s.ended = true;
-    writeTranscript(s);
-    const gone = { transcript: s.transcript };
     for (const a of s.asks) {
-      if (a.status === 'open') a.status = 'cancelled';
+      if (a.status === 'open') historyAsk(s, Object.assign(a, { status: 'cancelled' }));
     }
+    writeTranscript(s);
+    const gone = roomEnded(s);
     for (const agent of s.agents.values()) {
       for (const w of agent.waiters) {
         clearTimeout(w.timer);
-        sendError(w.res, 'room_ended', gone);
+        sendJson(w.res, gone.status, gone.body);
       }
       agent.waiters.clear();
     }
     for (const w of s.askWaiters) {
       clearTimeout(w.timer);
-      sendError(w.res, 'room_ended', gone);
+      sendJson(w.res, gone.status, gone.body);
     }
     s.askWaiters.clear();
     s.files.clear();
@@ -1001,7 +1010,7 @@ export function createHuddle(opts = {}) {
     if (!s.tasks.length || s.tasks.some((t) => t.status !== 'done')) return;
     const lead = s.lead && s.agents.get(s.lead)?.status !== 'left' ? [s.lead] : [];
     const lines = s.tasks.map((t) => `#${t.id} "${t.title}" by ${t.owner}: ${t.note ?? 'no note'}`);
-    system(s, `All ${s.tasks.length} tasks are done:\n${lines.join('\n')}`, { toYou: true, mentions: lead, to: lead });
+    system(s, `${s.tasks.length === 1 ? 'The only task is' : `All ${s.tasks.length} tasks are`} done:\n${lines.join('\n')}`, { toYou: true, mentions: lead, to: lead });
     const live = liveAgents(s).map((a) => a.handle);
     if (live.length) system(s, OFF_SHIFT, { to: live, offShift: true });
   }
@@ -1237,7 +1246,7 @@ export function createHuddle(opts = {}) {
       });
       req.on('end', () => {
         if (failed) return;
-        if (s.ended) return reject(new HttpError('room_ended', { transcript: s.transcript }));
+        if (s.ended) return reject(roomEnded(s));
         if (!fits(size)) return reject(tooBig(size, true));
         const f = { id: newToken(), name, size, type, from, at: new Date().toISOString(), data: Buffer.concat(chunks) };
         s.files.set(f.id, f);
@@ -1396,7 +1405,7 @@ How the room works:
       const s = rooms.get(parts[2]);
       if (!s || s.ended) throw new HttpError('unknown_room');
       endRoom(s);
-      return sendJson(res, 200, { id: s.id, name: s.name, ended: true, transcript: s.transcript, historyError: s.historyError });
+      return sendJson(res, 200, { id: s.id, name: s.name, ended: true, transcript: s.transcript, history: s.history?.file ?? null, historyError: s.historyError });
     }
     if (method === 'POST' && parts.length === 2 && parts[1] === 'stop-if-empty') {
       const live = liveRooms().length;
@@ -1456,12 +1465,12 @@ How the room works:
 
     if (rest.length === 0) {
       if (method !== 'GET') return notFound();
-      if (s.ended) return sendText(res, 410, errorBody('room_ended', { transcript: s.transcript }).message);
+      if (s.ended) return sendText(res, 410, roomEnded(s).message);
       return sendText(res, 200, roomProtocol(s, base));
     }
     if (rest[0] === 'join' && rest.length === 1) {
       if (method !== 'POST') return notFound();
-      if (s.ended) throw new HttpError('room_ended', { transcript: s.transcript });
+      if (s.ended) throw roomEnded(s);
       const body = await readBody(req);
       return sendJson(res, 200, joinAgent(s, body, base));
     }
@@ -1537,7 +1546,7 @@ How the room works:
   }
 
   async function agentRoute(s, req, res, method, url, base, token, key) {
-    if (s.ended) throw new HttpError('room_ended', { transcript: s.transcript });
+    if (s.ended) throw roomEnded(s);
     const agent = s.byToken.get(token);
     if (!agent) throw new HttpError('unknown_token', { join: `${base}/s/${s.id}` });
     const upload = method === 'POST' && key === 'files';
@@ -1649,7 +1658,7 @@ How the room works:
 
   async function humanRoute(s, req, res, method, url, base, token, key) {
     if (token !== s.humanToken) throw new HttpError('wrong_page_link');
-    if (s.ended && !(method === 'GET' && key === '')) throw new HttpError('room_ended', { transcript: s.transcript });
+    if (s.ended && !(method === 'GET' && key === '')) throw roomEnded(s);
     const upload = method === 'POST' && key === 'api/files';
     const body = method === 'POST' && !upload ? await readBody(req, /^api\/(tasks(\/\d+)?|brief)$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
     s.humanSeen = Date.now();
@@ -3099,15 +3108,15 @@ function formatRoomList(rooms) {
   return rooms.map((s) => `  ${s.name}  ${id8(s)}  ${s.agents.active}/${s.agents.total} agents`).join('\n');
 }
 
-function formatTable(rooms) {
-  const rows = [['NAME', 'ID', 'AGENTS', 'AGE', 'PAGE']].concat(
-    rooms.map((s) => [s.name, id8(s), `${s.agents.active}/${s.agents.total}`, formatAge(s.createdAt), s.page]),
-  );
+function columns(rows) {
   const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => r[i].length)));
-  const line = (r) => r.map((cell, i) => cell.padEnd(widths[i])).join('  ').trimEnd();
-  const out = [line(rows[0])];
-  rooms.forEach((s, i) => out.push(line(rows[i + 1]), `    join: ${s.join}`));
-  return out.join('\n');
+  return rows.map((r) => r.map((cell, i) => cell.padEnd(widths[i])).join('  ').trimEnd());
+}
+
+function formatTable(rooms) {
+  const rows = rooms.map((s) => [s.name, id8(s), `${s.agents.active}/${s.agents.total}`, formatAge(s.createdAt), s.page]);
+  const [head, ...lines] = columns([['NAME', 'ID', 'AGENTS', 'AGE', 'PAGE'], ...rows]);
+  return [head, ...rooms.flatMap((s, i) => [lines[i], `    join: ${s.join}`])].join('\n');
 }
 
 // A room by id, id prefix, name, name prefix, or any of its URLs (join, page, agent link).
@@ -3135,19 +3144,13 @@ async function listRooms(args) {
 
 const tilde = (p) => (p.startsWith(os.homedir() + path.sep) ? `~${p.slice(os.homedir().length)}` : p);
 
-// Past rooms from <home>/history, newest first. Lines that do not parse (a crash mid-write) are skipped.
+// Past rooms from <home>/history, newest first.
 function listHistory() {
   const dir = path.join(resolveHome(), 'history');
   const rooms = [];
   for (const name of fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')) : []) {
     const file = path.join(dir, name);
-    const lines = fs.readFileSync(file, 'utf8').split('\n').flatMap((l) => {
-      try {
-        return [JSON.parse(l)];
-      } catch {
-        return [];
-      }
-    });
+    const lines = historyLines(file);
     const room = lines.find((l) => l?.type === 'room' && l.createdAt);
     const end = lines.findLast((l) => l?.type === 'end');
     if (room) rooms.push({ room, end, file: end?.transcript && fs.existsSync(end.transcript) ? end.transcript : file });
@@ -3162,8 +3165,7 @@ function listHistory() {
     end ? `ended ${day(end.at) === day(room.createdAt) ? clock(end.at) : stamp(end.at)}` : 'not ended',
     tilde(file),
   ]);
-  const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => r[i].length)));
-  console.log(rows.map((r) => `  ${r.map((cell, i) => cell.padEnd(widths[i])).join('  ').trimEnd()}`).join('\n'));
+  console.log(columns(rows).map((l) => `  ${l}`).join('\n'));
 }
 
 function openBrowser(url) {
@@ -3245,9 +3247,10 @@ async function endRoom(args) {
     }
   }
   for (const s of targets) {
-    const { transcript, historyError } = await admin(ctx, 'POST', `rooms/${s.id}/end`);
+    const { transcript, history, historyError } = await admin(ctx, 'POST', `rooms/${s.id}/end`);
     console.log(`Ended "${s.name}" (${id8(s)})`);
-    console.log(transcript ? `Transcript: ${transcript}` : `No transcript written: history is not being saved${historyError ? ` (${historyError})` : ''}.`);
+    const why = history ? `${historyError}; history is at ${history}` : `history is not being saved${historyError ? ` (${historyError})` : ''}.`;
+    console.log(transcript ? `Transcript: ${transcript}` : `No transcript written: ${why}`);
   }
   if (args.includes('--keep-server')) return;
   const result = await admin(ctx, 'POST', 'stop-if-empty');
