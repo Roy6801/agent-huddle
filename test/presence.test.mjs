@@ -185,6 +185,8 @@ test('presence timers outside their range, or leave not longer than asleep, are 
     [{ workingWindowMinutes: 'ten' }, /workingWindowMinutes must be a whole number from 1 to 120/],
     [{ asleepMinutes: 121 }, /asleepMinutes must be a whole number from 1 to 120/],
     [{ leaveMinutes: 4 }, /leaveMinutes must be a whole number from 5 to 240/],
+    [{ stallMinutes: 0 }, /stallMinutes must be a whole number from 1 to 60/],
+    [{ stallMinutes: 61 }, /stallMinutes must be a whole number from 1 to 60/],
     [{ leaveMinutes: 10 }, /leaveMinutes must be longer than asleepMinutes/],
     [{ workingWindowMinutes: 30, asleepMinutes: 20 }, /leaveMinutes must be longer than asleepMinutes/],
   ]) {

@@ -8,7 +8,7 @@ afterEach(async () => {
 });
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const HOLD = 200;
+const HOLD = 400;
 // Agents fall asleep 60 ms after their last call, well inside one hold.
 const TIMERS = { activeMs: 30, asleepMs: 60, stallMs: HOLD };
 
@@ -24,7 +24,7 @@ async function room(opts = {}) {
   const created = await call('POST', `http://127.0.0.1:${port}/new`, { name: 'stall' });
   const join = (harness) => call('POST', `${created.join}/join`, { harness });
   const state = () => call('GET', `${created.page}/api/state`);
-  const nudges = async () => (await state()).messages.filter((m) => m.from === 'system' && /^Nobody is working/.test(m.text));
+  const nudges = async () => (await state()).messages.filter((m) => m.from === 'system' && /^(Nobody is working|The room is paused)/.test(m.text));
   const task = (agent, title, assignee) => call('POST', `${agent ? agent.link : `${created.page}/api`}/tasks`, { title, ...(assignee && { assignee }) });
   return { created, join, state, nudges, task };
 }
@@ -107,4 +107,36 @@ test('AC-60: nudges back off, go quiet, and start over after a change', async ()
   assert.equal(after.length, 4);
   assert.doesNotMatch(after.at(-1).text, /#1 /);
   assert.match(after.at(-1).text, /#2 "Review completed work"/);
+});
+
+// Waits until the deadline, like an agent's wait loop; waits are not activity.
+async function waitLoop(agent, ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) await call('GET', `${agent.link}/wait?wait=1`);
+}
+
+test('AC-60: a Listening holder woken by nudges still gets the backoff, and the last nudge goes to you', async () => {
+  const r = await room({ stallBackoffMs: [HOLD * 2, HOLD * 3] });
+  const codex = await r.join('codex');
+  const opencode = await r.join('opencode');
+  await r.task(codex, 'Write and run CLI tests', opencode.handle);
+  await call('POST', `${opencode.link}/tasks/1/claim`);
+  await waitLoop(opencode, HOLD * 9);
+  const sent = await r.nudges();
+  assert.equal(sent.length, 3);
+  assert.deepEqual(sent.map((m) => m.toYou), [false, false, true]);
+  assert.deepEqual(sent[0].to, ['opencode-1']);
+  assert.match(sent[2].text, /#1 "Write and run CLI tests" held by @opencode-1/);
+});
+
+test('while the room is paused at the round cap, only you are nudged', async () => {
+  const r = await stalledRoom();
+  await call('POST', `${r.created.page}/api/settings`, { roundCap: 1 });
+  await call('POST', `${r.claude.link}/post`, { text: 'one post reaches the cap' });
+  await waitLoop(r.opencode, HOLD * 2.5);
+  const [nudge, ...more] = await r.nudges();
+  assert.equal(more.length, 0);
+  assert.equal(nudge.toYou, true);
+  assert.deepEqual(nudge.to, []);
+  assert.match(nudge.text, /^The room is paused at the round cap and tasks are pending: #1 .*; #2 .*Post to let agents continue\.$/);
 });

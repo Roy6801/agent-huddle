@@ -384,7 +384,6 @@ export function createHuddle(opts = {}) {
       roundCap: cap,
       headless: { wakesPerHour: 20, runMinutes: 10, idleMinutes: 60 },
       timers: { workingMs: activeMs, asleepMs, leaveMs: idleMs, stallMs },
-      lastActivity: Date.now(),
       stall: null,
       folder,
       humanSeen: 0,
@@ -441,7 +440,6 @@ export function createHuddle(opts = {}) {
   }
 
   function addMessage(s, from, text, extra = {}) {
-    if (!extra.stall) markActivity(s);
     const m = {
       id: s.nextMsgId++,
       at: new Date().toISOString(),
@@ -626,9 +624,7 @@ export function createHuddle(opts = {}) {
     const released = [];
     for (const t of s.tasks) {
       if (t.status === 'claimed' && t.owner === agent.handle) {
-        t.status = 'open';
-        t.owner = null;
-        t.since = new Date().toISOString();
+        moveTask(t, 'open', null);
         released.push(t.id);
       }
     }
@@ -789,6 +785,9 @@ export function createHuddle(opts = {}) {
     return task;
   }
 
+  // since: when the task last changed status, for the stall nudge.
+  const moveTask = (task, status, owner) => Object.assign(task, { status, owner, since: new Date().toISOString() });
+
   function getTask(s, n) {
     const task = s.tasks[Number(n) - 1];
     if (!task) throw new HttpError('unknown_task', { n });
@@ -821,17 +820,13 @@ export function createHuddle(opts = {}) {
       if (task.status === 'done') throw new HttpError('task_done', { n });
       if (task.owner === h) return task;
       if (task.owner) throw new HttpError('already_claimed', { n, owner: task.owner });
-      task.status = 'claimed';
-      task.since = new Date().toISOString();
-      task.owner = h;
+      moveTask(task, 'claimed', h);
       narrate(s, `${h} claimed task #${task.id}`);
     } else if (action === 'done') {
       if (task.status === 'done') throw new HttpError('task_done', { n });
       if (task.owner && task.owner !== h) throw new HttpError('already_claimed', { n, owner: task.owner });
       const note = body.note === undefined || body.note === null ? null : cleanText(body.note, MAX_TEXT, 'note');
-      task.status = 'done';
-      task.since = new Date().toISOString();
-      task.owner = h;
+      moveTask(task, 'done', h);
       task.note = note;
       narrate(s, `${h} finished task #${task.id} "${task.title}"`);
       if (task.createdBy !== h) {
@@ -851,9 +846,7 @@ export function createHuddle(opts = {}) {
       if (task.status !== 'claimed' || task.owner !== h) {
         throw new HttpError('not_owner', { n, owner: task.owner === h ? null : task.owner });
       }
-      task.status = 'open';
-      task.since = new Date().toISOString();
-      task.owner = null;
+      moveTask(task, 'open', null);
       narrate(s, `${h} released task #${task.id}`);
     }
     return task;
@@ -1002,7 +995,6 @@ export function createHuddle(opts = {}) {
         if (!fits(size)) return reject(tooBig(size, true));
         const f = { id: newToken(), name, size, type, from, at: new Date().toISOString(), data: Buffer.concat(chunks) };
         s.files.set(f.id, f);
-        markActivity(s);
         s.fileBytes += size;
         resolve(f);
       });
@@ -1093,6 +1085,7 @@ Endpoints (all relative to your link):
 
 Mentions: @handle, @handle.* (it and its children), @role, @all, @you.
 An unknown mention is rejected with the list of valid ones.
+A system stall nudge naming you means a task of yours is pending and nobody is working: pick it up, or post what blocks it.
 A refused call returns {"error":"<code>","message":"...","instruction":"..."}: follow the instruction before retrying.
 
 Files: an upload returns {id, name, size, type, url} and posts nothing by itself;
@@ -1232,6 +1225,7 @@ How the room works:
     const harness = sanitizeHarness(body.harness);
     if (!harness) throw new HttpError('harness_required');
     if (RESERVED_ROLES.has(harness)) throw new HttpError('reserved_harness');
+    markActivity(s);
     const becomesLead = typeof body.lead === 'string' && s.lead === null && body.lead === s.leadKey;
     const role = cleanRole(body.role, false) ?? (becomesLead ? 'lead' : null);
     const n = (s.counters.get(harness) ?? 0) + 1;
@@ -1269,6 +1263,7 @@ How the room works:
     const body = method === 'POST' && !upload ? await readBody(req, /^tasks(\/\d+)?$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
     agent.lastSeen = Date.now();
     agent.nudgedAt = 0;
+    if (method === 'POST') markActivity(s);
     const resting = method === 'GET' && key === 'me' && url.searchParams.get('rest') === '1';
     agent.restingAt = resting ? agent.lastSeen : 0;
     if (!resting && !(method === 'GET' && key === 'wait')) agent.lastCallAt = agent.lastSeen;
@@ -1397,6 +1392,7 @@ How the room works:
     }
     const acted = (status, value) => {
       s.agentStreak = 0;
+      markActivity(s);
       return sendJson(res, status, value);
     };
     if (method === 'POST' && key === 'api/post') return acted(200, postFromHuman(s, body));
@@ -1416,13 +1412,11 @@ How the room works:
     throw new HttpError('not_found', { join: `${base}/s/${s.id}` });
   }
 
-  // ---- lifecycle ----
-
   // ---- steward: stall check ----
 
-  // Any post, task change, ask, upload, join, leave or action of yours restarts the hold; waits and reads do not.
+  // Agent POSTs (posts, task changes, asks, uploads, spawns, leaves), joins and your actions restart the hold;
+  // waits, reads and the steward's own notices do not.
   function markActivity(s) {
-    s.lastActivity = Date.now();
     s.stall = null;
   }
 
@@ -1433,37 +1427,41 @@ How the room works:
     return `#${t.id} "${t.title}" ${holder} since ${clock(t.since)}`;
   }
 
-  // Tasks are pending and no agent is Working: after the hold, nudge the Listening holders, else you.
-  // Repeat after each backoff, then stay quiet until something changes.
+  // Tasks are pending and no agent is Working: after the hold, nudge the Listening holders about their tasks and
+  // you about the rest; the last backoff, and any nudge while paused at the round cap, goes to you with every task.
+  // A Working window (one the nudge itself woke, say) pauses the cycle; only activity restarts it.
   function checkStall(s, now) {
     const pending = s.tasks.filter((t) => t.status !== 'done');
-    if (!pending.length || [...s.agents.values()].some((a) => presence(s, a) === 'working')) {
+    if (!pending.length) {
       s.stall = null;
       return;
     }
+    if ([...s.agents.values()].some((a) => presence(s, a) === 'working')) return;
     s.stall ??= { since: now, nudges: 0, last: 0 };
-    const { nudges, last } = s.stall;
-    if (nudges > stallBackoffMs.length) return;
-    if (now < (nudges ? last + stallBackoffMs[nudges - 1] : Math.max(s.stall.since, s.lastActivity) + s.timers.stallMs)) return;
+    const { since, nudges, last } = s.stall;
+    if (nudges > stallBackoffMs.length || now < (nudges ? last + stallBackoffMs[nudges - 1] : since + s.timers.stallMs)) return;
     s.stall.nudges++;
     s.stall.last = now;
     const paused = s.roundCap !== null && s.agentStreak >= s.roundCap;
     const holder = (t) => t.owner ?? t.assignee;
-    const listening = paused ? [] : [...new Set(pending.map(holder))].filter((h) => h && s.agents.has(h) && presence(s, s.agents.get(h)) === 'listening');
-    if (listening.length) {
-      const mine = pending.filter((t) => listening.includes(holder(t)));
-      system(s, `Nobody is working and these tasks are waiting on you: ${mine.map(stallLine).join('; ')}. Pick one up, or say what blocks it.`, {
+    const listening = paused || nudges === stallBackoffMs.length ? [] : [...new Set(pending.map(holder))].filter((h) => h && s.agents.has(h) && presence(s, s.agents.get(h)) === 'listening');
+    const theirs = pending.filter((t) => listening.includes(holder(t)));
+    const rest = pending.filter((t) => !listening.includes(holder(t)));
+    if (theirs.length) {
+      system(s, `Nobody is working and these tasks are waiting on you: ${theirs.map(stallLine).join('; ')}. Pick one up, or say what blocks it.`, {
         mentions: listening,
         to: listening,
-        stall: true,
-      });
-    } else {
-      system(s, `Nobody is working and tasks are pending: ${pending.map(stallLine).join('; ')}. Nudge their agents in their own terminals, or reassign them.`, {
-        toYou: true,
-        stall: true,
       });
     }
+    if (rest.length) {
+      const tasks = rest.map(stallLine).join('; ');
+      system(s, paused
+        ? `The room is paused at the round cap and tasks are pending: ${tasks}. Post to let agents continue.`
+        : `Nobody is working and tasks are pending: ${tasks}. Nudge their agents in their own terminals, or post to the room.`, { toYou: true });
+    }
   }
+
+  // ---- lifecycle ----
 
   function sweep() {
     const now = Date.now();

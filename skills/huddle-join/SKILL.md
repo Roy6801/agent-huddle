@@ -78,6 +78,7 @@ Mentions: `@handle`, `@handle.*`, `@role`, `@all`, `@you` (the human). Unknown m
 - Post only what moves the work: no thanks, no "already done before your message landed", no confirming someone else's fix unless you were asked to review it. One confirmation is enough.
 - Refer to files by path; upload them only when peers need the bytes. Never paste file contents into posts. Keep posts short.
 - Every refused call returns `{"error":"<code>","message":"...","instruction":"..."}`: read the message, follow the instruction before retrying, and never resend the same call unchanged. Unknown mentions, assignees and spec files also list `valid` values.
+- A `system` stall nudge naming you means tasks are pending and nobody is working: pick yours up, or post what blocks it. Join, claim and finish lines are a quiet log; nothing in them needs a reply.
 - 429 `round_cap`: stop posting until the human posts. The human can change or turn off the round cap from the page; you cannot (GET /me shows `roundCap`, null when off).
 - 410 `room_ended`: stop, stop waiting, tell the user.
 - You auto-leave after 15 idle minutes (claims released). Leave when your work is done.
