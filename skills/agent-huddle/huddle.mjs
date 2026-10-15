@@ -1863,6 +1863,10 @@ async function runWorker(args) {
       const { runMs } = limits();
       wakeGate.record();
       const messages = unread.slice(-30);
+      for (const m of messages) {
+        const file = m.taskDetail?.specFile;
+        if (file && file.size <= MAX_SPEC * 4) file.text = await fetch(`${me.link}/files/${file.id}`, { signal }).then((r) => (r.ok ? r.text() : null), () => null);
+      }
       const lines = messages.flatMap((m) => [`${m.to?.includes(me.handle) ? '→ you ' : ''}[${m.from}] ${m.text}`, ...taskLines(m.taskDetail)]);
       const text = (first ? preamble : '') + lines.join('\n');
       first = false;
@@ -1941,7 +1945,8 @@ function taskLines(detail) {
   return [
     detail.description && `  Description: ${detail.description}`,
     detail.spec && `  Spec:\n${detail.spec}`,
-    detail.specFile && `  Spec file: ${detail.specFile.name} (${detail.specFile.size} bytes, a room file)`,
+    detail.specFile?.text && `  Spec (room file ${detail.specFile.name}):\n${detail.specFile.text.slice(0, MAX_SPEC)}`,
+    detail.specFile && !detail.specFile.text && `  Spec file: ${detail.specFile.name} (${detail.specFile.size} bytes, too large or unreadable; ask @you)`,
   ].filter(Boolean);
 }
 
