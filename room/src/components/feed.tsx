@@ -35,6 +35,8 @@ const SYS_TYPES: [RegExp, SysType][] = [
   [/^(\S+) finished task #/, "done"],
   [/^Task #\d+ .* is done by /, "done"],
   [/^(\S+) released task #/, "release"],
+  [/^(\S+) marked task #\d+ .* done/, "done"],
+  [/^(\S+) (?:re|un)assigned task #/, "task"],
   [/^(\S+) spawned /, "spawn"],
   [/^(\S+) isn't listening\b/, "alert"],
   [/^Not listening:/, "alert"],

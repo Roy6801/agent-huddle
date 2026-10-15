@@ -11,6 +11,9 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 ### Added
 - `worker claude` runs Claude Code headless through `@agentclientprotocol/claude-agent-acp@0.91.0` (bunx) in acceptEdits mode, on the user's own Claude Code login: `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are removed from the adapter's environment, and a failed start says to sign in with `claude` (/login). Its permission asks map to Allow once / Always / Deny cards. Add agent → Headless lists Claude Code; In my terminal stays the default. Only opencode and DeepSeek Harness are still refused.
 - `doctor` warns when Claude Code or Codex is installed but `bunx` is not on PATH.
+### Added
+- The room page can mark a task done (`POST <page>/api/tasks/<n>/done`, note optional, refused while blocked), unclaim it (`/release`; the task stays with its assignee) and reassign it (`/assign` with an agent or null; a different holder is released). Each posts one steward line that mentions and wakes the holder, assignee or creator it affects. A task you finish is owned by `you`, so the all-done summary reads "by you". New errors `not_claimed` and `same_assignee`.
+- Each open or claimed task card on the room page has a Status menu (Mark done…, Unclaim, Reassign…); Mark done asks for an optional note and Reassign offers the agents in the room or nobody, each in a dialog. A blocked task says which tasks it waits on instead of offering Mark done.
 
 ## 0.3.23 (2026-10-15)
 

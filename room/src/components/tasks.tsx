@@ -1,4 +1,15 @@
-import { CircleCheckIcon, CircleDashedIcon, CircleDotIcon, CopyIcon, DownloadIcon, LockIcon, PlusIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  CircleCheckIcon,
+  CircleDashedIcon,
+  CircleDotIcon,
+  CopyIcon,
+  DownloadIcon,
+  LockIcon,
+  PlusIcon,
+  UndoIcon,
+  UserRoundIcon,
+} from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { CopyButton } from "@/components/copy-button";
@@ -9,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
@@ -389,34 +401,183 @@ function ReopenTask({ task, onClose }: { task: Task; onClose: () => void }) {
   );
 }
 
-/** Edit and Reopen live in a dialog; a done task cannot be edited, so it only offers Reopen. */
+function FinishTask({ task, onClose }: { task: Task; onClose: () => void }) {
+  const [note, setNote] = useState("");
+  const { error, send } = usePostTask(`/api/tasks/${task.id}/done`, onClose);
+  const id = useId();
+
+  return (
+    <TaskForm
+      id={id}
+      label={`Mark task #${task.id} done`}
+      submitLabel="Mark done"
+      error={error}
+      onSubmit={() => send(note.trim() ? { note: note.trim() } : {})}
+      onClose={onClose}
+    >
+      <div className="grid gap-1.5">
+        <label htmlFor={`${id}-note`} className="text-xs font-medium text-muted-foreground">
+          Done note (optional)
+        </label>
+        <Textarea
+          id={`${id}-note`}
+          autoFocus
+          aria-describedby={[`${id}-note-count`, error ? `${id}-error` : ""].filter(Boolean).join(" ")}
+          value={note}
+          rows={3}
+          placeholder="What was done, or why it is closed"
+          onChange={(e) => setNote(e.target.value)}
+          className="font-normal text-foreground"
+        />
+        <Count id={`${id}-note-count`} text={note} max={MAX_REASON} />
+      </div>
+    </TaskForm>
+  );
+}
+
+function ReassignTask({ task, onClose }: { task: Task; onClose: () => void }) {
+  const { live } = useRoom();
+  const [assignee, setAssignee] = useState(task.owner ?? task.assignee ?? "");
+  const { error, send } = usePostTask(`/api/tasks/${task.id}/assign`, onClose);
+  const id = useId();
+  const handles = live.map((a) => a.handle);
+
+  return (
+    <TaskForm
+      id={id}
+      label={`Reassign task #${task.id}`}
+      submitLabel="Reassign"
+      error={error}
+      onSubmit={() => send({ assignee: assignee || null })}
+      onClose={onClose}
+    >
+      <div className="grid gap-1.5">
+        <label htmlFor={`${id}-assignee`} className="text-xs font-medium text-muted-foreground">
+          Assign to
+        </label>
+        <NativeSelect
+          id={`${id}-assignee`}
+          autoFocus
+          aria-describedby={error ? `${id}-error` : undefined}
+          value={handles.includes(assignee) ? assignee : ""}
+          onChange={(e) => setAssignee(e.target.value)}
+          className="w-full font-normal text-foreground"
+        >
+          <NativeSelectOption value="">Nobody</NativeSelectOption>
+          {handles.map((h) => (
+            <NativeSelectOption key={h} value={h}>
+              {h}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </div>
+    </TaskForm>
+  );
+}
+
+type Mode = "edit" | "reopen" | "done" | "reassign";
+
+const DIALOG: Record<Mode, { title: (n: number) => string; describe: (t: Task) => string }> = {
+  edit: { title: (n) => `Edit task #${n}`, describe: () => "The assignee or owner is told what changed." },
+  reopen: { title: (n) => `Reopen task #${n}`, describe: () => "The owner is told why it is open again." },
+  done: {
+    title: (n) => `Mark task #${n} done`,
+    describe: (t) => `It counts as done by you.${t.owner ? ` @${t.owner} holds it and is told.` : t.assignee ? ` @${t.assignee} is told.` : ""}`,
+  },
+  reassign: {
+    title: (n) => `Reassign task #${n}`,
+    describe: (t) =>
+      t.owner
+        ? `@${t.owner} holds it. Moving it to someone else releases it and tells them; the new assignee is woken with the task.`
+        : "The new assignee is woken with the task.",
+  },
+};
+
+/** Edit, Reopen and the status actions open in one dialog; a done task cannot be edited, so it only offers Reopen. */
 function TaskActions({ task }: { task: Task }) {
   const done = task.status === "done";
   const [open, setOpen] = useState(false);
-  const verb = done ? "Reopen" : "Edit";
+  const [mode, setMode] = useState<Mode>("edit");
+  const status = useRef<HTMLButtonElement>(null);
+  const edit = useRef<HTMLButtonElement>(null);
+  const release = usePostTask(`/api/tasks/${task.id}/release`, () => {});
+  const close = () => setOpen(false);
+  const show = (m: Mode) => {
+    setMode(m);
+    setOpen(true);
+  };
+  const Form = { edit: EditTask, reopen: ReopenTask, done: FinishTask, reassign: ReassignTask }[mode];
 
-  useEffect(() => setOpen(false), [done]);
+  const wasDone = useRef(done);
+  useEffect(() => {
+    setOpen(false);
+    // Marking it done removes the Status button that had focus; Reopen takes its place.
+    if (done && !wasDone.current && document.activeElement === document.body) edit.current?.focus();
+    wasDone.current = done;
+  }, [done]);
+
+  const blockedBy = task.blocked.map((n) => `#${n}`).join(", ");
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <div className="flex items-center justify-end gap-2 px-3 pb-2.5">
+      <div className="flex flex-wrap items-center justify-end gap-2 px-3 pb-2.5">
         {done && <p className="min-w-0 text-[11px] text-muted-foreground">A done task cannot be edited. Reopen it first.</p>}
-        <DialogTrigger asChild>
-          <Button type="button" variant="ghost" size="sm" className="shrink-0" aria-label={`${verb} task #${task.id}`}>
-            {verb}
-          </Button>
-        </DialogTrigger>
+        {!done && (
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <Button ref={status} type="button" variant="ghost" size="sm" className="shrink-0" aria-label={`Change status of task #${task.id}`}>
+                Status
+                <ChevronDownIcon aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem disabled={!!task.blocked.length} onSelect={() => show("done")}>
+                <CircleCheckIcon aria-hidden />
+                <span className="grid">
+                  Mark done…
+                  {!!task.blocked.length && <span className="text-[11px] text-muted-foreground">Waits on {blockedBy}; finish that first</span>}
+                </span>
+              </DropdownMenuItem>
+              {task.status === "claimed" && (
+                <DropdownMenuItem onSelect={() => release.send({})}>
+                  <UndoIcon aria-hidden />
+                  Unclaim from {task.owner}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onSelect={() => show("reassign")}>
+                <UserRoundIcon aria-hidden />
+                Reassign…
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        <Button
+          ref={edit}
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="shrink-0"
+          aria-label={`${done ? "Reopen" : "Edit"} task #${task.id}`}
+          onClick={() => show(done ? "reopen" : "edit")}
+        >
+          {done ? "Reopen" : "Edit"}
+        </Button>
       </div>
-      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-lg">
+      {release.error && <ErrorBox error={release.error} onDismiss={() => release.setError(null)} className="mx-3 mb-2.5" />}
+      <DialogContent
+        className="flex max-h-[90vh] flex-col sm:max-w-lg"
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          (mode === "edit" || mode === "reopen" ? edit.current : (status.current ?? edit.current))?.focus();
+        }}
+      >
         <DialogHeader className="pr-8">
           <DialogTitle className="leading-snug break-words">
-            {verb} task #{task.id}
+            {DIALOG[mode].title(task.id)}
           </DialogTitle>
-          <DialogDescription className="text-xs">
-            {done ? "The owner is told why it is open again." : "The assignee or owner is told what changed."}
-          </DialogDescription>
+          <DialogDescription className="text-xs">{DIALOG[mode].describe(task)}</DialogDescription>
         </DialogHeader>
-        {done ? <ReopenTask task={task} onClose={() => setOpen(false)} /> : <EditTask task={task} onClose={() => setOpen(false)} />}
+        <Form task={task} onClose={close} />
       </DialogContent>
     </Dialog>
   );
