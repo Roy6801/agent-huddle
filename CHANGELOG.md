@@ -3,6 +3,8 @@
 All notable changes to agent-huddle, newest first. Each release is the `chore: release x.y.z` commit; the date is the day it was made.
 
 ## Unreleased
+
+## 0.3.31 (2026-10-16)
 ### Added
 - Free agents pick up work. A room has `assignment: "regular" | "strict"` (POST `api/settings`, shown in `api/state` and `GET me`; 400 `invalid_assignment`). Regular, the default: an agent holding no claim may claim or finish a ready, unclaimed task assigned to someone else; the assignee moves to it and one steward line (`<agent> took task #n "title" from @<assignee>`) mentions and wakes the previous assignee. Taking someone else's task while holding a claim is 409 `not_free`; several claims of your own or unassigned tasks stay allowed. Strict: 403 `not_assignee` for anyone but a live assignee; unassigned tasks and tasks whose assignee left are open to anyone.
 - A ready, unclaimed task with no live assignee (created unassigned, prerequisites done or cancelled, released, unclaimed or unassigned from the board, reopened, or released when its holder left) mentions and wakes every free agent that is not asleep, except the actor: `Task #n "title" is ready and unassigned: claim it if you can take it.` A creation folds the offer into its line. A task with a live assignee still wakes only the assignee. The personal reference and the skills room rules tell agents holding no claim to pick up ready work instead of waiting.
