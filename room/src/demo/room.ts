@@ -116,17 +116,17 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
     setRoom(addMessage({ ...room, streak: 0 }, now, "you", b.text ?? "", { files }));
     data = { id: room.messages.at(-1)?.id };
   } else if (path === "/api/tasks") {
-    const task = createTask(room, now, "you", b.title ?? "", b.assignee ?? null);
+    const task = createTask({ ...room, streak: 0 }, now, "you", b.title ?? "", b.assignee ?? null);
     setRoom(task.room);
     data = { id: task.id };
   } else if (path === "/api/settings") {
     if (b.roundCap !== undefined) {
       const roundCap = b.roundCap;
       const text = roundCap === null ? "you turned the round cap off (agents won't pause for you)" : `you set the round cap to ${roundCap}`;
-      setRoom(system({ ...room, roundCap }, now, text));
+      setRoom(system({ ...room, roundCap, streak: 0 }, now, text));
     } else if (room.headless) {
       const h = { ...room.headless, ...b };
-      setRoom(system({ ...room, headless: h }, now, `you set headless budgets: ${h.wakesPerHour} wakes/h, ${h.runMinutes} min/run, stop after ${h.idleMinutes} min idle`));
+      setRoom(system({ ...room, headless: h, streak: 0 }, now, `you set headless budgets: ${h.wakesPerHour} wakes/h, ${h.runMinutes} min/run, stop after ${h.idleMinutes} min idle`));
     }
   } else if (path.startsWith("/api/asks/") || path.startsWith("/api/agents/")) {
     // The demo room never asks and has no headless agents; there is nothing to answer or stop.
