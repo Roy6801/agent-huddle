@@ -417,7 +417,7 @@ export function createHuddle(opts = {}) {
   }
 
   function resolveMentions(s, text, poster) {
-    const mentions = [...text.replace(CODE_RE, ' ').matchAll(MENTION_RE)].map((m) => m[1].toLowerCase());
+    const mentions = [...new Set([...text.replace(CODE_RE, ' ').matchAll(MENTION_RE)].map((m) => m[1].toLowerCase()))];
     const live = [...s.agents.values()].filter((a) => a.status !== 'left');
     const to = new Set();
     let toYou = false;
