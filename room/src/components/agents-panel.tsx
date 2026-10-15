@@ -41,7 +41,7 @@ const PRESENCE_TEXT: Record<AgentPresence, string> = {
   left: "Left",
 };
 
-const FOLDER_FLAG = { outside: "Outside room folder", unreported: "Folder not reported" } as const;
+const FOLDER_FLAG: Partial<Record<string, string>> = { outside: "Outside room folder", unreported: "Folder not reported" };
 
 /** Where the agent works, short for the roster; the full path goes in a title and to screen readers. */
 function shortFolder(agent: Agent, roomFolder: string | null | undefined) {
@@ -148,7 +148,7 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
   const open = expandedAgent === agent.handle;
   const presence = presenceOf(agent);
   const { folder: roomFolder } = useRoom().state;
-  const flag = agent.folderCheck === "outside" || agent.folderCheck === "unreported" ? agent.folderCheck : null;
+  const flag = FOLDER_FLAG[agent.folderCheck ?? ""];
 
   return (
     <Collapsible asChild open={open} onOpenChange={(o) => setExpandedAgent(o ? agent.handle : null)}>
@@ -195,7 +195,7 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
             className="mt-0.5 mb-1 ml-9 h-4 border-signal px-1.5 text-[10px] text-signal group-data-[collapsible=icon]:hidden"
             title={agent.folder ?? undefined}
           >
-            {FOLDER_FLAG[flag]}
+            {flag}
           </Badge>
         )}
         <CollapsibleContent className="overflow-hidden group-data-[collapsible=icon]:hidden motion-safe:data-open:animate-collapsible-down motion-safe:data-closed:animate-collapsible-up">
@@ -213,7 +213,7 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
                 <span className="font-mono">{agent.parent}</span>
               </Detail>
             )}
-            {agent.folderCheck !== undefined && agent.folderCheck !== null && (
+            {agent.folderCheck != null && (
               <Detail label="Folder">
                 <span className="font-mono" title={agent.folder ?? undefined}>
                   <span aria-hidden>{shortFolder(agent, roomFolder)}</span>
