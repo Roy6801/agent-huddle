@@ -128,7 +128,8 @@ export const ERRORS = {
   unknown_task: [404, (p) => `There is no task #${p.n}.`, 'GET tasks for the current task numbers.'],
   not_creator: [403, (p) => `Task #${p.n} was created by @${p.creator}; only its creator or @you can edit it.`,
     (p) => `Ask @${p.creator}${p.creator === 'you' ? '' : ' or @you'} to make the change.`],
-  task_done: [409, (p) => `Task #${p.n} is already done.`, 'Create a new task for any follow-up work.'],
+  task_done: [409, (p) => `Task #${p.n} is already done.`, (p) => `Reopen it with a reason (POST tasks/${p.n}/reopen) or create a new task for follow-up work.`],
+  not_done: [409, (p) => `Task #${p.n} is ${p.status}, not done.`, 'Only a done task can be reopened; claim, finish or release it instead.'],
   invalid_after: [400, (p) => `There is no task #${p.n}; a task can only come after tasks that already exist.`,
     'Use task numbers from GET tasks, or leave after out.'],
   invalid_after_list: [400, 'after must be a list of task numbers, like [1,2].', 'Send after as [1,2] using task numbers from GET tasks.'],
@@ -833,6 +834,7 @@ export function createHuddle(opts = {}) {
       assignee,
       createdBy: creator,
       note: null,
+      reopened: null,
       after,
       ...fields,
     };
@@ -891,6 +893,23 @@ export function createHuddle(opts = {}) {
       if (who && who !== finisher && s.agents.get(who)?.status !== 'left') system(s, text, { mentions: [who], to: [who], task: t.id });
       else narrate(s, text.charAt(0).toLowerCase() + text.slice(1));
     }
+  }
+
+  function reopenTask(s, by, n, body) {
+    const task = getTask(s, n);
+    if (task.status !== 'done') throw new HttpError('not_done', { n, status: task.status });
+    const reason = cleanText(body.reason, MAX_TEXT, 'reason');
+    const owner = s.agents.get(task.owner);
+    const back = owner && owner.status !== 'left' ? owner.handle : null;
+    moveTask(task, back ? 'claimed' : 'open', back);
+    task.reopened = { by, reason, at: new Date().toISOString() };
+    const notify = back && back !== by;
+    system(s, `${by} reopened task #${task.id} "${task.title}": ${reason}`, {
+      mentions: notify ? [back] : [],
+      to: notify ? [back] : [],
+      task: task.id,
+    });
+    return task;
   }
 
   function taskAction(s, agent, n, action, body) {
@@ -1192,6 +1211,7 @@ Endpoints (all relative to your link):
   Claim task:    curl -s -X POST ${link}/tasks/1/claim
   Finish task:   ${post('tasks/1/done', '{"note":"saved to assets/sprite.png"}')}
   Release task:  curl -s -X POST ${link}/tasks/1/release
+  Reopen task:   ${post('tasks/1/reopen', '{"reason":"ties sort by count only"}')}   (a done task; the owner is told)
   Upload file:   curl -s -X POST '${link}/files?name=player.png' -H 'content-type: image/png' --data-binary @player.png
   Attach files:  ${post('post', '{"text":"@codex-1 sprite sheet","files":["<file-id>"]}')}
   List files:    curl -s ${link}/files
@@ -1417,7 +1437,7 @@ How the room works:
       narrate(s, `${agent.handle} rejoined`);
     }
     const ok = (obj) => sendJson(res, 200, obj);
-    const taskMatch = /^tasks\/(\d+)\/(claim|done|release)$/.exec(key);
+    const taskMatch = /^tasks\/(\d+)\/(claim|done|release|reopen)$/.exec(key);
     const fileMatch = /^files\/([\w-]+)$/.exec(key);
     const askMatch = /^asks\/(\d+)$/.exec(key);
     const taskIdMatch = /^tasks\/(\d+)$/.exec(key);
@@ -1473,6 +1493,7 @@ How the room works:
           return ok(fileList(s));
       }
     } else if (method === 'POST') {
+      if (taskMatch && taskMatch[2] === 'reopen') return ok(agentTaskView(s, agent, reopenTask(s, agent.handle, taskMatch[1], body)));
       if (taskMatch) return ok(agentTaskView(s, agent, taskAction(s, agent, taskMatch[1], taskMatch[2], body)));
       if (taskIdMatch) {
         return ok(agentTaskView(s, agent, editTask(s, agent.handle, taskIdMatch[1], body)));
@@ -1551,6 +1572,8 @@ How the room works:
     if (stopMatch) return acted(200, stopAgent(s, stopMatch[1]));
     if (method === 'POST' && key === 'api/brief') return acted(200, setBrief(s, 'you', body.text));
     if (method === 'POST' && key === 'api/tasks') return acted(200, taskView(s, createTask(s, 'you', body)));
+    const taskReopenMatch = method === 'POST' && /^api\/tasks\/(\d+)\/reopen$/.exec(key);
+    if (taskReopenMatch) return acted(200, taskView(s, reopenTask(s, 'you', taskReopenMatch[1], body)));
     const taskEditMatch = method === 'POST' && /^api\/tasks\/(\d+)$/.exec(key);
     if (taskEditMatch) return acted(200, taskView(s, editTask(s, 'you', taskEditMatch[1], body)));
     if (method === 'POST' && askMatch) return acted(200, answerAsk(s, askMatch[1], body));
