@@ -75,6 +75,7 @@ function SpecFile({ file }: { file: TaskSpecFile }) {
 }
 
 const MAX_DESCRIPTION = 2000;
+const MAX_REASON = 8000;
 const MAX_SPEC = 20000;
 
 export function Count({ id, text, max, raw }: { id: string; text: string; max: number; raw?: boolean }) {
@@ -227,6 +228,81 @@ function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
   );
 }
 
+function ReopenTask({ task, onClose }: { task: Task; onClose: () => void }) {
+  const { pollNow, endHuddle } = useRoom();
+  const { post } = useSource();
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<ErrorInfo | null>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
+  const id = useId();
+  const describedBy = error ? `${id}-error` : undefined;
+
+  useEffect(() => {
+    field.current?.focus();
+  }, []);
+
+  async function submit() {
+    if (!reason.trim()) return setError({ message: "Enter a reason." });
+    try {
+      const { r, data } = await post<{ id?: number }>(`/api/tasks/${task.id}/reopen`, { reason: reason.trim() });
+      if (r.status === 410) {
+        endHuddle();
+      } else if (r.ok) {
+        pollNow();
+        onClose();
+      } else {
+        setError({ message: errMain(r, data), ...chipsOf(data) });
+      }
+    } catch {
+      setError({ message: "Could not reach the server." });
+    }
+  }
+
+  return (
+    <form
+      autoComplete="off"
+      aria-label={`Reopen task #${task.id}`}
+      className="grid gap-3 border-t px-3 py-2.5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && !e.defaultPrevented) {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+    >
+      <div className="grid gap-1.5">
+        <label htmlFor={`${id}-reason`} className="text-xs font-medium text-muted-foreground">
+          Reason
+        </label>
+        <Textarea
+          ref={field}
+          id={`${id}-reason`}
+          aria-describedby={[`${id}-reason-count`, describedBy].filter(Boolean).join(" ")}
+          value={reason}
+          rows={3}
+          onChange={(e) => setReason(e.target.value)}
+          className="font-normal text-foreground"
+        />
+        <Count id={`${id}-reason-count`} text={reason} max={MAX_REASON} />
+      </div>
+      {error && <ErrorBox id={`${id}-error`} error={error} />}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" size="sm">
+          Reopen
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function SpecDialog({ task, spec }: { task: Task; spec: string }) {
   return (
     <Dialog>
@@ -266,9 +342,12 @@ function TaskCard({ task }: { task: Task }) {
   const done = task.status === "done";
   const { ended } = useRoom().state;
   const [editing, setEditing] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const editTrigger = useRef<HTMLButtonElement>(null);
   const editable = !done && !ended;
+  const reopenable = done && !ended;
+  const reopenTrigger = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (editing && !editable) {
@@ -276,6 +355,18 @@ function TaskCard({ task }: { task: Task }) {
       trigger.current?.focus();
     }
   }, [editing, editable]);
+
+  useEffect(() => {
+    if (reopening && !reopenable) {
+      setReopening(false);
+      trigger.current?.focus();
+    }
+  }, [reopening, reopenable]);
+
+  function closeReopen() {
+    setReopening(false);
+    requestAnimationFrame(() => reopenTrigger.current?.focus());
+  }
 
   function closeEdit() {
     setEditing(false);
@@ -288,7 +379,10 @@ function TaskCard({ task }: { task: Task }) {
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
-        if (!o) setEditing(false);
+        if (!o) {
+          setEditing(false);
+          setReopening(false);
+        }
       }}
     >
       <li className={cn("rounded-lg border bg-background/60 transition-colors", done && "bg-transparent", open && "bg-background")}>
@@ -363,6 +457,13 @@ function TaskCard({ task }: { task: Task }) {
                 </code>
               </Row>
             )}
+            {task.reopened && (
+              <Row label="Reopened by">
+                <span className="break-words whitespace-pre-wrap">
+                  <span className="font-mono">{who(task.reopened.by)}</span>: {task.reopened.reason}
+                </span>
+              </Row>
+            )}
           </dl>
           {editable &&
             (editing ? (
@@ -378,6 +479,23 @@ function TaskCard({ task }: { task: Task }) {
                   onClick={() => setEditing(true)}
                 >
                   Edit
+                </Button>
+              </div>
+            ))}
+          {reopenable &&
+            (reopening ? (
+              <ReopenTask task={task} onClose={closeReopen} />
+            ) : (
+              <div className="flex justify-end px-3 pb-2.5">
+                <Button
+                  ref={reopenTrigger}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Reopen task #${task.id}`}
+                  onClick={() => setReopening(true)}
+                >
+                  Reopen
                 </Button>
               </div>
             ))}
