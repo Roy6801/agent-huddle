@@ -88,7 +88,7 @@ test('AC-21.1: a bound Claude Code session asks on the page and prints the exact
   const bound = await cli(env, ['approvals', 'on', agent.link, '--session', 'claude-session']);
   assert.equal(bound.code, 0, bound.stderr);
   assert.match(bound.stdout, new RegExp(`as ${agent.handle}`));
-  const always = JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow', updatedPermissions: SUGGESTIONS } } }) + '\n';
+  const always = JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow', updatedPermissions: [{ ...SUGGESTIONS[0], destination: 'session' }] } } }) + '\n';
   for (const [optionId, expected] of [['allow', allow], ['always', always], ['deny', deny]]) {
     const hook = cli(env, ['ask-hook', 'claude'], claudeRequest('claude-session'));
     const ask = await r.openAsk();
@@ -116,6 +116,7 @@ test('AC-21.2: a Codex session bound through CODEX_THREAD_ID gets Allow once / D
     const hook = cli(env, ['ask-hook', 'codex'], codexRequest('thread-1'));
     const ask = await r.openAsk();
     assert.equal(ask.title, 'apply_patch: src/a.js');
+    assert.equal(ask.detail, 'command: *** Begin Patch\n*** Update File: src/a.js\n@@\n-a\n+b\n*** End Patch\nfolder: /work/app');
     assert.deepEqual(ask.options.map((o) => o.optionId), ['allow', 'deny']);
     await r.answer(ask.id, optionId);
     assert.equal((await hook).stdout, expected);

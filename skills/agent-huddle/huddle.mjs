@@ -2467,7 +2467,7 @@ function readStdin(ms = 5000) {
 
 function describeRequest({ tool_name: tool, tool_input: given, cwd }) {
   const input = given && typeof given === 'object' && !Array.isArray(given) ? given : {};
-  const command = [input.command ?? []].flat().join(' ');
+  const command = [input.command ?? []].flat().join(' ').trim();
   const patched = [...command.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map((m) => m[1]);
   const target = patched.join(', ') || command.split('\n')[0] || input.file_path || input.url || input.description || '';
   const title = `${tool || 'tool'}${target ? `: ${target}` : ''}`.slice(0, 300);
@@ -2479,12 +2479,13 @@ function describeRequest({ tool_name: tool, tool_input: given, cwd }) {
   return { title, detail };
 }
 
-// The exact PermissionRequest output both harnesses parse; "always" is only offered to Claude Code,
-// which applies the request's own permission_suggestions (Codex fails closed on updatedPermissions).
+// The exact PermissionRequest output both harnesses parse. "Always" is only offered to Claude Code: it applies the
+// request's own permission_suggestions for this session only, as the card says (Codex fails closed on updatedPermissions).
 function hookOutput(optionId, input) {
+  const forSession = () => input.permission_suggestions.map((p) => ({ ...p, destination: 'session' }));
   const decision = optionId === 'deny'
     ? { behavior: 'deny', message: 'Denied by the human on the agent-huddle room page.' }
-    : { behavior: 'allow', ...(optionId === 'always' && { updatedPermissions: input.permission_suggestions }) };
+    : { behavior: 'allow', ...(optionId === 'always' && { updatedPermissions: forSession() }) };
   return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision } };
 }
 
