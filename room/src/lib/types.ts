@@ -22,7 +22,7 @@ export type Message = {
   at: string;
   from: string;
   for: string | null;
-  kind: "chat" | "system";
+  kind: "chat" | "system" | "log";
   text: string;
   mentions: string[];
   to: string[];

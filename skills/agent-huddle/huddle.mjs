@@ -495,6 +495,8 @@ export function createHuddle(opts = {}) {
   }
 
   const system = (s, text, extra) => addMessage(s, 'system', text, { ...extra, kind: 'system' });
+  // Narrator lines (joins, leaves, claims, finishes) are a quiet log: in every read, addressed to nobody.
+  const narrate = (s, text) => addMessage(s, 'system', text, { kind: 'log' });
 
   function flushWaiters(s, agent) {
     agent.lastSeen = agent.lastCallAt = Date.now();
@@ -633,7 +635,7 @@ export function createHuddle(opts = {}) {
     for (const a of s.asks) {
       if (a.status === 'open' && a.by === agent.handle) settleAsk(s, a, 'cancelled');
     }
-    system(s, `${agent.handle} left${reason ? ` (${reason})` : ''}${releasedText(released)}`);
+    narrate(s, `${agent.handle} left${reason ? ` (${reason})` : ''}${releasedText(released)}`);
     return released;
   }
 
@@ -822,7 +824,7 @@ export function createHuddle(opts = {}) {
       task.status = 'claimed';
       task.since = new Date().toISOString();
       task.owner = h;
-      system(s, `${h} claimed task #${task.id}`);
+      narrate(s, `${h} claimed task #${task.id}`);
     } else if (action === 'done') {
       if (task.status === 'done') throw new HttpError('task_done', { n });
       if (task.owner && task.owner !== h) throw new HttpError('already_claimed', { n, owner: task.owner });
@@ -831,15 +833,19 @@ export function createHuddle(opts = {}) {
       task.since = new Date().toISOString();
       task.owner = h;
       task.note = note;
-      const creator = s.agents.get(task.createdBy);
-      const notify = task.createdBy !== h && creator !== undefined && creator.status !== 'left';
-      const away = unreachable(s, task.createdBy);
-      system(s, `${h} finished task #${task.id} "${task.title}"${note ? `: ${note}` : ''}`, {
-        mentions: notify ? [task.createdBy] : [],
-        to: notify ? [task.createdBy] : [],
-        toYou: task.createdBy === 'you' || away,
-        routedFor: away ? task.createdBy : undefined,
-      });
+      narrate(s, `${h} finished task #${task.id} "${task.title}"`);
+      if (task.createdBy !== h) {
+        const creator = s.agents.get(task.createdBy);
+        const notify = creator !== undefined && creator.status !== 'left';
+        const away = unreachable(s, task.createdBy);
+        system(s, `Task #${task.id} "${task.title}" is done by ${h}${note ? `: ${note}` : '.'}`, {
+          mentions: notify ? [task.createdBy] : [],
+          to: notify ? [task.createdBy] : [],
+          toYou: task.createdBy === 'you' || away,
+          routedFor: away ? task.createdBy : undefined,
+          task: task.id,
+        });
+      }
     } else {
       if (task.status === 'done') throw new HttpError('task_done', { n });
       if (task.status !== 'claimed' || task.owner !== h) {
@@ -848,7 +854,7 @@ export function createHuddle(opts = {}) {
       task.status = 'open';
       task.since = new Date().toISOString();
       task.owner = null;
-      system(s, `${h} released task #${task.id}`);
+      narrate(s, `${h} released task #${task.id}`);
     }
     return task;
   }
@@ -1235,7 +1241,7 @@ How the room works:
       s.lead = agent.handle;
       s.leadKey = null;
     }
-    system(s, `${agent.handle} joined${role ? ` as ${role}` : ''}`);
+    narrate(s, `${agent.handle} joined${role ? ` as ${role}` : ''}`);
     return { ...agentView(s, agent), lead: s.lead };
   }
 
@@ -1251,7 +1257,7 @@ How the room works:
     let handle = `${parent.handle}.${role}`;
     for (let i = 2; s.agents.has(handle); i++) handle = `${parent.handle}.${role}-${i}`;
     const child = addAgent(s, handle, parent.harness, role, parent.handle, base);
-    system(s, `${parent.handle} spawned ${handle}`);
+    narrate(s, `${parent.handle} spawned ${handle}`);
     return { ...agentView(s, child), parent: parent.handle };
   }
 
@@ -1270,7 +1276,7 @@ How the room works:
     if (agent.status === 'left' && !leaving) {
       agent.status = 'active';
       agent.stopRequested = false;
-      system(s, `${agent.handle} rejoined`);
+      narrate(s, `${agent.handle} rejoined`);
     }
     const ok = (obj) => sendJson(res, 200, obj);
     const taskMatch = /^tasks\/(\d+)\/(claim|done|release)$/.exec(key);
