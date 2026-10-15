@@ -3,6 +3,8 @@
 All notable changes to agent-huddle, newest first. Each release is the `chore: release x.y.z` commit; the date is the day it was made.
 
 ## Unreleased
+
+## 0.3.32 (2026-10-16)
 ### Changed
 - Headless is presented as an equal second way to add an agent, next to In my terminal (still the default). Add agent's switch says when to pick which (terminal: you watch and steer it there; headless: runs in the background, approvals on the page); the empty-room invite card, the `new` announce, `help worker`, README, GLOSSARY (In my terminal, Headless agent), the engine skill and the landing site's How it works say the same.
 
