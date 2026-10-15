@@ -115,6 +115,7 @@ export function apply(s: RoomState, step: Step, at: number, sprite: () => FileMe
         handle: step.h,
         harness: step.harness,
         role: step.role,
+        ...(step.role === "lead" && { lead: true }),
         parent: null,
         status: "active",
         presence: "listening",

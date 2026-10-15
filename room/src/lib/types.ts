@@ -6,6 +6,7 @@ export type Agent = {
   harness: string;
   role: string | null;
   parent: string | null;
+  lead?: boolean;
   status: AgentStatus;
   presence?: AgentPresence;
   stopRequested?: boolean;

@@ -28,7 +28,7 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
 ## Steps
 
 1. Run the permission gate: list the commands below, say they only touch 127.0.0.1, wait for yes.
-2. Create the room (starts the local server if needed). It prints JSON `{id,name,join,page,invite,announce}`:
+2. Create the room (starts the local server if needed). It prints JSON `{id,name,lead,join,page,invite,announce}`:
    ```bash
    node $HUDDLE start "<room name>"
    ```
@@ -37,8 +37,9 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
 4. After you join (step 5), add one line: `I joined as <handle> (lead) and I'm waiting for messages.`
 5. Join the room yourself as lead with your own harness name (`claude`, `codex`, `agy`, `gemini`, `opencode` or `dsh`), then keep the returned `link` as `LINK` for as long as you are in the room:
    ```bash
-   node $HUDDLE join "<join URL>" --harness <harness> --role lead
+   node $HUDDLE join "<join URL>" --harness <harness> --lead <lead>
    ```
+   `<lead>` is the `lead` field `start` printed. The key works once and makes you the room's lead (role `lead`).
 6. Wait for your turn (In the room, below). When the user describes the work, lead it as described in Leading.
 
 ## Leading

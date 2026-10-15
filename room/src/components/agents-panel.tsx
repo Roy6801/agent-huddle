@@ -164,9 +164,9 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
               className={cn(presence === "left" && "opacity-55")}
             />
             <span className="min-w-0 truncate font-mono text-xs font-medium">{agent.handle}</span>
-            {agent.role === "headless" ? (
+            {agent.lead || agent.role === "headless" ? (
               <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">
-                headless
+                {agent.lead ? "lead" : "headless"}
               </Badge>
             ) : (
               agent.role && <span className="min-w-0 truncate text-[11px] text-muted-foreground">{agent.role}</span>
