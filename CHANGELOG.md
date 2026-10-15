@@ -4,6 +4,8 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 
 ## Unreleased
 
+## 0.3.20 (2026-10-15)
+
 ### Fixed
 - `--help` or `-h` after any command prints that command's usage instead of running it, and `new` rejects an unknown option instead of using it as the room name.
 
