@@ -159,3 +159,11 @@ test('while the room is paused at the round cap, only you are nudged', async () 
   assert.deepEqual(nudge.to, []);
   assert.match(nudge.text, /^The room is paused at the round cap and tasks are pending: #1 .*; #2 .*Post to let agents continue\.$/);
 });
+
+test('AC-33.6: cancelled tasks are not pending, so a room left with only cancelled tasks is never nudged', async () => {
+  const r = await stalledRoom();
+  await call('POST', `${r.created.page}/api/tasks/1/cancel`, {});
+  await call('POST', `${r.created.page}/api/tasks/2/cancel`, { reason: 'out of scope' });
+  await sleep(HOLD * 3);
+  assert.equal((await r.nudges()).length, 0);
+});

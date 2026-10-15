@@ -138,7 +138,10 @@ export const ERRORS = {
   not_creator: [403, (p) => `Task #${p.n} was created by @${p.creator}; only its creator or @you can edit it.`,
     (p) => `Ask @${p.creator}${p.creator === 'you' ? '' : ' or @you'} to make the change.`],
   task_done: [409, (p) => `Task #${p.n} is already done.`, (p) => `Reopen it with a reason (POST tasks/${p.n}/reopen) or create a new task for follow-up work.`],
-  not_done: [409, (p) => `Task #${p.n} is ${p.status}, not done.`, 'Only a done task can be reopened; claim, finish or release it instead.'],
+  task_cancelled: [409, (p) => `Task #${p.n} is cancelled.`, (p) => `Reopen it with a reason (POST tasks/${p.n}/reopen) or create a new task for the work.`],
+  not_canceller: [403, (p) => `Task #${p.n} was created by @${p.creator}; only its creator, the lead${p.lead ? ` (@${p.lead})` : ''} or @you can cancel it.`,
+    (p) => `Ask @${p.creator === 'you' ? 'you' : `${p.creator} or @you`} to cancel it, or post why it is no longer needed.`],
+  not_done: [409, (p) => `Task #${p.n} is ${p.status}, not done or cancelled.`, 'Only a done or cancelled task can be reopened; claim, finish or release it instead.'],
   not_claimed: [409, (p) => `Task #${p.n} is ${p.status}, not claimed.`, 'Only a claimed task can be released; reassign or finish it instead.'],
   same_assignee: [409, (p) => (p.assignee ? `Task #${p.n} is already with @${p.assignee}.` : `Task #${p.n} is already unassigned.`),
     'Pick a different agent, or leave the task as it is.'],
@@ -251,8 +254,11 @@ const sameSecret = (given, secret) => {
 // The readable end-of-room transcript: the room's final state, and every message from history, even those the room dropped.
 function transcriptMarkdown(s, lines, endedAt, reason) {
   const agents = [...s.agents.values()].map((a) => `- ${a.handle} (${a.harness}${a.role ? `, ${a.role}` : ''})`);
-  const tasks = s.tasks.map((t) =>
-    `- #${t.id} ${t.title} (${t.status}${t.owner ? ` by ${t.owner}` : ''})${t.note ? `: ${t.note.replace(/\s*\n\s*/g, ' ')}` : ''}`);
+  const tasks = s.tasks.map((t) => {
+    const by = t.cancelled?.by ?? t.owner;
+    const text = t.cancelled ? t.cancelled.reason : t.note;
+    return `- #${t.id} ${t.title} (${t.status}${by ? ` by ${by}` : ''})${text ? `: ${text.replace(/\s*\n\s*/g, ' ')}` : ''}`;
+  });
   const messages = lines.filter((l) => l?.type === 'message').map((m) => {
     const tags = [m.toYou && '(for you)', m.files.length && `[files: ${m.files.map((f) => f.name).join(', ')}]`].filter(Boolean);
     return `- ${clock(m.at)} ${m.from}: ${[m.text.replace(/\n/g, '\n    '), ...tags].join(' ')}`;
@@ -979,9 +985,11 @@ export function createHuddle(opts = {}) {
     return out;
   }
 
+  // A cancelled task counts as finished: what waits on it goes ahead, and it does not hold up the all-done summary.
+  const finished = (task) => task.status === 'done' || task.status === 'cancelled';
+
   // Only work still to do can be blocked; a done task stays done when a prerequisite is reopened.
-  const blockedBy = (s, task) =>
-    task.status === 'open' || task.status === 'claimed' ? task.after.filter((n) => s.tasks[n - 1].status !== 'done') : [];
+  const blockedBy = (s, task) => (finished(task) ? [] : task.after.filter((n) => !finished(s.tasks[n - 1])));
 
   function taskView(s, task) {
     const f = task.specFile ? s.files.get(task.specFile) : null;
@@ -1048,6 +1056,7 @@ export function createHuddle(opts = {}) {
       createdBy: creator,
       note: null,
       reopened: null,
+      cancelled: null,
       after,
       ...fields,
     };
@@ -1075,12 +1084,17 @@ export function createHuddle(opts = {}) {
     return task;
   }
 
+  function assertNotFinished(task) {
+    if (task.status === 'done') throw new HttpError('task_done', { n: task.id });
+    if (task.status === 'cancelled') throw new HttpError('task_cancelled', { n: task.id });
+  }
+
   function editTask(s, editor, n, body) {
     const task = getTask(s, n);
     if (editor !== 'you' && task.createdBy !== editor) {
       throw new HttpError('not_creator', { n, creator: task.createdBy });
     }
-    if (task.status === 'done') throw new HttpError('task_done', { n });
+    assertNotFinished(task);
     const fields = taskFields(s, body);
     const changes = [];
     const wasTarget = task.owner ?? task.assignee;
@@ -1127,8 +1141,10 @@ export function createHuddle(opts = {}) {
 
   function announceReady(s, done, finisher) {
     for (const t of s.tasks) {
-      if (t.status === 'done' || !t.after.includes(done.id) || blockedBy(s, t).length) continue;
-      const text = `Task #${t.id} "${t.title}" is ready: ${refs(t.after)} ${t.after.length > 1 ? 'are' : 'is'} done.`;
+      if (finished(t) || !t.after.includes(done.id) || blockedBy(s, t).length) continue;
+      const cancelled = t.after.filter((n) => s.tasks[n - 1].status === 'cancelled').length;
+      const how = !cancelled ? 'done' : cancelled === t.after.length ? 'cancelled' : 'done or cancelled';
+      const text = `Task #${t.id} "${t.title}" is ready: ${refs(t.after)} ${t.after.length > 1 ? 'are' : 'is'} ${how}.`;
       const who = t.owner ?? t.assignee;
       if (who && who !== finisher && s.agents.get(who)?.status !== 'left') system(s, text, { mentions: [who], to: [who], task: t.id });
       else narrate(s, text.charAt(0).toLowerCase() + text.slice(1));
@@ -1136,29 +1152,63 @@ export function createHuddle(opts = {}) {
   }
 
   function allDone(s) {
-    if (!s.tasks.length || s.tasks.some((t) => t.status !== 'done')) return;
+    if (!s.tasks.length || !s.tasks.every(finished)) return;
     const lead = s.lead && s.agents.get(s.lead)?.status !== 'left' ? [s.lead] : [];
-    const lines = s.tasks.map((t) => `#${t.id} "${t.title}" by ${t.owner}: ${t.note ?? 'no note'}`);
-    system(s, `${s.tasks.length === 1 ? 'The only task is' : `All ${s.tasks.length} tasks are`} done:\n${lines.join('\n')}`, { toYou: true, mentions: lead, to: lead });
+    const done = s.tasks.filter((t) => t.status === 'done');
+    const cancelled = s.tasks.filter((t) => t.status === 'cancelled');
+    const lines = [
+      ...done.map((t) => `#${t.id} "${t.title}" by ${t.owner}: ${t.note ?? 'no note'}`),
+      ...cancelled.map((t) => `cancelled: #${t.id} "${t.title}" by ${t.cancelled.by}: ${t.cancelled.reason ?? 'no reason'}`),
+    ];
+    const head = s.tasks.length === 1
+      ? `The only task is ${s.tasks[0].status}`
+      : cancelled.length
+        ? `All ${s.tasks.length} tasks are finished (${done.length} done, ${cancelled.length} cancelled)`
+        : `All ${s.tasks.length} tasks are done`;
+    system(s, `${head}:\n${lines.join('\n')}`, { toYou: true, mentions: lead, to: lead });
     const live = liveAgents(s).map((a) => a.handle);
     if (live.length) system(s, OFF_SHIFT, { to: live, offShift: true });
   }
 
   function reopenTask(s, by, n, body) {
     const task = getTask(s, n);
-    if (task.status !== 'done') throw new HttpError('not_done', { n, status: task.status });
+    if (!finished(task)) throw new HttpError('not_done', { n, status: task.status });
     const reason = cleanText(body.reason, MAX_TEXT, 'reason');
-    const owner = s.agents.get(task.owner);
+    // A done task goes back to whoever finished it; a cancelled one is open again for its assignee.
+    const wasCancelled = task.status === 'cancelled';
+    const owner = wasCancelled ? null : s.agents.get(task.owner);
     const back = owner && owner.status !== 'left' ? owner.handle : null;
     moveTask(task, back ? 'claimed' : 'open', back);
     task.reopened = { by, reason, at: new Date().toISOString() };
+    task.cancelled = null;
     historyTask(s, task);
-    const notify = back && back !== by;
+    const told = wasCancelled ? task.assignee : back;
+    const notify = told && told !== by && s.agents.get(told)?.status !== 'left';
     system(s, `${by} reopened task #${task.id} "${task.title}": ${reason}`, {
-      mentions: notify ? [back] : [],
-      to: notify ? [back] : [],
+      mentions: notify ? [told] : [],
+      to: notify ? [told] : [],
       task: task.id,
     });
+    return task;
+  }
+
+  // Cancelling keeps the task and its number; whoever holds it and whoever waits on it is told.
+  function cancelTask(s, by, n, body) {
+    const task = getTask(s, n);
+    if (by !== 'you' && by !== task.createdBy && by !== s.lead) {
+      throw new HttpError('not_canceller', { n, creator: task.createdBy, lead: s.lead });
+    }
+    assertNotFinished(task);
+    const reason = body.reason === undefined || body.reason === null ? null : cleanText(body.reason, MAX_TEXT, 'reason');
+    const holder = task.owner ?? task.assignee;
+    const held = task.owner ? ` (held by @${task.owner})` : '';
+    const waiting = s.tasks.filter((t) => !finished(t) && t.after.includes(task.id)).map((t) => t.owner ?? t.assignee);
+    moveTask(task, 'cancelled', null);
+    task.cancelled = { by, reason, at: new Date().toISOString() };
+    historyTask(s, task);
+    taskNotice(s, task, `${by} cancelled task #${task.id} "${task.title}"${held}${reason ? `: ${reason}` : ''}`, [holder, task.createdBy, ...waiting], by);
+    announceReady(s, task, by);
+    allDone(s);
     return task;
   }
 
@@ -1166,7 +1216,7 @@ export function createHuddle(opts = {}) {
     const task = getTask(s, n);
     const h = agent.handle;
     if (action === 'claim') {
-      if (task.status === 'done') throw new HttpError('task_done', { n });
+      assertNotFinished(task);
       if (task.owner === h) return task;
       if (task.owner) throw new HttpError('already_claimed', { n, owner: task.owner });
       assertUnblocked(s, task);
@@ -1174,7 +1224,7 @@ export function createHuddle(opts = {}) {
       historyTask(s, task);
       narrate(s, `${h} claimed task #${task.id}`);
     } else if (action === 'done') {
-      if (task.status === 'done') throw new HttpError('task_done', { n });
+      assertNotFinished(task);
       if (task.owner && task.owner !== h) throw new HttpError('already_claimed', { n, owner: task.owner });
       assertUnblocked(s, task);
       const note = body.note === undefined || body.note === null ? null : cleanText(body.note, MAX_TEXT, 'note');
@@ -1197,7 +1247,7 @@ export function createHuddle(opts = {}) {
       }
       allDone(s);
     } else {
-      if (task.status === 'done') throw new HttpError('task_done', { n });
+      assertNotFinished(task);
       if (task.status !== 'claimed' || task.owner !== h) {
         throw new HttpError('not_owner', { n, owner: task.owner === h ? null : task.owner });
       }
@@ -1208,15 +1258,15 @@ export function createHuddle(opts = {}) {
     return task;
   }
 
-  // You moving a task from the board: whoever it affects is mentioned and woken, unless they left.
-  function boardNotice(s, task, text, handles) {
-    const notified = [...new Set(handles)].filter((h) => h && h !== 'you' && s.agents.has(h) && s.agents.get(h).status !== 'left');
+  // Someone moving a task for others (you from the board, or a cancel): whoever it affects is mentioned and woken, unless they left.
+  function taskNotice(s, task, text, handles, by = 'you') {
+    const notified = [...new Set(handles)].filter((h) => h && h !== by && s.agents.has(h) && s.agents.get(h).status !== 'left');
     system(s, text, { mentions: notified, to: notified, task: task.id });
   }
 
   function finishAsYou(s, n, body) {
     const task = getTask(s, n);
-    if (task.status === 'done') throw new HttpError('task_done', { n });
+    assertNotFinished(task);
     assertUnblocked(s, task);
     const note = body.note === undefined || body.note === null ? null : cleanText(body.note, MAX_TEXT, 'note');
     const holder = task.owner ?? task.assignee;
@@ -1224,7 +1274,7 @@ export function createHuddle(opts = {}) {
     moveTask(task, 'done', 'you');
     task.note = note;
     historyTask(s, task);
-    boardNotice(s, task, `you marked task #${task.id} "${task.title}" done${held}${note ? `: ${note}` : ''}`, [holder, task.createdBy]);
+    taskNotice(s, task, `you marked task #${task.id} "${task.title}" done${held}${note ? `: ${note}` : ''}`, [holder, task.createdBy]);
     announceReady(s, task, 'you');
     allDone(s);
     return task;
@@ -1237,13 +1287,13 @@ export function createHuddle(opts = {}) {
     moveTask(task, 'open', null);
     historyTask(s, task);
     const back = task.assignee ? ` for @${task.assignee}` : '';
-    boardNotice(s, task, `you released task #${task.id} "${task.title}" from @${holder}; it is open again${back}`, [holder, task.assignee]);
+    taskNotice(s, task, `you released task #${task.id} "${task.title}" from @${holder}; it is open again${back}`, [holder, task.assignee]);
     return task;
   }
 
   function reassignAsYou(s, n, body) {
     const task = getTask(s, n);
-    if (task.status === 'done') throw new HttpError('task_done', { n });
+    assertNotFinished(task);
     const assignee = taskAssignee(s, body.assignee);
     if (task.assignee === assignee && (!task.owner || task.owner === assignee)) {
       throw new HttpError('same_assignee', { n, assignee });
@@ -1254,7 +1304,7 @@ export function createHuddle(opts = {}) {
     task.assignee = assignee;
     historyTask(s, task);
     const to = assignee ? `reassigned task #${task.id} "${task.title}" to @${assignee}` : `unassigned task #${task.id} "${task.title}"`;
-    boardNotice(s, task, `you ${to}${released ? ` (released from @${released})` : ''}`, [assignee, was]);
+    taskNotice(s, task, `you ${to}${released ? ` (released from @${released})` : ''}`, [assignee, was]);
     return task;
   }
 
@@ -1515,7 +1565,8 @@ Endpoints (all relative to your link):
   Claim task:    curl -s -X POST ${link}/tasks/1/claim
   Finish task:   ${post('tasks/1/done', '{"note":"saved to assets/sprite.png"}')}
   Release task:  curl -s -X POST ${link}/tasks/1/release
-  Reopen task:   ${post('tasks/1/reopen', '{"reason":"ties sort by count only"}')}   (a done task; the owner is told)
+  Reopen task:   ${post('tasks/1/reopen', '{"reason":"ties sort by count only"}')}   (a done or cancelled task; the owner or assignee is told)
+  Cancel task:   ${post('tasks/1/cancel', '{"reason":"replaced by #4"}')}   (creator or lead; reason optional; tasks after it go ahead)
   Upload file:   curl -s -X POST '${link}/files?name=player.png' -H 'content-type: image/png' --data-binary @player.png
   Attach files:  ${post('post', '{"text":"@codex-1 sprite sheet","files":["<file-id>"]}')}
   List files:    curl -s ${link}/files
@@ -1808,6 +1859,7 @@ How the room works:
     const ok = (obj) => sendJson(res, 200, obj);
     const taskMatch = /^tasks\/(\d+)\/(claim|done|release)$/.exec(key);
     const reopenMatch = /^tasks\/(\d+)\/reopen$/.exec(key);
+    const cancelMatch = /^tasks\/(\d+)\/cancel$/.exec(key);
     const fileMatch = /^files\/([\w-]+)$/.exec(key);
     const askMatch = /^asks\/(\d+)$/.exec(key);
     const taskIdMatch = /^tasks\/(\d+)$/.exec(key);
@@ -1865,6 +1917,7 @@ How the room works:
       }
     } else if (method === 'POST') {
       if (reopenMatch) return ok(agentTaskView(s, agent, reopenTask(s, agent.handle, reopenMatch[1], body)));
+      if (cancelMatch) return ok(agentTaskView(s, agent, cancelTask(s, agent.handle, cancelMatch[1], body)));
       if (taskMatch) return ok(agentTaskView(s, agent, taskAction(s, agent, taskMatch[1], taskMatch[2], body)));
       if (taskIdMatch) {
         return ok(agentTaskView(s, agent, editTask(s, agent.handle, taskIdMatch[1], body)));
@@ -1983,6 +2036,8 @@ How the room works:
     if (method === 'POST' && key === 'api/tasks') return acted(200, taskView(s, createTask(s, 'you', body)));
     const taskReopenMatch = method === 'POST' && /^api\/tasks\/(\d+)\/reopen$/.exec(key);
     if (taskReopenMatch) return acted(200, taskView(s, reopenTask(s, 'you', taskReopenMatch[1], body)));
+    const taskCancelMatch = method === 'POST' && /^api\/tasks\/(\d+)\/cancel$/.exec(key);
+    if (taskCancelMatch) return acted(200, taskView(s, cancelTask(s, 'you', taskCancelMatch[1], body)));
     const boardMatch = method === 'POST' && /^api\/tasks\/(\d+)\/(done|release|assign)$/.exec(key);
     if (boardMatch) {
       const [, n, action] = boardMatch;
@@ -2020,7 +2075,7 @@ How the room works:
   // you about the rest (a blocked task is not pending; what it waits on is); the last backoff, and any nudge while paused at the round cap, goes to you with every task.
   // A Working window (one the nudge itself woke, say) pauses the cycle; only activity restarts it.
   function checkStall(s, now) {
-    const pending = s.tasks.filter((t) => t.status !== 'done' && !blockedBy(s, t).length);
+    const pending = s.tasks.filter((t) => !finished(t) && !blockedBy(s, t).length);
     if (!pending.length) {
       s.stall = null;
       return;

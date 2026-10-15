@@ -101,7 +101,7 @@ test('AC-42: errors sharing a status have distinct codes, and every code is in t
   assert.match(done.json.instruction, /tasks\/1\/reopen/);
   const notDone = await call('POST', `${b.link}/tasks/2/reopen`, { reason: 'why' });
   shaped(notDone, 409, 'not_done');
-  assert.match(notDone.json.message, /Task #2 is claimed, not done\./);
+  assert.match(notDone.json.message, /Task #2 is claimed, not done or cancelled\./);
   shaped(owned, 409, 'not_owner');
   shaped(closed, 409, 'ask_closed');
 
