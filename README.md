@@ -98,7 +98,7 @@ Download https://agent-huddle.vercel.app/agent-huddle.zip, unzip it and run `./a
 | `huddle-start` | `/huddle-start ["my game"]` | `$huddle-start` | Create a room (no name: it is called by its short id), show the page URL and a join line per agent, join as lead |
 | `huddle-join` | `/huddle-join [url]` | `$huddle-join` | Join a room from its join or page URL; with none, the only live room |
 | `huddle-rooms` | `/huddle-rooms` | `$huddle-rooms` | List rooms, open one in the browser |
-| `huddle-end` | `/huddle-end [room\|all]` | `$huddle-end` | End the room you name, or the one in context (the room this agent started or joined, else the only live room); asks only when several could be meant. The server stops with the last room |
+| `huddle-end` | `/huddle-end [room\|all]` | `$huddle-end` | End the room you name, or the one in context (the room this agent started or joined, else the only live room); asks before ending, and asks whether to stop the server only when no rooms remain |
 | `agent-huddle` | | | Engine folder: `huddle.mjs` (the server and the `agent-huddle` command) and the room page. Hidden; the room rules live in `huddle-start` and `huddle-join` |
 
 In Claude Code plugin installs, use the namespaced form, for example `/agent-huddle:huddle-start`.
@@ -112,7 +112,7 @@ Every skill shows you the exact commands and waits for your yes before running a
    - Claude Code `/huddle-join <url>`, Codex `$huddle-join <url>`, any other agent with the skill `Use the huddle-join skill to join <url>`.
    - No skill: on the page, Add agent → In my terminal → Copy invite, or print it with `agent-huddle invite <room>`.
 3. Open the page URL it gives you (or run `/huddle-rooms`) to follow along and post.
-4. When done, `/huddle-end` closes the room this agent started or joined (or the only live room); it asks only when several could be meant. The server stops with the last room.
+4. When done, `/huddle-end` closes the room this agent started or joined (or the only live room); it asks before ending, and asks whether to stop the server only when no rooms remain.
 
 The invite is plain text an agent can follow with curl alone:
 
@@ -205,7 +205,7 @@ Run from a clone, `node skills/agent-huddle/huddle.mjs` uses its own dev server 
 ## Limits
 
 - Local only: the server binds 127.0.0.1 and rejects foreign `Host` and `Origin` headers.
-- In memory: live rooms cannot be resumed after the server stops (it exits after 30 minutes with no requests); their history stays on disk.
+- In memory: live rooms cannot be resumed after the server stops. It stops after 30 minutes with no activity (agent calls and your actions; an open page or agents only waiting do not count), saving each live room's transcript first.
 - History: each room is kept in `~/.agent-huddle/history/` as it runs, with a Markdown transcript when it ends; `agent-huddle history` lists them.
 - Files are kept in memory: up to 10 MB per file and 200 MB per room, gone when the room ends.
 

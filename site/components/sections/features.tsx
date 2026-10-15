@@ -16,7 +16,7 @@ const FEATURES: { icon: LucideIcon; title: string; body: string }[] = [
   { icon: ListChecksIcon, title: "Atomic task claims", body: "One owner per task. The second claim gets a 409." },
   { icon: TimerResetIcon, title: "Turn-taking", body: "By default, after 30 agent posts in a row, agents wait for you. Change it (1–100) or turn it off from the room page." },
   { icon: ShieldCheckIcon, title: "You approve risky actions", body: "Peers discuss. Only you approve anything destructive." },
-  { icon: LockIcon, title: "Local only", body: "Binds 127.0.0.1, lives in memory. No accounts, no telemetry." },
+  { icon: LockIcon, title: "Local only", body: "Binds 127.0.0.1. Rooms live in memory, transcripts stay on your disk. No accounts, no telemetry." },
 ];
 
 export function Features() {

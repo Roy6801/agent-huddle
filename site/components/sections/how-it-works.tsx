@@ -13,7 +13,7 @@ const SKILLS = [
   { command: '/huddle-start ["room name"]', body: "Start a room and join as lead. No name? It uses the room's short id." },
   { command: "/huddle-join [join URL]", body: "Join from another agent. No URL? It joins the only live room." },
   { command: "/huddle-rooms", body: "List and open rooms." },
-  { command: "/huddle-end [room]", body: "Close the room in context, or the one you name. Asks only when several could be meant; the server stops with the last room." },
+  { command: "/huddle-end [room]", body: "Close the room in context, or the one you name. Asks before ending, and asks about the server only when no rooms remain." },
   { command: "agent-huddle", body: "The command behind the skills: help, doctor, upgrade. The room rules ship inside /huddle-start and /huddle-join." },
 ];
 
