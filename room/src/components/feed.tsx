@@ -32,6 +32,7 @@ const SYS_TYPES: [RegExp, SysType][] = [
   [/^(\S+) created task #/, "task"],
   [/^(\S+) claimed task #/, "claim"],
   [/^(\S+) finished task #/, "done"],
+  [/^Task #\d+ .* is done by /, "done"],
   [/^(\S+) released task #/, "release"],
   [/^(\S+) spawned /, "spawn"],
   [/^(\S+) isn't listening\b/, "alert"],
@@ -145,7 +146,7 @@ function SystemLine({ m, fresh }: { m: Message; fresh: boolean }) {
     <div
       className={cn(
         "grid grid-cols-[1.75rem_minmax(0,1fr)_auto] items-start gap-x-3 py-0.5 text-xs leading-5 text-muted-foreground",
-        type === "alert" && "-mx-2 my-1 rounded-md bg-idle/10 px-2 py-1 text-foreground/80",
+        (type === "alert" || (m.kind === "system" && m.toYou)) && "-mx-2 my-1 rounded-md bg-idle/10 px-2 py-1 text-foreground/80",
         fresh && ENTER,
       )}
     >

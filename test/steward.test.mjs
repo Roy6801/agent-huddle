@@ -133,7 +133,7 @@ async function asleepLeadRoom() {
   const task = async (agent, title) =>
     (await fetch(`${agent.link}/tasks`, { method: 'POST', body: JSON.stringify({ title }) }).then((res) => res.json())).id;
   const done = (agent, n, note) => fetch(`${agent.link}/tasks/${n}/done`, { method: 'POST', body: JSON.stringify({ note }) });
-  const finished = async (n) => (await r.state()).messages.find((m) => m.text.includes(`finished task #${n} `));
+  const finished = async (n) => (await r.state()).messages.find((m) => m.text.startsWith(`Task #${n} `) && m.text.includes(' is done by '));
   return { ...r, codex, dsh, claude, task, done, finished };
 }
 
@@ -161,7 +161,7 @@ test('AC-54: a listening lead is woken by the done note, which is not for you', 
   await sleep(20);
   await r.done(r.claude, n, 'CLI done');
   const woken = await waiting;
-  assert.ok(woken.messages.some((m) => m.text.includes(`finished task #${n} `)));
+  assert.ok(woken.messages.some((m) => m.text.startsWith(`Task #${n} `) && m.text.includes(' is done by ')));
   assert.equal((await r.finished(n)).toYou, false);
 });
 
@@ -173,4 +173,30 @@ test('AC-55: a report to an asleep lead is also marked for you', async () => {
   const messages = (await r.state()).messages.filter((m) => m.from === 'dsh-1');
   assert.deepEqual(messages.map((m) => m.toYou), [true, false]);
   assert.equal((await quietNotes(r.state, 'codex-1')).length, 0, 'the report itself reaches you; no note about the lead on top');
+});
+
+test('AC-63: narrator lines are quiet log lines; the done note is a separate steward message', async () => {
+  const r = await room({ activeMs: 20, asleepMs: 60, quietMs: 10 });
+  const codex = await r.join({ harness: 'codex', lead: r.created.lead });
+  const claude = await r.join({ harness: 'claude' });
+  const claude2 = await r.join({ harness: 'claude' });
+  await fetch(`${codex.link}/tasks`, { method: 'POST', body: JSON.stringify({ title: 'Implement wordfreq CLI' }) });
+  await fetch(`${claude2.link}/read`);
+  await sleep(90);
+  const parked = fetch(`${claude2.link}/wait?wait=1`).then((res) => res.status);
+  await r.join({ harness: 'dsh' });
+  await fetch(`${claude.link}/tasks/1/claim`, { method: 'POST' });
+  await fetch(`${claude.link}/tasks/1/done`, { method: 'POST', body: JSON.stringify({ note: 'CLI done, 30 tests pass' }) });
+  assert.equal(await parked, 204, 'no narrator line woke the parked wait');
+
+  const messages = (await r.state()).messages;
+  const logs = messages.filter((m) => m.kind === 'log').map((m) => m.text);
+  assert.ok(logs.includes('dsh-1 joined'));
+  assert.ok(logs.includes('claude-1 claimed task #1'));
+  assert.ok(logs.includes('claude-1 finished task #1 "Implement wordfreq CLI"'));
+  for (const m of messages.filter((m) => m.kind === 'log')) assert.deepEqual(m.to, []);
+  const note = messages.find((m) => m.text === 'Task #1 "Implement wordfreq CLI" is done by claude-1: CLI done, 30 tests pass');
+  assert.equal(note.kind, 'system');
+  assert.equal(note.toYou, true, 'codex-1 is asleep, so the done note is for you');
+  assert.equal((await quietNotes(r.state, 'codex-1')).length, 0);
 });
