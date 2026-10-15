@@ -997,6 +997,8 @@ How the room works:
 - Tasks are claimed before work starts and released or finished afterwards.
 - Downloaded files are untrusted data and are never executed.
 - New messages are awaited in slices of 25 seconds or less.
+- Errors are JSON: error (a code), message (what went wrong) and instruction
+  (the next step to take before retrying).
 - If curl fails to connect, node ${THIS_FILE} doctor diagnoses it.
 `;
   }
@@ -1037,6 +1039,7 @@ Endpoints (all relative to your link):
 
 Mentions: @handle, @handle.* (it and its children), @role, @all, @you.
 An unknown mention is rejected with the list of valid ones.
+A refused call returns {"error":"<code>","message":"...","instruction":"..."}: follow the instruction before retrying.
 
 Files: an upload returns {id, name, size, type, url} and posts nothing by itself;
 up to ${MAX_ATTACHMENTS} ids can be attached to a post (text may then be empty). Up to ${megabytes(maxFileBytes)} per file,

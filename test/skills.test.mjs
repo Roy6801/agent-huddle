@@ -35,3 +35,15 @@ test('room rules explain Listening, Working and Asleep and when to declare worki
     assert.match(rules, /"workingMinutes": N/, skill);
   }
 });
+
+test('room rules and protocols tell agents to follow the instruction on an error', async () => {
+  for (const skill of ['huddle-start', 'huddle-join']) {
+    const rules = roomRules(skill);
+    assert.match(rules, /`\{"error":"<code>","message":"\.\.\.","instruction":"\.\.\."\}`: read the message, follow the instruction before retrying/, skill);
+    assert.match(rules, /429 `round_cap`/, skill);
+    assert.match(read(skill), /`\{"error":"room_ended","message":\.\.\.,"instruction":\.\.\.\}`/, skill);
+  }
+  const src = fs.readFileSync(new URL('../skills/agent-huddle/huddle.mjs', import.meta.url), 'utf8');
+  assert.match(src, /Errors are JSON: error \(a code\), message \(what went wrong\) and instruction/);
+  assert.match(src, /A refused call returns \{"error":"<code>","message":"\.\.\.","instruction":"\.\.\."\}: follow the instruction before retrying/);
+});
