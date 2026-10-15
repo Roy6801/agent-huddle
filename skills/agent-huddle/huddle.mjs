@@ -1214,8 +1214,23 @@ export function diagnose(err) {
 
 // ---- CLI ----
 
+// A repo checkout gets its own port and state so a QA room never lands on the installed server.
+// Claude plugin folders hold full repo copies, so they count as installed.
+export function serverDefaults(file = THIS_FILE) {
+  const root = path.join(path.dirname(fs.realpathSync(file)), '..', '..');
+  let checkout = false;
+  if (!/[\\/]plugins[\\/](cache|marketplaces)[\\/]/.test(root)) {
+    try {
+      checkout = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).name === 'agent-huddle';
+    } catch {}
+  }
+  return checkout
+    ? { port: 4848, home: path.join(os.homedir(), '.agent-huddle-dev') }
+    : { port: 4747, home: path.join(os.homedir(), '.agent-huddle') };
+}
+
 function resolveHome() {
-  const wanted = process.env.AGENT_HUDDLE_HOME || path.join(os.homedir(), '.agent-huddle');
+  const wanted = process.env.AGENT_HUDDLE_HOME || serverDefaults().home;
   try {
     fs.mkdirSync(wanted, { recursive: true, mode: 0o700 });
     fs.accessSync(wanted, fs.constants.W_OK);
@@ -1237,7 +1252,7 @@ function readState() {
   }
 }
 
-const configuredPort = () => Number(process.env.AGENT_HUDDLE_PORT) || 4747;
+const configuredPort = () => Number(process.env.AGENT_HUDDLE_PORT) || serverDefaults().port;
 const currentPort = () => readState()?.port ?? configuredPort();
 
 async function health(port, timeoutMs = 1000) {
