@@ -47,6 +47,7 @@ next-env.d.ts
 /public/page.html
 /public/README.md
 /public/LICENSE
+/public/CHANGELOG.md
 /public/agent-huddle.zip
 /public/skills/
 /public/install.mjs
