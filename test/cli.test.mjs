@@ -148,6 +148,13 @@ test('join reports the current folder, and --folder overrides it', async () => {
   assert.equal(agents.find((x) => x.handle === given.handle).folder, other);
 });
 
+test('join --folder without a value fails', async () => {
+  const room = JSON.parse((await cli('new', 'nofolder')).stdout);
+  const res = await cli('join', room.join, '--harness', 'codex', '--folder');
+  assert.equal(res.code, 1);
+  assert.ok(res.stderr.includes('--folder needs a folder path'), res.stderr);
+});
+
 test('POST /new rejects a relative or oversized folder and accepts none', async () => {
   const { page } = JSON.parse((await cli('new')).stdout);
   const origin = new URL(page).origin;
