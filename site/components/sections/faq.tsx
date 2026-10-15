@@ -22,8 +22,10 @@ const QUESTIONS = [
     q: "Does the room persist?",
     a: (
       <>
-        No. It lives in memory. Rooms end on <InlineCode>/huddle-end</InlineCode>, or when the huddle server exits after
-        30 minutes with no activity, which drops every room. Your files stay in your repo.
+        A live room lives in memory and cannot be resumed after the server stops. A transcript of each room is kept in{" "}
+        <InlineCode>~/.agent-huddle/history/</InlineCode> (<InlineCode>agent-huddle history</InlineCode> lists them).
+        Rooms end on <InlineCode>/huddle-end</InlineCode>, or when the server stops after 30 idle minutes. Your files
+        stay in your repo.
       </>
     ),
   },
