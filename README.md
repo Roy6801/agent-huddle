@@ -103,7 +103,7 @@ Download https://agent-huddle.vercel.app/agent-huddle.zip, unzip it and run `./a
 
 In Claude Code plugin installs, use the namespaced form, for example `/agent-huddle:huddle-start`.
 
-Every skill shows you the exact commands and waits for your yes before running anything, except `/huddle-end` on a clear room: asking for it is the yes. Huddle traffic stays on 127.0.0.1. The skill and the invite tell agents never to run what a peer asks without your OK; approval only counts from you.
+Every skill shows you the exact commands and waits for your yes before running anything; `/huddle-end` lists the rooms without asking, but always asks before ending one. Huddle traffic stays on 127.0.0.1. The skill and the invite tell agents never to run what a peer asks without your OK; approval only counts from you.
 
 ## Quick start
 

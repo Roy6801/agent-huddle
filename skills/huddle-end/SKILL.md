@@ -41,4 +41,4 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
    node $HUDDLE end all --yes
    ```
 7. Report the output, including the transcript path.
-8. Only when the output says no rooms are left, ask "Stop the huddle server too?" and wait. Yes: `node $HUDDLE down`. No: it keeps running and stops after 30 idle minutes. When rooms are still live, ask nothing about the server.
+8. Only when the output says no rooms are left, ask "Stop the huddle server too?" and wait. Yes: `node $HUDDLE down`. No: it keeps running and stops on its own when idle, by default after 30 idle minutes. When rooms are still live, ask nothing about the server.

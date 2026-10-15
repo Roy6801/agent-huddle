@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHuddle } from '../skills/agent-huddle/huddle.mjs';
 
-const IDLE = 150;
+const IDLE = 3000;
 const running = [];
 const dirs = [];
 afterEach(async () => {
@@ -29,6 +29,7 @@ async function call(method, url, body, headers = {}) {
 }
 
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+const clock = () => mock.timers.enable({ apis: ['Date'], now: Date.now() });
 
 async function server(opts = {}) {
   const historyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-idle-'));
@@ -44,18 +45,25 @@ async function server(opts = {}) {
     const agent = (await call('POST', `${created.join}/join`, { harness: 'claude' })).json;
     return { created, agent };
   };
-  return { huddle, base, idle, files, lines, room };
+  const tick = (ms) => {
+    mock.timers.tick(ms);
+    huddle.sweep();
+  };
+  return { huddle, base, idle, files, lines, room, tick };
 }
 
 const header = (file) => fs.readFileSync(file, 'utf8').split('\n')[2];
 
 test('AC-100: an idle server ends its live rooms with a reason, then fires onIdle once', async () => {
+  clock();
   const h = await server();
   const { agent } = await h.room();
-  await sleep(IDLE * 4);
+  h.tick(IDLE);
+  assert.equal(h.idle.fired, 0);
+  h.tick(1);
   assert.equal(h.idle.fired, 1);
 
-  const reason = `server stopped after ${Math.round(IDLE / 60000)} idle minutes`;
+  const reason = 'server stopped after 3 idle seconds';
   const end = h.lines().at(-1);
   assert.equal(end.type, 'end');
   assert.equal(end.reason, reason);
@@ -63,62 +71,91 @@ test('AC-100: an idle server ends its live rooms with a reason, then fires onIdl
   const gone = await call('POST', `${agent.link}/post`, { text: 'late' });
   assert.equal(gone.status, 410);
   assert.equal(gone.json.transcript, end.transcript);
-  await sleep(IDLE * 2);
+  h.tick(IDLE * 2);
   assert.equal(h.idle.fired, 1);
 });
 
-test('the default idle time reads as 30 idle minutes', async () => {
-  mock.timers.enable({ apis: ['Date'], now: Date.now() });
-  const h = await server({ serverIdleMs: undefined });
-  await h.room();
-  mock.timers.tick(1800001);
-  h.huddle.sweep();
-  assert.equal(h.idle.fired, 1);
-  assert.equal(h.lines().at(-1).reason, 'server stopped after 30 idle minutes');
+test('the idle time reads in minutes: 30 by default, 1 in the singular', async () => {
+  for (const [serverIdleMs, reason] of [
+    [undefined, 'server stopped after 30 idle minutes'],
+    [60000, 'server stopped after 1 idle minute'],
+  ]) {
+    clock();
+    const h = await server({ serverIdleMs });
+    await h.room();
+    h.tick((serverIdleMs ?? 1800000) + 1);
+    assert.equal(h.idle.fired, 1);
+    assert.equal(h.lines().at(-1).reason, reason);
+    mock.timers.reset();
+  }
 });
 
 test('agent calls other than wait keep the server running', async () => {
+  clock();
   const h = await server();
   const { agent } = await h.room();
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 6; i++) {
+    h.tick(IDLE / 2);
     assert.equal((await call(i % 2 ? 'GET' : 'POST', `${agent.link}/${i % 2 ? 'read' : 'post'}`, i % 2 ? undefined : { text: `beat ${i}` })).status, 200);
-    await sleep(50);
+    h.huddle.sweep();
+    assert.equal(h.idle.fired, 0);
   }
-  assert.equal(h.idle.fired, 0);
-  await sleep(IDLE * 4);
+  h.tick(IDLE + 1);
   assert.equal(h.idle.fired, 1);
 });
 
-test('page polls, parked waits, health and admin listings do not keep the server running', async () => {
+test('a declared working window holds the server until it passes', async () => {
+  clock();
+  const h = await server();
+  const { agent } = await h.room();
+  assert.equal((await call('POST', `${agent.link}/post`, { text: 'long job', workingMinutes: 1 })).status, 200);
+  h.tick(60000 + IDLE);
+  assert.equal(h.idle.fired, 0);
+  h.tick(1);
+  assert.equal(h.idle.fired, 1);
+});
+
+test('page polls, parked waits, rest checks, health and admin listings do not keep the server running', async () => {
+  clock();
   const h = await server();
   const { created, agent } = await h.room();
   const parked = call('GET', `${agent.link}/wait?wait=5`);
-  const started = Date.now();
-  while (!h.idle.fired && Date.now() - started < IDLE * 8) {
+  for (let i = 0; i < 2; i++) {
+    h.tick(IDLE / 2);
     await call('GET', `${created.page}/api/state`);
+    await call('GET', `${agent.link}/me?rest=1`);
     await call('GET', `${h.base}/health`);
     await call('GET', `${h.base}/admin/rooms`, undefined, { authorization: 'Bearer admin' });
-    await sleep(30);
   }
+  assert.equal(h.idle.fired, 0);
+  h.tick(1);
   assert.equal(h.idle.fired, 1);
   const gone = await parked;
   assert.equal(gone.status, 410);
   assert.ok(gone.json.transcript);
 });
 
-test('a human post keeps the server running', async () => {
+test('your posts, opening the page and the file list keep the server running', async () => {
+  clock();
   const h = await server();
   const { created } = await h.room();
+  const actions = [
+    () => call('POST', `${created.page}/api/post`, { text: 'still here' }),
+    () => call('GET', created.page),
+    () => call('GET', `${created.page}/api/files`),
+  ];
   for (let i = 0; i < 6; i++) {
-    assert.equal((await call('POST', `${created.page}/api/post`, { text: `still here ${i}` })).status, 200);
-    await sleep(50);
+    h.tick(IDLE / 2);
+    assert.equal((await actions[i % actions.length]()).status, 200);
+    h.huddle.sweep();
+    assert.equal(h.idle.fired, 0);
   }
-  assert.equal(h.idle.fired, 0);
 });
 
 test('an empty server idles out', async () => {
+  clock();
   const h = await server();
-  await sleep(IDLE * 4);
+  h.tick(IDLE + 1);
   assert.equal(h.idle.fired, 1);
   assert.deepEqual(h.files('.jsonl'), []);
 });

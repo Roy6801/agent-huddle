@@ -1397,10 +1397,9 @@ How the room works:
 
   function adminRoute(req, res, method, parts, base) {
     if (!isAdmin(req)) throw new HttpError('unauthorized');
-    if (method === 'POST') lastActivity = Date.now();
     if (method === 'GET' && parts.length === 2 && parts[1] === 'rooms') {
       const list = liveRooms().reverse().map((s) => adminView(s, base));
-      return sendJson(res, 200, { rooms: list });
+      return sendJson(res, 200, { rooms: list, idleMs: serverIdleMs });
     }
     if (method === 'POST' && parts.length === 4 && parts[1] === 'rooms' && parts[3] === 'end') {
       const s = rooms.get(parts[2]);
@@ -1419,6 +1418,15 @@ How the room works:
 
   // ---- routing ----
 
+  // Waits, rest checks, page polls and admin listings are not activity.
+  function isActivity(method, parts, url) {
+    if (method === 'POST') return true;
+    if (method !== 'GET' || parts[0] !== 's' || parts.length < 4) return false;
+    const key = parts.slice(4).join('/');
+    if (parts[2] === 'as') return key !== 'wait' && !(key === 'me' && url.searchParams.get('rest') === '1');
+    return parts[2] === 'h' && key !== 'api/state';
+  }
+
   async function handle(req, res) {
     const port = server.address().port;
     const host = req.headers.host;
@@ -1433,6 +1441,7 @@ How the room works:
     const method = req.method;
     const url = new URL(req.url, base);
     const parts = url.pathname.split('/').filter(Boolean);
+    if (isActivity(method, parts, url)) lastActivity = Date.now();
     const notFound = () => {
       throw new HttpError('not_found');
     };
@@ -1446,7 +1455,6 @@ How the room works:
       if (body.name !== undefined && body.name !== null) name = cleanText(body.name, MAX_NAME, 'name');
       const cap = body.roundCap === undefined ? roundCap : parseRoundCap(body.roundCap);
       const s = createRoom(name, cap, parseFolder(body.folder));
-      lastActivity = Date.now();
       return sendJson(res, 200, {
         id: s.id,
         name: s.name,
@@ -1473,7 +1481,6 @@ How the room works:
       if (method !== 'POST') return notFound();
       if (s.ended) throw roomEnded(s);
       const body = await readBody(req);
-      lastActivity = Date.now();
       return sendJson(res, 200, joinAgent(s, body, base));
     }
     if (rest[0] === 'as' && rest.length >= 2) {
@@ -1560,7 +1567,7 @@ How the room works:
     const waiting = method === 'GET' && key === 'wait';
     agent.restingAt = resting ? agent.lastSeen : 0;
     if (!waiting) agent.offShift = false;
-    if (!resting && !waiting) agent.lastCallAt = lastActivity = agent.lastSeen;
+    if (!resting && !waiting) agent.lastCallAt = agent.lastSeen;
     const leaving = method === 'POST' && key === 'leave';
     if (agent.status === 'left' && !leaving) {
       agent.status = 'active';
@@ -1664,7 +1671,6 @@ How the room works:
     const upload = method === 'POST' && key === 'api/files';
     const body = method === 'POST' && !upload ? await readBody(req, /^api\/(tasks(\/\d+)?|brief)$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
     s.humanSeen = Date.now();
-    if (method === 'POST') lastActivity = s.humanSeen;
     const fileMatch = /^api\/files\/([\w-]+)$/.exec(key);
     const askMatch = /^api\/asks\/(\d+)$/.exec(key);
 
@@ -1788,9 +1794,11 @@ How the room works:
       }
       checkStall(s, now);
     }
-    if (!idleFired && now - lastActivity > serverIdleMs) {
+    let quietSince = lastActivity;
+    for (const s of liveRooms()) for (const a of s.agents.values()) if (a.status !== 'left') quietSince = Math.max(quietSince, a.workingUntil);
+    if (!idleFired && now - quietSince > serverIdleMs) {
       idleFired = true;
-      for (const s of liveRooms()) endRoom(s, `server stopped after ${Math.round(serverIdleMs / 60000)} idle minutes`);
+      for (const s of liveRooms()) endRoom(s, `server stopped after ${idleText(serverIdleMs)}`);
       if (onIdle) onIdle();
     }
   }
@@ -3084,6 +3092,11 @@ async function admin(ctx, method, route) {
 
 const id8 = (s) => s.id.slice(0, 8);
 
+function idleText(ms) {
+  const [n, unit] = ms < 60000 ? [Math.max(1, Math.round(ms / 1000)), 'second'] : [Math.round(ms / 60000), 'minute'];
+  return `${n} idle ${unit}${n === 1 ? '' : 's'}`;
+}
+
 function formatAge(iso) {
   const sec = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 1000));
   if (sec < 60) return `${sec}s`;
@@ -3207,7 +3220,7 @@ async function endRoom(args) {
   const query = args.filter((a) => !flags.has(a)).join(' ').trim();
   const all = args.includes('--all') || query.toLowerCase() === 'all';
   const ctx = await adminContext(true);
-  const { rooms } = await admin(ctx, 'GET', 'rooms');
+  const { rooms, idleMs } = await admin(ctx, 'GET', 'rooms');
   if (!query && !all && rooms.length !== 1) {
     console.error('Usage: node huddle.mjs end <room> | all | --all [--yes] [--stop-server]');
     console.error(rooms.length ? `Live rooms:\n${formatRoomList(rooms)}` : 'No live rooms.');
@@ -3240,15 +3253,18 @@ async function endRoom(args) {
     const why = history ? `${historyError}; history is at ${history}` : `history is not being saved${historyError ? ` (${historyError})` : ''}.`;
     console.log(transcript ? `Transcript: ${transcript}` : `No transcript written: ${why}`);
   }
+  let left;
   if (args.includes('--stop-server')) {
     const result = await admin(ctx, 'POST', 'stop-if-empty');
     if (result.stopping) return console.log('Server stopped (no rooms left).');
+    left = result.live;
+  } else {
+    left = (await admin(ctx, 'GET', 'rooms')).rooms.length;
   }
-  const left = (await admin(ctx, 'GET', 'rooms')).rooms.length;
   console.log(
     left
       ? `${left} room(s) still live; server keeps running.`
-      : `No rooms left; the server keeps running. Stop it with ${HELP_PROG} down, or it stops after 30 idle minutes.`,
+      : `No rooms left; the server keeps running. Stop it with ${HELP_PROG} down${idleMs ? `, or it stops after ${idleText(idleMs)}` : ''}.`,
   );
 }
 
