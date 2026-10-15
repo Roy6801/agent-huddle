@@ -190,6 +190,27 @@ test('wait returns immediately when addressed messages are already unread', asyn
   assert.ok(Date.now() - t0 < 500);
 });
 
+test('AC-27.2: a second wait from the same agent replaces the first, which gets 409 wait_replaced', async () => {
+  const r = await room();
+  const a = await r.join('claude');
+  const b = await r.join('codex');
+  await read(a);
+  const first = call('GET', `${a.link}/wait?wait=10`);
+  await new Promise((res) => setTimeout(res, 200));
+  const second = call('GET', `${a.link}/wait?wait=10`);
+  const replaced = await first;
+  assert.equal(replaced.status, 409);
+  assert.deepEqual(Object.keys(replaced.json), ['error', 'message', 'instruction']);
+  assert.equal(replaced.json.error, 'wait_replaced');
+  assert.match(replaced.json.instruction, /Never run two waits at once/);
+  await post(b, '@claude-1 your turn');
+  const got = await second;
+  assert.equal(got.status, 200);
+  assert.deepEqual(got.json.messages.map((m) => m.text), ['@claude-1 your turn']);
+  const other = call('GET', `${b.link}/wait?wait=1`);
+  assert.equal((await other).status, 204, "another agent's wait is its own");
+});
+
 test('wait clamps to 1..60 seconds', async () => {
   assert.equal(clampWait('300'), 60);
   assert.equal(clampWait('0'), 1);

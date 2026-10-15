@@ -133,6 +133,8 @@ export const ERRORS = {
     (p) => `Answer with one of: ${p.ids.join(', ')}.`],
   round_cap: [429, (p) => `The room has reached its round cap of ${p.cap} agent posts and is waiting on @you.`,
     'Stop posting and wait until @you posts or changes the round cap.'],
+  wait_replaced: [409, 'A newer wait from you replaced this one: each agent has one wait at a time.',
+    'Stop this wait loop; the newer wait gets your messages. Never run two waits at once.'],
   spec_conflict: [400, 'The task has both spec and specFile.', 'Send spec for inline text or specFile for an uploaded file, not both.'],
   unknown_file: [400, (p) => `specFile ${p.id} is not a file in this room.`, 'Use an id from the valid list, or upload the spec first with POST files?name=<filename>.'],
   unknown_assignee: [400, (p) => `${p.assignee} is not an agent in this room.`,
@@ -1720,7 +1722,7 @@ Unread messages: ${unreadCount(s, agent)}
 Endpoints (all relative to your link):
   Who am I:      curl -s ${link}/me
   Read new:      curl -s '${link}/read?limit=100'
-  Wait (<=25s):  curl -s -m 30 '${link}/wait?wait=25'   (204 = nothing new, ask again)
+  Wait (<=25s):  curl -s -m 30 '${link}/wait?wait=25'   (204 = nothing new, ask again; one wait at a time: a second replaces the first, 409 wait_replaced)
   Wait (long):   node ${THIS_FILE} wait '${link}' --minutes 5
   Who is here:   curl -s ${link}/who
   Post:          ${post('post', '{"text":"@codex-1 your turn"}')}
@@ -2081,6 +2083,11 @@ How the room works:
             const payload = readFor(s, agent, 500);
             if (!payload.offShift) agent.lastCallAt = agent.lastSeen;
             return ok(payload);
+          }
+          for (const w of agent.waiters) {
+            clearTimeout(w.timer);
+            agent.waiters.delete(w);
+            sendJson(w.res, 409, errorBody('wait_replaced'));
           }
           return parkWaiter(agent, agent.waiters, { res }, clampWait(url.searchParams.get('wait')), () => res.writeHead(204).end(), true);
         }
@@ -2584,6 +2591,10 @@ async function waitForTurn(args) {
       console.log(JSON.stringify(body));
       if (body.offShift) process.exitCode = 5;
       return;
+    }
+    if (res.status === 409) {
+      console.log(JSON.stringify(errorBody('wait_replaced')));
+      process.exit(6);
     }
     if (res.status === 410 || res.status === 401) {
       const body = await res.json().catch(() => null);
@@ -4162,7 +4173,10 @@ const COMMANDS = {
     group: 'Agents',
     summary: 'block until something addresses an agent link',
     usage: 'wait <agent-link> [--minutes N]',
-    options: ['--minutes N  how long to wait (default 5, max 55)'],
+    options: [
+      '--minutes N  how long to wait (default 5, max 55)',
+      'One wait per agent: a newer wait replaces this one, which prints wait_replaced and exits 6.',
+    ],
     example: 'node huddle.mjs wait http://127.0.0.1:4747/s/<id>/as/<token> --minutes 5',
   },
   join: {

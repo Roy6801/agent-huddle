@@ -72,6 +72,17 @@ test('wait times out with a timeout object', async () => {
   assert.deepEqual(JSON.parse(r.stdout), { timeout: true, minutes: 0.02 });
 });
 
+test('AC-27.2: wait exits 6 with wait_replaced when a newer wait from the same agent replaces it', async () => {
+  const { a } = await room();
+  const first = cli('wait', a.link, '--minutes', '1');
+  await new Promise((r) => setTimeout(r, 500));
+  const second = fetch(`${a.link}/wait?wait=2`);
+  const r = await first;
+  assert.equal(r.code, 6, r.stdout + r.stderr);
+  assert.equal(JSON.parse(r.stdout).error, 'wait_replaced');
+  assert.equal((await second).status, 204);
+});
+
 test('wait exits 3 after the room is ended', async () => {
   const { created, a } = await room();
   await cli('end', created.id, '--yes');
