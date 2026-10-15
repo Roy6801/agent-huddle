@@ -218,6 +218,33 @@ class HttpError extends Error {
 
 const roomEnded = ({ transcript }) => new HttpError('room_ended', { transcript }, transcript ? { transcript } : undefined);
 
+// What a room's history keeps of its page link: enough to check the link, never the key itself.
+const pageHash = (id, humanToken) => crypto.createHash('sha256').update(`${id}/${humanToken}`).digest('hex');
+
+// The page's read-only view of a room from its history lines. Without the page hash (history written before it
+// was kept), the link cannot be checked, so only where the transcript is comes back.
+function historyView(lines, full) {
+  const room = lines.find((l) => l?.type === 'room');
+  const end = lines.findLast((l) => l?.type === 'end');
+  const ended = { at: end?.at ?? null, reason: end?.reason ?? null, transcript: end?.transcript ?? null };
+  if (!full) return { ended };
+  const latest = (type, key) => [...new Map(lines.filter((l) => l?.type === type).map((l) => [key(l), l])).values()];
+  const brief = lines.findLast((l) => l?.type === 'brief');
+  return {
+    room: { name: room.name, createdAt: room.createdAt, folder: room.folder },
+    ended,
+    messages: lines.filter((l) => l?.type === 'message').map(({ type, files, ...m }) => ({
+      ...m,
+      files: files.map((f, i) => ({ id: `${m.id}-${i}`, type: '', ...f })),
+    })),
+    tasks: latest('task', (l) => l.task.id).map((l) => l.task),
+    agents: latest('agent', (l) => l.handle).map(({ handle, harness, role, status, folder, at }) =>
+      ({ handle, harness, role, status, folder, parent: null, lastSeen: at })),
+    asks: latest('ask', (l) => l.ask.id).map((l) => l.ask),
+    brief: brief ? { text: brief.text, by: brief.by, at: brief.at, id: brief.id } : null,
+  };
+}
+
 const newToken = () => crypto.randomBytes(16).toString('base64url');
 
 export function clampWait(value) {
@@ -501,7 +528,7 @@ export function createHuddle(opts = {}) {
     }
     s.history = { file: path.join(historyDir, historyName(s)) };
     const { name, folder, createdAt } = s;
-    historyLine(s, { type: 'room', at: createdAt, name, id: s.id.slice(0, 8), folder, createdAt, version: VERSION });
+    historyLine(s, { type: 'room', at: createdAt, name, id: s.id.slice(0, 8), folder, createdAt, version: VERSION, pageHash: pageHash(s.id, s.humanToken) });
   }
 
   function historyLine(s, entry) {
@@ -1472,8 +1499,8 @@ How the room works:
     if (parts[0] !== 's' || parts.length < 2) return notFound();
 
     const s = rooms.get(parts[1]);
-    if (!s) throw new HttpError('unknown_room');
     const rest = parts.slice(2);
+    if (!s) return pastRoute(res, method, parts[1], rest);
 
     if (rest.length === 0) {
       if (method !== 'GET') return notFound();
@@ -1554,6 +1581,7 @@ How the room works:
     const to = paused ? [] : liveAgents(s).filter((a) => a.handle !== by).map((a) => a.handle);
     const m = system(s, text, { brief: true, to });
     s.brief = { text, by, at: m.at, id: m.id };
+    historyLine(s, { type: 'brief', ...s.brief });
     return s.brief;
   }
 
@@ -1668,23 +1696,61 @@ How the room works:
     throw new HttpError('not_found');
   }
 
+  // A room gone from memory (its tombstone expired, or the server restarted), found by its short id in the history
+  // file names. A link that matches no page hash there is wrong; history from before the hash matches any link.
+  function pastRoom(id, token) {
+    if (!historyDir) return null;
+    let names;
+    try {
+      names = fs.readdirSync(historyDir).filter((n) => n.endsWith(`-${id.slice(0, 8)}.jsonl`));
+    } catch {
+      return null;
+    }
+    const past = names.map((n) => historyLines(path.join(historyDir, n))).filter((lines) => lines.some((l) => l?.type === 'room'));
+    const room = (lines) => lines.find((l) => l?.type === 'room');
+    const hash = pageHash(id, token);
+    const match = past.find((lines) => room(lines).pageHash === hash);
+    if (match) return { lines: match, full: true };
+    const old = past.find((lines) => room(lines).pageHash === undefined);
+    if (old) return { lines: old, full: false };
+    if (past.length) throw new HttpError('wrong_page_link');
+    return null;
+  }
+
+  // A past room serves only its page and its history; everything else is told the room has ended.
+  function pastRoute(res, method, id, rest) {
+    const past = rest[0] === 'h' && rest.length >= 2 ? pastRoom(id, rest[1]) : null;
+    if (!past) throw new HttpError('unknown_room');
+    const key = rest.slice(2).join('/');
+    if (method === 'GET' && key === '') return sendPage(res);
+    const view = historyView(past.lines, past.full);
+    if (method === 'GET' && key === 'api/history') return sendJson(res, 200, view);
+    throw roomEnded(view.ended);
+  }
+
+  async function sendPage(res) {
+    let html;
+    try {
+      html = await fs.promises.readFile(path.join(path.dirname(THIS_FILE), 'page.html'));
+    } catch {
+      return sendText(res, 500, 'page.html missing');
+    }
+    return sendText(res, 200, html, 'text/html; charset=utf-8');
+  }
+
   async function humanRoute(s, req, res, method, url, base, token, key) {
     if (token !== s.humanToken) throw new HttpError('wrong_page_link');
-    if (s.ended && !(method === 'GET' && key === '')) throw roomEnded(s);
+    if (s.ended && !(method === 'GET' && (key === '' || key === 'api/history'))) throw roomEnded(s);
     const upload = method === 'POST' && key === 'api/files';
     const body = method === 'POST' && !upload ? await readBody(req, /^api\/(tasks(\/\d+)?|brief)$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
     s.humanSeen = Date.now();
     const fileMatch = /^api\/files\/([\w-]+)$/.exec(key);
     const askMatch = /^api\/asks\/(\d+)$/.exec(key);
 
-    if (method === 'GET' && key === '') {
-      let html;
-      try {
-        html = await fs.promises.readFile(path.join(path.dirname(THIS_FILE), 'page.html'));
-      } catch {
-        return sendText(res, 500, 'page.html missing');
-      }
-      return sendText(res, 200, html, 'text/html; charset=utf-8');
+    if (method === 'GET' && key === '') return sendPage(res);
+    if (method === 'GET' && key === 'api/history') {
+      const view = s.history ? historyView(historyLines(s.history.file), true) : { ended: { at: null, reason: null, transcript: s.transcript } };
+      return sendJson(res, 200, view);
     }
     if (method === 'GET' && key === 'api/state') {
       const since = parseInt(url.searchParams.get('since'), 10) || 0;
