@@ -7,6 +7,15 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 ## 0.3.29 (2026-10-16)
 
 ## 0.3.28 (2026-10-16)
+### Added
+- Roles stick: a join line can end with `as <role>` (`/huddle-join <url> as builder`), huddle-join joins with it, huddle-start hands out lines with the roles the user gave, and Add agent on the page has an optional Role field for the skill lines and the headless command (`worker --role`).
+- Role change: `POST <link>/role {"role":…}` (null clears) and CLI `role <agent-link> <role|none>`, with the steward line "codex-1 is now builder"; `POST <page>/api/agents/<handle>/role` lets @you set any agent's role, and its line mentions and wakes the agent. Changes are written to history; the personal protocol and room rules document them.
+- The `new` reply carries `folder`, and the announce names the room folder and asks to confirm it before agents join; huddle-start confirms it with the user.
+
+### Changed
+- Headless is a flag (`headless: true` in who, state and history), not a role, so a headless agent can hold a real role. Joins with role `headless` still set the flag; `headless` is no longer a valid role.
+- `@lead` reaches the lead whatever role it holds; the roster shows the role next to the handle with lead and headless badges.
+- A room folder change before any agent but the lead has joined and before any task creates no move task.
 
 ## 0.3.27 (2026-10-16)
 ### Added
