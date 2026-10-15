@@ -135,7 +135,7 @@ export const ERRORS = {
     'Upload it first with POST files?name=<filename>, then attach the id it returns.'],
   invalid_for: [400, 'for must be "you".', 'Send "for":"you" to relay to @you, or leave it out.'],
   empty_settings: [400, 'The settings request changes nothing.',
-    'Send at least one of roundCap, wakesPerHour, runMinutes, idleMinutes, workingWindowMinutes, asleepMinutes or leaveMinutes.'],
+    'Send at least one of roundCap, wakesPerHour, runMinutes, idleMinutes, workingWindowMinutes, asleepMinutes, leaveMinutes or stallMinutes.'],
   unknown_agent: [404, (p) => `@${p.handle} is not a live agent in this room.`, 'Pick a live agent from the roster.'],
   not_headless: [409, (p) => `@${p.handle} is not a headless agent.`, 'Ask it in the room to stop, or stop it in its own terminal.'],
   file_too_large: [413, (p) => `The file is ${p.size ? `${megabytes(p.size)}, ` : ''}over the ${megabytes(p.limit)} limit per file.`,
@@ -255,8 +255,8 @@ function parseHeadless(body, current) {
 }
 
 const WORKING_DECLARATION = [1, 120];
-const PRESENCE_LIMITS = { workingWindowMinutes: [1, 120], asleepMinutes: [1, 120], leaveMinutes: [5, 240] };
-const PRESENCE_FIELDS = { workingWindowMinutes: 'workingMs', asleepMinutes: 'asleepMs', leaveMinutes: 'leaveMs' };
+const PRESENCE_LIMITS = { workingWindowMinutes: [1, 120], asleepMinutes: [1, 120], leaveMinutes: [5, 240], stallMinutes: [1, 60] };
+const PRESENCE_FIELDS = { workingWindowMinutes: 'workingMs', asleepMinutes: 'asleepMs', leaveMinutes: 'leaveMs', stallMinutes: 'stallMs' };
 
 function parsePresence(body, current) {
   const next = { ...current };
@@ -273,6 +273,7 @@ const presenceTimers = (timers) => ({
   workingWindowMinutes: Math.round(timers.workingMs / 60000),
   asleepMinutes: Math.round(timers.asleepMs / 60000),
   leaveMinutes: Math.round(timers.leaveMs / 60000),
+  stallMinutes: Math.round(timers.stallMs / 60000),
 });
 
 function parseFolder(v) {
@@ -293,6 +294,7 @@ export function createHuddle(opts = {}) {
     minuteMs = 60000,
     serverIdleMs = 1800000,
     askMs = 600000,
+    stallMs = 5 * 60000,
     roundCap = ROUND_CAP_DEFAULT,
     onIdle,
     onStop,
@@ -380,7 +382,9 @@ export function createHuddle(opts = {}) {
       agentStreak: 0,
       roundCap: cap,
       headless: { wakesPerHour: 20, runMinutes: 10, idleMinutes: 60 },
-      timers: { workingMs: activeMs, asleepMs, leaveMs: idleMs },
+      timers: { workingMs: activeMs, asleepMs, leaveMs: idleMs, stallMs },
+      lastActivity: Date.now(),
+      stall: null,
       folder,
       humanSeen: 0,
     };
@@ -436,6 +440,7 @@ export function createHuddle(opts = {}) {
   }
 
   function addMessage(s, from, text, extra = {}) {
+    if (!extra.stall) markActivity(s);
     const m = {
       id: s.nextMsgId++,
       at: new Date().toISOString(),
@@ -620,6 +625,7 @@ export function createHuddle(opts = {}) {
       if (t.status === 'claimed' && t.owner === agent.handle) {
         t.status = 'open';
         t.owner = null;
+        t.since = new Date().toISOString();
         released.push(t.id);
       }
     }
@@ -763,6 +769,7 @@ export function createHuddle(opts = {}) {
       spec: null,
       specFile: null,
       status: 'open',
+      since: new Date().toISOString(),
       owner: null,
       assignee,
       createdBy: creator,
@@ -812,6 +819,7 @@ export function createHuddle(opts = {}) {
       if (task.owner === h) return task;
       if (task.owner) throw new HttpError('already_claimed', { n, owner: task.owner });
       task.status = 'claimed';
+      task.since = new Date().toISOString();
       task.owner = h;
       system(s, `${h} claimed task #${task.id}`);
     } else if (action === 'done') {
@@ -819,6 +827,7 @@ export function createHuddle(opts = {}) {
       if (task.owner && task.owner !== h) throw new HttpError('already_claimed', { n, owner: task.owner });
       const note = body.note === undefined || body.note === null ? null : cleanText(body.note, MAX_TEXT, 'note');
       task.status = 'done';
+      task.since = new Date().toISOString();
       task.owner = h;
       task.note = note;
       const creator = s.agents.get(task.createdBy);
@@ -836,6 +845,7 @@ export function createHuddle(opts = {}) {
         throw new HttpError('not_owner', { n, owner: task.owner === h ? null : task.owner });
       }
       task.status = 'open';
+      task.since = new Date().toISOString();
       task.owner = null;
       system(s, `${h} released task #${task.id}`);
     }
@@ -913,7 +923,7 @@ export function createHuddle(opts = {}) {
     }
     if (timersChanged) {
       const p = presenceTimers(timers);
-      system(s, `you set presence timers: working ${p.workingWindowMinutes} min, asleep ${p.asleepMinutes} min, leave after ${p.leaveMinutes} min`);
+      system(s, `you set presence timers: working ${p.workingWindowMinutes} min, asleep ${p.asleepMinutes} min, leave after ${p.leaveMinutes} min, stall nudge after ${p.stallMinutes} min`);
     }
     return { roundCap: s.roundCap };
   }
@@ -985,6 +995,7 @@ export function createHuddle(opts = {}) {
         if (!fits(size)) return reject(tooBig(size, true));
         const f = { id: newToken(), name, size, type, from, at: new Date().toISOString(), data: Buffer.concat(chunks) };
         s.files.set(f.id, f);
+        markActivity(s);
         s.fileBytes += size;
         resolve(f);
       });
@@ -1400,6 +1411,49 @@ How the room works:
 
   // ---- lifecycle ----
 
+  // ---- steward: stall check ----
+
+  // Any post, task change, ask, upload, join, leave or action of yours restarts the hold; waits and reads do not.
+  function markActivity(s) {
+    s.lastActivity = Date.now();
+    s.stall = null;
+  }
+
+  const clock = (iso) => new Date(iso).toTimeString().slice(0, 5);
+
+  function stallLine(t) {
+    const holder = t.owner ? `held by @${t.owner}` : t.assignee ? `unclaimed, assigned to @${t.assignee},` : 'unclaimed';
+    return `#${t.id} "${t.title}" ${holder} since ${clock(t.since)}`;
+  }
+
+  // Tasks are pending and no agent is Working: after the hold, nudge the Listening holders, else you.
+  function checkStall(s, now) {
+    const pending = s.tasks.filter((t) => t.status !== 'done');
+    if (!pending.length || [...s.agents.values()].some((a) => presence(s, a) === 'working')) {
+      s.stall = null;
+      return;
+    }
+    s.stall ??= { since: now, nudged: false };
+    if (s.stall.nudged || now < Math.max(s.stall.since, s.lastActivity) + s.timers.stallMs) return;
+    s.stall.nudged = true;
+    const paused = s.roundCap !== null && s.agentStreak >= s.roundCap;
+    const holder = (t) => t.owner ?? t.assignee;
+    const listening = paused ? [] : [...new Set(pending.map(holder))].filter((h) => h && s.agents.has(h) && presence(s, s.agents.get(h)) === 'listening');
+    if (listening.length) {
+      const mine = pending.filter((t) => listening.includes(holder(t)));
+      system(s, `Nobody is working and these tasks are waiting on you: ${mine.map(stallLine).join('; ')}. Pick one up, or say what blocks it.`, {
+        mentions: listening,
+        to: listening,
+        stall: true,
+      });
+    } else {
+      system(s, `Nobody is working and tasks are pending: ${pending.map(stallLine).join('; ')}. Nudge their agents in their own terminals, or reassign them.`, {
+        toYou: true,
+        stall: true,
+      });
+    }
+  }
+
   function sweep() {
     const now = Date.now();
     let waiting = false;
@@ -1417,6 +1471,7 @@ How the room works:
           leaveAgent(s, agent, 'idle');
         }
       }
+      checkStall(s, now);
     }
     if (!waiting && !idleFired && now - lastRequest > serverIdleMs) {
       idleFired = true;
@@ -1424,7 +1479,7 @@ How the room works:
     }
   }
 
-  const interval = Math.max(25, Math.min(30000, Math.min(idleMs, serverIdleMs, askMs) / 4));
+  const interval = Math.max(25, Math.min(30000, Math.min(idleMs, serverIdleMs, askMs, stallMs) / 4));
   const timer = setInterval(sweep, interval);
   timer.unref();
 
