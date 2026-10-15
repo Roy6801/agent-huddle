@@ -40,6 +40,9 @@ function Person({ handle }: { handle: string }) {
   );
 }
 
+/** Roughly more than the six lines a clamped block shows in the narrow board. */
+const longText = (text: string) => text.length > 240 || text.split("\n").length > 6;
+
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <>
@@ -293,12 +296,13 @@ function ReopenTask({ task, onClose, onReopened }: { task: Task; onClose: () => 
   );
 }
 
-function SpecDialog({ task, spec }: { task: Task; spec: string }) {
+/** The full text of a long spec or done note, read in a dialog instead of stretching the card. */
+function TextDialog({ task, kind, text, intro }: { task: Task; kind: "spec" | "note"; text: string; intro?: string | null }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button type="button" variant="link" size="sm" className="h-auto justify-start px-0 text-[11px]" aria-label={`Read the spec for task #${task.id}`}>
-          Read spec
+        <Button type="button" variant="link" size="sm" className="h-auto justify-start px-0 text-[11px]" aria-label={`Read the ${kind} for task #${task.id}`}>
+          Read {kind}
         </Button>
       </DialogTrigger>
       <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-3xl">
@@ -306,19 +310,19 @@ function SpecDialog({ task, spec }: { task: Task; spec: string }) {
           <DialogTitle className="leading-snug break-words">
             #{task.id} {task.title}
           </DialogTitle>
-          <DialogDescription className="text-xs">{spec.length.toLocaleString("en-US")} characters</DialogDescription>
+          <DialogDescription className="text-xs">{text.length.toLocaleString("en-US")} characters</DialogDescription>
         </DialogHeader>
-        {task.description && <p className="text-xs leading-5 break-words whitespace-pre-wrap text-muted-foreground">{task.description}</p>}
+        {intro && <p className="text-xs leading-5 break-words whitespace-pre-wrap text-muted-foreground">{intro}</p>}
         <div
           tabIndex={0}
           role="region"
-          aria-label={`Spec for task #${task.id}`}
+          aria-label={`${kind === "spec" ? "Spec" : "Done note"} for task #${task.id}`}
           className="min-h-0 flex-1 overflow-y-auto rounded-md bg-muted px-3 py-2.5 text-sm leading-relaxed break-words whitespace-pre-wrap text-foreground/90 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
-          {spec}
+          {text}
         </div>
         <div className="flex justify-end">
-          <CopyButton text={spec} label="Copy spec" icon={<CopyIcon aria-hidden />} variant="outline" size="sm" />
+          <CopyButton text={text} label={`Copy ${kind}`} icon={<CopyIcon aria-hidden />} variant="outline" size="sm" />
         </div>
       </DialogContent>
     </Dialog>
@@ -402,7 +406,7 @@ function TaskCard({ task }: { task: Task }) {
                 <div className="rounded-md bg-muted px-2 py-1.5 text-foreground/85">
                   <p className="line-clamp-6 break-words whitespace-pre-wrap">{task.spec}</p>
                 </div>
-                <SpecDialog task={task} spec={task.spec} />
+                <TextDialog task={task} kind="spec" text={task.spec} intro={task.description} />
               </Row>
             )}
             {task.specFile && (
@@ -427,17 +431,18 @@ function TaskCard({ task }: { task: Task }) {
               </Row>
             )}
             {task.note && (
-              <Row label="Note">
-                <code className="block rounded-md bg-muted px-2 py-1.5 font-mono text-[11px] leading-4 break-words whitespace-pre-wrap text-foreground/85">
-                  {task.note}
+              <Row label={done || !task.reopened ? "Done note" : "Last done note"}>
+                <code className="block rounded-md bg-muted px-2 py-1.5 font-mono text-[11px] leading-4 text-foreground/85">
+                  <span className="line-clamp-6 break-words whitespace-pre-wrap">{task.note}</span>
                 </code>
+                {longText(task.note) && <TextDialog task={task} kind="note" text={task.note} />}
               </Row>
             )}
             {task.reopened && (
               <Row label="Reopened by">
-                <span className="flex min-w-0 items-start gap-1">
+                <span className="grid min-w-0 gap-0.5">
                   <Person handle={task.reopened.by} />
-                  <span className="break-words whitespace-pre-wrap">: {task.reopened.reason}</span>
+                  <span className="break-words whitespace-pre-wrap">{task.reopened.reason}</span>
                 </span>
               </Row>
             )}
