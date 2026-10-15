@@ -6,6 +6,7 @@ import { ErrorBox, type ErrorInfo } from "@/components/error-box";
 import { Jazzicon } from "@/components/identity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -196,17 +197,10 @@ function TaskForm({ id, label, submitLabel, error, onSubmit, onClose, children }
     <form
       autoComplete="off"
       aria-label={label}
-      className="grid gap-3 border-t px-3 py-2.5"
+      className="grid min-h-0 gap-3 overflow-y-auto px-0.5 py-0.5"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape" && !e.defaultPrevented) {
-          e.preventDefault();
-          e.stopPropagation();
-          onClose();
-        }
       }}
     >
       {children}
@@ -223,17 +217,59 @@ function TaskForm({ id, label, submitLabel, error, onSubmit, onClose, children }
   );
 }
 
+/** Tasks that wait on this one, directly or through others; they cannot also come before it. */
+function dependents(tasks: Task[], id: number) {
+  const out = new Set<number>();
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const t of tasks) {
+      if (!out.has(t.id) && t.after.some((n) => n === id || out.has(n))) {
+        out.add(t.id);
+        grew = true;
+      }
+    }
+  }
+  return out;
+}
+
+const sameList = (a: number[], b: number[]) => a.length === b.length && a.every((n, i) => n === b[i]);
+
 function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
-  const [base] = useState(() => ({ description: task.description, spec: task.spec }));
+  const { state, live } = useRoom();
+  const [base] = useState(() => ({ title: task.title, assignee: task.assignee ?? "", after: task.after, description: task.description, spec: task.spec }));
+  const [title, setTitle] = useState(base.title);
+  const [assignee, setAssignee] = useState(base.assignee);
+  const [after, setAfter] = useState<number[]>(base.after);
   const [description, setDescription] = useState(base.description ?? "");
   const [spec, setSpec] = useState(base.spec ?? "");
-  const { error, send } = usePostTask(`/api/tasks/${task.id}`, onClose);
+  const { error, setError, send } = usePostTask(`/api/tasks/${task.id}`, onClose);
   const id = useId();
   const describedBy = error ? `${id}-error` : undefined;
-  const changed = task.description !== base.description || task.spec !== base.spec;
+  const changed =
+    task.title !== base.title ||
+    (task.assignee ?? "") !== base.assignee ||
+    !sameList(task.after, base.after) ||
+    task.description !== base.description ||
+    task.spec !== base.spec;
+  const handles = live.map((a) => a.handle);
+  if (base.assignee && !handles.includes(base.assignee)) handles.push(base.assignee);
+  const blocked = dependents(state.tasks, task.id);
+  const others = state.tasks.filter((t) => t.id !== task.id);
 
   function submit() {
-    const body: { description?: string | null; spec?: string | null } = {};
+    const body: {
+      title?: string;
+      assignee?: string | null;
+      after?: number[];
+      description?: string | null;
+      spec?: string | null;
+    } = {};
+    if (!title.trim()) return setError({ message: "Enter a title." });
+    if (title.trim() !== base.title) body.title = title.trim();
+    if (assignee !== base.assignee) body.assignee = assignee || null;
+    const nextAfter = [...after].sort((a, b) => a - b);
+    if (!sameList(nextAfter, base.after)) body.after = nextAfter;
     const nextDescription = description.trim() || null;
     const nextSpec = spec.trim() || null;
     if (nextDescription !== base.description) body.description = nextDescription;
@@ -244,6 +280,38 @@ function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
 
   return (
     <TaskForm id={id} label={`Edit task #${task.id}`} submitLabel="Save" error={error} onSubmit={submit} onClose={onClose}>
+      <div className="grid gap-1.5">
+        <label htmlFor={`${id}-title`} className="text-xs font-medium text-muted-foreground">
+          Title
+        </label>
+        <Input
+          id={`${id}-title`}
+          aria-describedby={describedBy}
+          value={title}
+          maxLength={200}
+          onChange={(e) => setTitle(e.target.value)}
+          className="font-normal text-foreground"
+        />
+      </div>
+      <div className="grid gap-1.5">
+        <label htmlFor={`${id}-assignee`} className="text-xs font-medium text-muted-foreground">
+          Assign to
+        </label>
+        <NativeSelect
+          id={`${id}-assignee`}
+          aria-describedby={describedBy}
+          value={assignee}
+          onChange={(e) => setAssignee(e.target.value)}
+          className="w-full font-normal text-foreground"
+        >
+          <NativeSelectOption value="">Nobody</NativeSelectOption>
+          {handles.map((h) => (
+            <NativeSelectOption key={h} value={h}>
+              {h}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </div>
       <TaskTextFields
         id={id}
         describedBy={describedBy}
@@ -254,21 +322,46 @@ function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
       >
         {task.specFile && <p className="text-[11px] text-muted-foreground">Typing a spec replaces the spec file.</p>}
       </TaskTextFields>
+      <fieldset className="grid gap-1.5" aria-describedby={`${id}-after-help`}>
+        <legend className="mb-1.5 text-xs font-medium text-muted-foreground">After tasks</legend>
+        {others.length === 0 ? (
+          <p className="text-[11px] text-muted-foreground">There are no other tasks yet.</p>
+        ) : (
+          <div className="grid max-h-32 gap-1 overflow-y-auto rounded-md border px-2 py-1.5">
+            {others.map((t) => {
+              const cyclic = blocked.has(t.id);
+              return (
+                <label
+                  key={t.id}
+                  className={cn("flex min-w-0 items-center gap-2 text-xs", cyclic && "text-muted-foreground")}
+                >
+                  <Checkbox
+                    checked={after.includes(t.id)}
+                    disabled={cyclic}
+                    onCheckedChange={(c) => setAfter(c ? [...after, t.id] : after.filter((n) => n !== t.id))}
+                  />
+                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground">#{t.id}</span>
+                  <span className="min-w-0 truncate">{t.title}</span>
+                  {cyclic && <span className="shrink-0 text-[11px]">(waits on this task)</span>}
+                </label>
+              );
+            })}
+          </div>
+        )}
+        <p id={`${id}-after-help`} className="text-[11px] text-muted-foreground">
+          This task stays blocked until the ticked tasks are done.
+        </p>
+      </fieldset>
       {changed && <p className="text-[11px] text-muted-foreground">This task changed since you opened it.</p>}
     </TaskForm>
   );
 }
 
-function ReopenTask({ task, onClose, onReopened }: { task: Task; onClose: () => void; onReopened: () => void }) {
+function ReopenTask({ task, onClose }: { task: Task; onClose: () => void }) {
   const [reason, setReason] = useState("");
-  const { error, setError, send } = usePostTask(`/api/tasks/${task.id}/reopen`, onReopened);
-  const field = useRef<HTMLTextAreaElement>(null);
+  const { error, setError, send } = usePostTask(`/api/tasks/${task.id}/reopen`, onClose);
   const id = useId();
   const describedBy = error ? `${id}-error` : undefined;
-
-  useEffect(() => {
-    field.current?.focus();
-  }, []);
 
   function submit() {
     if (!reason.trim()) return setError({ message: "Enter a reason." });
@@ -282,8 +375,8 @@ function ReopenTask({ task, onClose, onReopened }: { task: Task; onClose: () => 
           Reason
         </label>
         <Textarea
-          ref={field}
           id={`${id}-reason`}
+          autoFocus
           aria-describedby={[`${id}-reason-count`, describedBy].filter(Boolean).join(" ")}
           value={reason}
           rows={3}
@@ -293,6 +386,39 @@ function ReopenTask({ task, onClose, onReopened }: { task: Task; onClose: () => 
         <Count id={`${id}-reason-count`} text={reason} max={MAX_REASON} />
       </div>
     </TaskForm>
+  );
+}
+
+/** Edit and Reopen live in a dialog; a done task cannot be edited, so it only offers Reopen. */
+function TaskActions({ task }: { task: Task }) {
+  const done = task.status === "done";
+  const [open, setOpen] = useState(false);
+  const verb = done ? "Reopen" : "Edit";
+
+  useEffect(() => setOpen(false), [done]);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <div className="flex items-center justify-end gap-2 px-3 pb-2.5">
+        {done && <p className="min-w-0 text-[11px] text-muted-foreground">A done task cannot be edited. Reopen it first.</p>}
+        <DialogTrigger asChild>
+          <Button type="button" variant="ghost" size="sm" className="shrink-0" aria-label={`${verb} task #${task.id}`}>
+            {verb}
+          </Button>
+        </DialogTrigger>
+      </div>
+      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-lg">
+        <DialogHeader className="pr-8">
+          <DialogTitle className="leading-snug break-words">
+            {verb} task #{task.id}
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            {done ? "The owner is told why it is open again." : "The assignee or owner is told what changed."}
+          </DialogDescription>
+        </DialogHeader>
+        {done ? <ReopenTask task={task} onClose={() => setOpen(false)} /> : <EditTask task={task} onClose={() => setOpen(false)} />}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -335,35 +461,13 @@ function TaskCard({ task }: { task: Task }) {
   const Icon = status.icon;
   const done = task.status === "done";
   const { ended } = useRoom().state;
-  const [formOpen, setFormOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
-  const action = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (formOpen) {
-      setFormOpen(false);
-      trigger.current?.focus();
-    }
-  }, [done, ended]);
-
-  function closeForm() {
-    setFormOpen(false);
-    requestAnimationFrame(() => action.current?.focus());
-  }
-
-  function reopened() {
-    setFormOpen(false);
-    requestAnimationFrame(() => trigger.current?.focus());
-  }
 
   return (
     <Collapsible
       asChild
       open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        if (!o) setFormOpen(false);
-      }}
+      onOpenChange={setOpen}
     >
       <li className={cn("rounded-lg border bg-background/60 transition-colors", done && "bg-transparent", open && "bg-background")}>
         <CollapsibleTrigger
@@ -447,27 +551,7 @@ function TaskCard({ task }: { task: Task }) {
               </Row>
             )}
           </dl>
-          {!ended &&
-            (formOpen ? (
-              done ? (
-                <ReopenTask task={task} onClose={closeForm} onReopened={reopened} />
-              ) : (
-                <EditTask task={task} onClose={closeForm} />
-              )
-            ) : (
-              <div className="flex justify-end px-3 pb-2.5">
-                <Button
-                  ref={action}
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  aria-label={`${done ? "Reopen" : "Edit"} task #${task.id}`}
-                  onClick={() => setFormOpen(true)}
-                >
-                  {done ? "Reopen" : "Edit"}
-                </Button>
-              </div>
-            ))}
+          {!ended && <TaskActions task={task} />}
         </CollapsibleContent>
       </li>
     </Collapsible>
