@@ -8,6 +8,7 @@ import {
   ListPlusIcon,
   LogInIcon,
   LogOutIcon,
+  PinIcon,
   RotateCcwIcon,
   TriangleAlertIcon,
 } from "lucide-react";
@@ -141,7 +142,7 @@ function SystemLine({ m, fresh }: { m: Message; fresh: boolean }) {
       break;
     }
   }
-  const Icon = SYS_ICON[type];
+  const Icon = m.brief ? PinIcon : SYS_ICON[type];
   return (
     <div
       className={cn(
@@ -153,7 +154,8 @@ function SystemLine({ m, fresh }: { m: Message; fresh: boolean }) {
       <span className="flex justify-center pt-[3px]">
         <Icon aria-hidden className={cn("size-3.5", SYS_ICON_CLASS[type])} />
       </span>
-      <span className="min-w-0 break-words">
+      <span className={cn("min-w-0 break-words", m.brief && "whitespace-pre-wrap")}>
+        {m.brief && <Badge variant="outline" className="mr-1.5 h-5 px-2 text-[11px] font-normal">Brief</Badge>}
         {who ? (
           <>
             <span className="font-mono text-foreground/80">{who === "you" ? "You" : who}</span>

@@ -32,6 +32,8 @@ export type Message = {
   ask?: number;
   /** Set on system notes about a task. */
   task?: number;
+  /** Set on the system post that announces the pinned brief. */
+  brief?: boolean;
 };
 
 export type TaskStatus = "open" | "claimed" | "done";
@@ -73,12 +75,15 @@ export type Headless = { wakesPerHour: number; runMinutes: number; idleMinutes: 
 
 export type PresenceTimers = { workingWindowMinutes: number; asleepMinutes: number; leaveMinutes: number; stallMinutes: number };
 
+export type Brief = { text: string; by: string; at: string; id: number };
+
 export type StateResponse = {
   room?: RoomInfo;
   messages?: Message[];
   agents?: Agent[];
   tasks?: Task[];
   asks?: Ask[];
+  brief?: Brief | null;
   roundCap?: number | null;
   headless?: Headless;
   presenceTimers?: PresenceTimers;
