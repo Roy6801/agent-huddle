@@ -508,7 +508,7 @@ test('setting the round cap to its current value resumes a paused room', async (
 });
 
 test('a done note for a creator who left addresses nobody; an asleep creator is still told', async () => {
-  const r = await room({ activeMs: 50 });
+  const r = await room({ activeMs: 50, asleepMs: 50 });
   const creator = await r.join('codex');
   const worker = await r.join('claude');
   assert.equal((await call('POST', `${creator.link}/tasks`, { title: 'Write the CLI' })).status, 200);

@@ -36,7 +36,8 @@ const MAX_ATTACHMENTS = 10;
 const INLINE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const FILE_CSP = "default-src 'none'; img-src 'self' data:; sandbox";
 const TOMBSTONE_MS = 10 * 60 * 1000;
-const ACTIVE_WINDOW_MS = 2 * 60 * 1000;
+const ACTIVE_WINDOW_MS = 10 * 60 * 1000;
+const ASLEEP_WINDOW_MS = 10 * 60 * 1000;
 const REST_WINDOW_MS = 15000;
 const HUMAN_ONLINE_MS = 30 * 1000;
 const RESERVED_ROLES = new Set(['all', 'you', 'system']);
@@ -155,6 +156,7 @@ export function createHuddle(opts = {}) {
     idleMs = 900000,
     quietMs = 30000,
     activeMs = ACTIVE_WINDOW_MS,
+    asleepMs = ASLEEP_WINDOW_MS,
     serverIdleMs = 1800000,
     askMs = 600000,
     roundCap = ROUND_CAP_DEFAULT,
@@ -240,6 +242,7 @@ export function createHuddle(opts = {}) {
       agentStreak: 0,
       roundCap: cap,
       headless: { wakesPerHour: 20, runMinutes: 10, idleMinutes: 60 },
+      timers: { workingMs: activeMs, asleepMs, leaveMs: idleMs },
       folder,
       humanSeen: 0,
     };
@@ -282,6 +285,8 @@ export function createHuddle(opts = {}) {
       status: 'active',
       cursor: 0,
       lastSeen: Date.now(),
+      lastCallAt: Date.now(),
+      lastWaitAt: 0,
       restingAt: 0,
       waiters: new Set(),
     };
@@ -333,7 +338,7 @@ export function createHuddle(opts = {}) {
     }
     if (!quiet.length) return;
     const age = (a) => formatAge(now - a.lastSeen);
-    const working = (a) => presence(a) === 'working';
+    const working = (a) => presence(s, a) === 'working';
     const text =
       quiet.length === 1
         ? working(quiet[0])
@@ -346,6 +351,7 @@ export function createHuddle(opts = {}) {
   const system = (s, text, extra) => addMessage(s, 'system', text, { ...extra, kind: 'system' });
 
   function flushWaiters(s, agent) {
+    agent.lastSeen = agent.lastWaitAt = Date.now();
     const payload = readFor(s, agent, 500);
     for (const w of agent.waiters) {
       clearTimeout(w.timer);
@@ -380,17 +386,20 @@ export function createHuddle(opts = {}) {
   const hasAddressedUnread = (s, agent) =>
     s.messages.some((m) => m.id > agent.cursor && m.from !== agent.handle && m.to.includes(agent.handle));
 
-  function agentStatus(agent) {
+  function presence(s, agent) {
+    const now = Date.now();
     if (agent.status === 'left') return 'left';
-    if (agent.waiters.size || Date.now() - agent.lastSeen < activeMs) return 'active';
-    return 'idle';
+    if (now - agent.restingAt < REST_WINDOW_MS) return 'asleep';
+    if ((agent.workingUntil ?? 0) > now || now - agent.lastCallAt < s.timers.workingMs) return 'working';
+    if (agent.waiters.size) return 'listening';
+    if (now - agent.lastSeen >= s.timers.asleepMs) return 'asleep';
+    return agent.lastWaitAt >= agent.lastCallAt ? 'listening' : 'working';
   }
 
-  function presence(agent) {
-    if (agent.status === 'left') return 'left';
-    if (agent.waiters.size) return 'listening';
-    if (Date.now() - agent.restingAt < REST_WINDOW_MS) return 'asleep';
-    return Date.now() - agent.lastSeen < activeMs ? 'working' : 'asleep';
+  function agentStatus(s, agent) {
+    const state = presence(s, agent);
+    if (state === 'left') return 'left';
+    return state === 'asleep' ? 'idle' : 'active';
   }
 
   const humanOnline = (s) => Date.now() - s.humanSeen < HUMAN_ONLINE_MS;
@@ -402,8 +411,8 @@ export function createHuddle(opts = {}) {
         harness: a.harness,
         role: a.role,
         parent: a.parent,
-        status: agentStatus(a),
-        presence: presence(a),
+        status: agentStatus(s, a),
+        presence: presence(s, a),
         stopRequested: a.stopRequested === true,
         lastSeen: new Date(a.lastSeen).toISOString(),
       })),
@@ -532,16 +541,20 @@ export function createHuddle(opts = {}) {
   }
 
   function parkWaiter(agent, waiters, waiter, seconds, onTimeout) {
+    const ended = () => {
+      agent.lastSeen = Date.now();
+      if (waiters === agent.waiters) agent.lastWaitAt = agent.lastSeen;
+    };
     waiter.timer = setTimeout(() => {
       waiters.delete(waiter);
-      agent.lastSeen = Date.now();
+      ended();
       onTimeout();
     }, seconds * 1000);
     waiters.add(waiter);
     waiter.res.on('close', () => {
       clearTimeout(waiter.timer);
       waiters.delete(waiter);
-      agent.lastSeen = Date.now();
+      ended();
     });
   }
 
@@ -922,7 +935,7 @@ How the room works:
       id: s.id,
       name: s.name,
       createdAt: s.createdAt,
-      agents: { active: agents.filter((a) => agentStatus(a) === 'active').length, total: agents.length },
+      agents: { active: agents.filter((a) => agentStatus(s, a) === 'active').length, total: agents.length },
       messages: s.messages.length,
       join: `${base}/s/${s.id}`,
       page: `${base}/s/${s.id}/h/${s.humanToken}`,
@@ -1050,7 +1063,10 @@ How the room works:
     const body = method === 'POST' && !upload ? await readBody(req, /^tasks(\/\d+)?$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
     agent.lastSeen = Date.now();
     agent.nudged = false;
-    agent.restingAt = method === 'GET' && key === 'me' && url.searchParams.get('rest') === '1' ? Date.now() : 0;
+    const resting = method === 'GET' && key === 'me' && url.searchParams.get('rest') === '1';
+    agent.restingAt = resting ? agent.lastSeen : 0;
+    if (method === 'GET' && key === 'wait') agent.lastWaitAt = agent.lastSeen;
+    else if (!resting) agent.lastCallAt = agent.lastSeen;
     const leaving = method === 'POST' && key === 'leave';
     if (agent.status === 'left' && !leaving) {
       agent.status = 'active';
@@ -1081,8 +1097,8 @@ How the room works:
             role: agent.role,
             parent: agent.parent,
             children: childrenOf(s, agent.handle),
-            status: agentStatus(agent),
-            presence: presence(agent),
+            status: agentStatus(s, agent),
+            presence: presence(s, agent),
             unread: unreadCount(s, agent),
             roundCap: s.roundCap,
             headless: s.headless,
@@ -1207,7 +1223,7 @@ How the room works:
       }
       for (const agent of s.agents.values()) {
         if (agent.waiters.size) waiting = true;
-        else if (agent.status !== 'left' && now - agent.lastSeen > idleMs) leaveAgent(s, agent, 'idle');
+        else if (agent.status !== 'left' && now - agent.lastSeen > s.timers.leaveMs) leaveAgent(s, agent, 'idle');
       }
     }
     if (!waiting && !idleFired && now - lastRequest > serverIdleMs) {
@@ -1359,6 +1375,7 @@ async function serve() {
     idleMs: num('AGENT_HUDDLE_IDLE_MS', 900000),
     quietMs: num('AGENT_HUDDLE_QUIET_MS', 30000),
     activeMs: num('AGENT_HUDDLE_ACTIVE_MS', ACTIVE_WINDOW_MS),
+    asleepMs: num('AGENT_HUDDLE_ASLEEP_MS', ASLEEP_WINDOW_MS),
     serverIdleMs: num('AGENT_HUDDLE_SERVER_IDLE_MS', 1800000),
     askMs: num('AGENT_HUDDLE_ASK_MS', 600000),
     roundCap: num('AGENT_HUDDLE_ROUND_CAP', ROUND_CAP_DEFAULT),

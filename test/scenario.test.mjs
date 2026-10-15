@@ -103,7 +103,7 @@ const TASKS = [
 ];
 
 test('cumulative run', async (t) => {
-  const huddle = createHuddle({ roundCap: 10, adminToken: TOKEN });
+  const huddle = createHuddle({ roundCap: 10, adminToken: TOKEN, activeMs: 300 });
   const port = await huddle.listen(0);
   const base = `http://127.0.0.1:${port}`;
   let dir;

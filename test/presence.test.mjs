@@ -1,0 +1,128 @@
+import { test, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { createHuddle } from '../skills/agent-huddle/huddle.mjs';
+
+const running = [];
+afterEach(async () => {
+  while (running.length) await running.pop().close();
+});
+
+async function call(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: body === undefined ? {} : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+  return { status: res.status, json, text };
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const WINDOWS = { activeMs: 200, asleepMs: 400, idleMs: 800 };
+
+async function room(opts = WINDOWS) {
+  const huddle = createHuddle({ quietMs: 50, ...opts });
+  const port = await huddle.listen(0);
+  running.push(huddle);
+  const base = `http://127.0.0.1:${port}`;
+  const { json: created } = await call('POST', `${base}/new`, { name: 'test room' });
+  const join = async (harness) => (await call('POST', `${created.join}/join`, { harness })).json;
+  const human = (path, body) => call(body ? 'POST' : 'GET', `${created.page}/${path}`, body);
+  const presence = async (handle) =>
+    (await human('api/state')).json.agents.find((a) => a.handle === handle).presence;
+  const notices = async () =>
+    (await human('api/state')).json.messages.filter((m) => m.kind === 'system' && m.toYou && /listening|working|asleep/i.test(m.text));
+  return { huddle, created, join, human, presence, notices };
+}
+
+const post = (agent, text) => call('POST', `${agent.link}/post`, { text });
+
+test('a parked wait does not hide working: working for the window, then listening', async () => {
+  const r = await room();
+  const a = await r.join('codex');
+  await post(a, 'starting');
+  const pending = call('GET', `${a.link}/wait?wait=1`);
+  await sleep(50);
+  assert.equal(await r.presence('codex-1'), 'working');
+  await sleep(250);
+  assert.equal(await r.presence('codex-1'), 'listening');
+  await pending;
+});
+
+test('an agent that only makes short waits is listening in every gap', async () => {
+  const r = await room();
+  const a = await r.join('codex');
+  await post(a, 'starting');
+  let done = false;
+  const loop = (async () => {
+    for (let i = 0; i < 3; i++) {
+      await call('GET', `${a.link}/wait?wait=1`);
+      await sleep(50);
+    }
+    done = true;
+  })();
+  await sleep(250);
+  const seen = new Set();
+  while (!done) {
+    seen.add(await r.presence('codex-1'));
+    await sleep(15);
+  }
+  await loop;
+  assert.deepEqual([...seen], ['listening']);
+});
+
+test('an agent that posts once and goes quiet is working, then asleep, then leaves and frees its tasks', async () => {
+  const r = await room();
+  const a = await r.join('codex');
+  await call('POST', `${a.link}/tasks`, { title: 'Write the CLI' });
+  assert.equal((await call('POST', `${a.link}/tasks/1/claim`)).status, 200);
+  await post(a, 'on it');
+  await sleep(50);
+  assert.equal(await r.presence('codex-1'), 'working');
+  const seen = new Set();
+  const end = Date.now() + 500;
+  while (Date.now() < end) {
+    seen.add(await r.presence('codex-1'));
+    await sleep(25);
+  }
+  assert.ok(seen.has('working'));
+  assert.ok(!seen.has('listening'));
+  assert.equal(await r.presence('codex-1'), 'asleep');
+  await sleep(400);
+  r.huddle.sweep();
+  assert.equal(await r.presence('codex-1'), 'left');
+  const task = (await r.human('api/state')).json.tasks.find((t) => t.id === 1);
+  assert.equal(task.status, 'open');
+});
+
+test('a working agent with a wait parked gets a mention at once and no quiet note', async () => {
+  const r = await room();
+  const a = await r.join('codex');
+  const b = await r.join('opencode');
+  await post(a, 'starting');
+  const pending = call('GET', `${a.link}/wait?wait=5`);
+  await sleep(100);
+  assert.equal(await r.presence('codex-1'), 'working');
+  await post(b, '@codex-1 ping');
+  const res = await pending;
+  assert.equal(res.status, 200);
+  assert.ok(res.json.messages.some((m) => m.text.includes('@codex-1 ping')));
+  assert.deepEqual(await r.notices(), []);
+});
+
+test('me?rest=1 shows asleep and does not count as work', async () => {
+  const r = await room();
+  const a = await r.join('codex');
+  await post(a, 'starting');
+  await sleep(150);
+  await call('GET', `${a.link}/me?rest=1`);
+  assert.equal(await r.presence('codex-1'), 'asleep');
+  const pending = call('GET', `${a.link}/wait?wait=1`);
+  await sleep(100);
+  assert.equal(await r.presence('codex-1'), 'listening');
+  await pending;
+});
