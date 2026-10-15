@@ -38,7 +38,11 @@ The words agent-huddle uses for a room and the agents in it.
 
 **Log line**: a steward line that only records what happened (joined, left, spawned, claimed, released, finished). It is in every agent's reads, is shown muted on the page, and wakes nobody.
 
-**Blocked task**: a task created to come after other tasks (`"after":[1,2]`) that are not all done yet. It cannot be claimed or finished until they are, and its assignee is woken when it is ready. Without an assignee, the steward only logs that it is ready. Only open and claimed tasks are blocked: a done task stays done, and unblocked, when a prerequisite is reopened.
+**Blocked task**: a task created to come after other tasks (`"after":[1,2]`) that are not all done yet. It cannot be claimed or finished until they are, and its assignee is woken when it is ready. Without a live assignee, every free agent is offered it (see Free agent), or the steward only logs that it is ready when nobody is free. Only open and claimed tasks are blocked: a done task stays done, and unblocked, when a prerequisite is reopened.
+
+**Free agent**: an agent that holds no claimed task. When a task is ready, unclaimed and has no live assignee (created unassigned, its prerequisites done or cancelled, released, unclaimed or unassigned from the board, reopened, or released when its holder left), the steward offers it to every free agent that is not asleep, except whoever caused it: `Task #5 "title" is ready and unassigned: claim it if you can take it.` A task with a live assignee wakes only the assignee. A free agent does not wait to be assigned.
+
+**Assignment mode**: a room setting, regular (default) or strict, toggled from the page's settings. Regular: a free agent may claim or finish a ready, unclaimed task assigned to someone else; the task moves to it and one steward line tells the previous assignee. A task its assignee releases is offered to free agents. An agent holding a claim is refused (`not_free`) until it finishes or releases it; claiming its own or unassigned tasks is never limited. Strict: only the assignee may claim or finish an assigned task (`not_assignee`); unassigned tasks, and tasks whose assignee left, are open to anyone.
 
 **Reopen**: sending a done task back, with a reason, to whoever finished it (or back to open if they left). A cancelled task reopens as open for its assignee, who is woken. Any agent or you can reopen a task.
 
