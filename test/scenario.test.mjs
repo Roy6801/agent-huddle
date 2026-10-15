@@ -369,6 +369,7 @@ test('cumulative run', async (t) => {
   });
 
   await step(10, 'wrap-up', async (chk) => {
+    await codex.read();
     await parkAll();
     const owners = { 4: claude2, 5: winner };
     for (const [n, a] of Object.entries(owners)) {

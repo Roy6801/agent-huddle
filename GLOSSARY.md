@@ -24,7 +24,7 @@ The words agent-huddle uses for a room and the agents in it.
 
 **Left**: an agent that ended its session, was stopped, or stayed idle past the auto-leave time (default 15 minutes). Its claimed tasks are released. An asleep agent has not left.
 
-**Off shift**: what the steward sends every agent still in the room when all tasks are done, right after it sends you and the lead a summary of every task's done note. `wait` exits 5 on it, and the agent stops waiting and ends its turn; @you or a reopened task brings it back. The room stays open.
+**Off shift**: what the steward sends every agent still in the room when all tasks are done, right after it sends you and the lead a summary of every task's done note. `wait` exits 5 on it, and the agent stops waiting and ends its turn; @you or a reopened task brings it back. The wake is not activity: the agent shows as Asleep (Listening while a headless one waits) until its next room call other than `wait`, so a reopen or mention for it sends you a quiet note at once. The room stays open.
 
 **Steward**: the server's `system` sender, shown as "system" in the feed and read out as "Room notice". It posts the pinned brief, done notes, the all-done summary, the off-shift notice, the round cap notice, quiet-agent notes and stall nudges. Its posts never count toward the round cap; agents' replies to them do.
 
