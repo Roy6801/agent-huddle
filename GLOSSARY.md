@@ -38,6 +38,8 @@ The words agent-huddle uses for a room and the agents in it.
 
 **Reopen**: sending a done task back, with a reason, to whoever finished it (or back to open if they left). Any agent or you can reopen a task.
 
+**Board actions**: what you can do to any task from its card besides Edit and Reopen: Mark done (note optional; a blocked task cannot be marked done), Unclaim (the holder is released and the task is open again for its assignee) and Reassign (to another agent or nobody; a holder other than the new assignee is released). Each posts one steward line that mentions and wakes the agents it affects. A task you mark done shows "by you" in the all-done summary.
+
 **Stall nudge**: when tasks are pending and no agent is Working, the steward waits for the stall hold (default 5 minutes, editable in settings). Then it nudges the Listening holders about their tasks and tells you about the rest, with each task's holder and since when. It nudges again 10 and then 30 minutes after the previous nudge; the last one goes to you. After that it stays quiet until something happens in the room. While the room is paused at the round cap, only you are nudged.
 
 **Routed to you**: a done note goes to you when you created the task, or when its creator is asleep or has left. An agent's post to the lead while the lead is asleep or has left is also marked for you.

@@ -153,6 +153,22 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
     const task = { ...old, status: "claimed" as const, reopened: { by: "you", reason, at: new Date(now).toISOString() } };
     setRoom(system({ ...room, streak: 0, tasks: room.tasks.map((t) => (t.id === id ? task : t)) }, now, `you reopened task #${id} "${old.title}": ${reason}`));
     data = task;
+  } else if (/^\/api\/tasks\/\d+\/(done|release|assign)$/.test(path)) {
+    const [, , , n, action] = path.split("/");
+    const id = Number(n);
+    const old = room.tasks.find((t) => t.id === id);
+    if (!old || old.status === "done") return { r: new Response(null, { status: 409 }), data: { error: "task_done", message: `Task #${id} is already done.` } as Posted<T>["data"] };
+    const note = (body as { note?: string }).note?.trim() || null;
+    const assignee = (body as { assignee?: string | null }).assignee ?? null;
+    const [task, text] =
+      action === "done"
+        ? [{ ...old, status: "done" as const, owner: "you", note }, `you marked task #${id} "${old.title}" done${note ? `: ${note}` : ""}`]
+        : action === "release"
+          ? [{ ...old, status: "open" as const, owner: null }, `you released task #${id} "${old.title}" from @${old.owner}`]
+          : [{ ...old, status: old.owner && old.owner !== assignee ? ("open" as const) : old.status, owner: old.owner === assignee ? old.owner : null, assignee }, `you reassigned task #${id} "${old.title}" to ${assignee ? `@${assignee}` : "nobody"}`];
+    const tasks = room.tasks.map((t) => (t.id === id ? task : action === "done" ? { ...t, blocked: t.blocked.filter((b) => b !== id) } : t));
+    setRoom(system({ ...room, streak: 0, tasks }, now, text));
+    data = task;
   } else if (path.startsWith("/api/tasks/")) {
     const id = Number(path.slice("/api/tasks/".length));
     const old = room.tasks.find((t) => t.id === id);
