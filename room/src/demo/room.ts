@@ -30,7 +30,7 @@ function subscribe(listener: () => void) {
 
 /** Fills each task's `after` and `blocked` the way the server reports them. */
 function withBlocked(r: RoomState): RoomState {
-  const doneIds = new Set(r.tasks.filter((t) => t.status === "done").map((t) => t.id));
+  const doneIds = new Set(r.tasks.filter((t) => t.status === "done" || t.status === "cancelled").map((t) => t.id));
   return { ...r, tasks: r.tasks.map((t) => ({ ...t, blocked: t.after.filter((n) => !doneIds.has(n)) })) };
 }
 
@@ -149,15 +149,25 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
     const old = room.tasks.find((t) => t.id === id);
     const reason = (body as { reason?: string }).reason?.trim();
     if (!reason) return rejected("invalid_text", "reason is missing, blank or longer than 8000 characters.");
-    if (!old || old.status !== "done") return { r: new Response(null, { status: 409 }), data: { error: "not_done", message: `Task #${id} is not done.` } as Posted<T>["data"] };
-    const task = { ...old, status: "claimed" as const, reopened: { by: "you", reason, at: new Date(now).toISOString() } };
+    if (!old || (old.status !== "done" && old.status !== "cancelled")) return { r: new Response(null, { status: 409 }), data: { error: "not_done", message: `Task #${id} is not done or cancelled.` } as Posted<T>["data"] };
+    const back = old.status === "done" ? { status: "claimed" as const, owner: old.owner } : { status: "open" as const, owner: null };
+    const task = { ...old, ...back, cancelled: null, reopened: { by: "you", reason, at: new Date(now).toISOString() } };
     setRoom(system({ ...room, streak: 0, tasks: room.tasks.map((t) => (t.id === id ? task : t)) }, now, `you reopened task #${id} "${old.title}": ${reason}`));
+    data = task;
+  } else if (/^\/api\/tasks\/\d+\/cancel$/.test(path)) {
+    const id = Number(path.split("/")[3]);
+    const old = room.tasks.find((t) => t.id === id);
+    if (!old || old.status === "done" || old.status === "cancelled") return { r: new Response(null, { status: 409 }), data: { error: "task_done", message: `Task #${id} is already finished.` } as Posted<T>["data"] };
+    const reason = (body as { reason?: string }).reason?.trim() || null;
+    const task = { ...old, status: "cancelled" as const, owner: null, cancelled: { by: "you", reason, at: new Date(now).toISOString() } };
+    const tasks = room.tasks.map((t) => (t.id === id ? task : { ...t, blocked: t.blocked.filter((b) => b !== id) }));
+    setRoom(system({ ...room, streak: 0, tasks }, now, `you cancelled task #${id} "${old.title}"${reason ? `: ${reason}` : ""}`));
     data = task;
   } else if (/^\/api\/tasks\/\d+\/(done|release|assign)$/.test(path)) {
     const [, , , n, action] = path.split("/");
     const id = Number(n);
     const old = room.tasks.find((t) => t.id === id);
-    if (!old || old.status === "done") return { r: new Response(null, { status: 409 }), data: { error: "task_done", message: `Task #${id} is already done.` } as Posted<T>["data"] };
+    if (!old || old.status === "done" || old.status === "cancelled") return { r: new Response(null, { status: 409 }), data: { error: "task_done", message: `Task #${id} is already ${old?.status ?? "done"}.` } as Posted<T>["data"] };
     const note = (body as { note?: string }).note?.trim() || null;
     const assignee = (body as { assignee?: string | null }).assignee ?? null;
     const [task, text] =

@@ -38,7 +38,7 @@ export type Message = {
   brief?: boolean;
 };
 
-export type TaskStatus = "open" | "claimed" | "done";
+export type TaskStatus = "open" | "claimed" | "done" | "cancelled";
 
 export type TaskSpecFile = { id: string; name: string; size: number };
 
@@ -58,6 +58,8 @@ export type Task = {
   /** The prerequisites that are not done yet. */
   blocked: number[];
   reopened: { by: string; reason: string; at: string } | null;
+  /** Absent in history written before tasks could be cancelled. */
+  cancelled?: { by: string; reason: string | null; at: string } | null;
 };
 
 export type AskKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";

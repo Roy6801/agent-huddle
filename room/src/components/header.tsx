@@ -66,10 +66,11 @@ function BoardButton({ expanded, className }: { expanded: boolean; className?: s
   const { openBoard } = usePanels();
   const total = state.tasks.length;
   const done = state.tasks.filter((t) => t.status === "done").length;
+  const cancelled = state.tasks.filter((t) => t.status === "cancelled").length;
   const cap = capText(state.roundCap, state.streak, atCap);
   const name = [
     "Board",
-    total ? `${done} of ${total} tasks done` : "no tasks",
+    total ? `${done} of ${total - cancelled} tasks done${cancelled ? `, ${cancelled} cancelled` : ""}` : "no tasks",
     cap && (state.roundCap === null ? "no round cap" : cap),
   ]
     .filter(Boolean)
@@ -87,7 +88,7 @@ function BoardButton({ expanded, className }: { expanded: boolean; className?: s
       <ListChecksIcon aria-hidden className="text-muted-foreground" />
       {total > 0 && (
         <span className="font-mono text-xs tabular-nums">
-          {done}/{total}
+          {done}/{total - cancelled}
         </span>
       )}
       <CapRing />
