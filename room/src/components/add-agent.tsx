@@ -83,6 +83,7 @@ function WorkerRow({ worker }: { worker: StartedWorker }) {
   const { post } = useSource();
   const [error, setError] = useState("");
   const live = worker.status === "starting" || worker.status === "running";
+  const who = worker.handle ?? worker.label;
 
   async function stop() {
     setError("");
@@ -106,6 +107,7 @@ function WorkerRow({ worker }: { worker: StartedWorker }) {
             size="xs"
             disabled={state.ended}
             onClick={stop}
+            aria-label={`Stop ${who}`}
             className="ml-auto border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive max-md:h-11"
           >
             Stop
@@ -116,7 +118,7 @@ function WorkerRow({ worker }: { worker: StartedWorker }) {
       <div className="flex items-center gap-2">
         <span className="text-muted-foreground">Log</span>
         <code className="min-w-0 flex-1 font-mono break-all text-foreground/85 select-all">{worker.log}</code>
-        <CopyButton text={worker.log} label="Copy" icon={<CopyIcon aria-hidden />} variant="ghost" size="xs" className="max-md:h-11" />
+        <CopyButton text={worker.log} label="Copy" aria-label={`Copy the log path of ${who}`} icon={<CopyIcon aria-hidden />} variant="ghost" size="xs" className="max-md:h-11" />
       </div>
       {error && (
         <p role="alert" className="text-destructive">
@@ -215,7 +217,7 @@ function Headless({ joinUrl, role }: { joinUrl: string; role: string | null }) {
           Or run it yourself in a terminal
         </CollapsibleTrigger>
         <CollapsibleContent className="mt-1.5 grid gap-1.5">
-          <CommandLine text={workerCommand(state.worker ?? "huddle.mjs", harness, joinUrl, folder, role)} label="Copy" />
+          <CommandLine text={workerCommand(state.worker ?? "huddle.mjs", harness, joinUrl, folder, role)} name="Copy the headless command" />
           <p className="text-xs text-muted-foreground">Its output stays in that terminal. Stop it from its row in the roster, or with Ctrl-C.</p>
         </CollapsibleContent>
       </Collapsible>
