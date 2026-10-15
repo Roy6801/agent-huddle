@@ -159,13 +159,30 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
     setRoom({ ...set, brief });
     data = brief;
   } else if (path === "/api/settings") {
-    if (typeof b.folder === "string") {
-      if (!b.folder.startsWith("/")) return rejected("invalid_folder", "folder must be an absolute path.");
-      setRoom(system({ ...room, folder: b.folder, streak: 0 }, now, `you moved the room folder to ${b.folder}`));
-    } else if (b.roundCap !== undefined) {
-      const roundCap = b.roundCap;
-      const text = roundCap === null ? "you turned the round cap off (agents won't pause for you)" : `you set the round cap to ${roundCap}`;
-      setRoom(system({ ...room, roundCap, streak: 0 }, now, text));
+    if (b.folder !== undefined || b.roundCap !== undefined) {
+      let next = room;
+      if (b.folder !== undefined) {
+        const folder = b.folder;
+        if (typeof folder !== "string" || !folder.startsWith("/")) return rejected("invalid_folder", "folder must be an absolute path.");
+        const old = room.folder;
+        if (folder !== old) {
+          const inside = (dir?: string | null) => (dir ? (dir === folder || dir.startsWith(`${folder}/`) ? ("inside" as const) : ("outside" as const)) : ("unreported" as const));
+          const agents = room.agents.map((a) => ({ ...a, folderCheck: inside(a.folder) }));
+          next = system({ ...room, folder, agents, streak: 0 }, now, old ? `you moved the room folder from ${old} to ${folder}` : `you set the room folder to ${folder}`);
+          if (old) {
+            const lead = agents.find((a) => a.lead && a.status !== "left");
+            next = createTask(next, now, "you", "Move the room's content to the new folder", lead?.handle ?? null, {
+              description: `From: ${old}\nTo: ${folder}\nMove the files the room made, then post where they are.`,
+            }).room;
+          }
+        }
+      }
+      if (b.roundCap !== undefined) {
+        const roundCap = b.roundCap;
+        const text = roundCap === null ? "you turned the round cap off (agents won't pause for you)" : `you set the round cap to ${roundCap}`;
+        next = system({ ...next, roundCap, streak: 0 }, now, text);
+      }
+      setRoom(next);
     } else if (room.presenceTimers && (b.workingWindowMinutes !== undefined || b.asleepMinutes !== undefined || b.leaveMinutes !== undefined || b.stallMinutes !== undefined)) {
       const p = { ...room.presenceTimers, ...b };
       if (p.leaveMinutes <= p.asleepMinutes) return rejected("leave_before_asleep", "leaveMinutes must be longer than asleepMinutes.");
