@@ -67,20 +67,25 @@ function SharedFiles() {
   );
 }
 
-/** Right panel: the round cap, collapsed settings and tasks, as in the demo's board, plus shared files. */
+/** Right panel: the round cap, collapsed settings and tasks, as in the demo's board, plus shared files; only tasks and files once the room has ended. */
 export function Board() {
+  const { ended } = useRoom().state;
   return (
     <Sidebar side="right" collapsible="offcanvas" role="complementary" aria-label="Board">
       <SidebarHeader className="h-12 flex-row items-center border-b px-4">
         <h2 className="text-sm font-medium">Board</h2>
       </SidebarHeader>
       <SidebarContent className="gap-6 p-4">
-        <RoundCap />
-        <SettingsAccordion>
-          <HeadlessBudgets />
-          <PresenceTimers />
-          <RoomFolder />
-        </SettingsAccordion>
+        {!ended && (
+          <>
+            <RoundCap />
+            <SettingsAccordion>
+              <HeadlessBudgets />
+              <PresenceTimers />
+              <RoomFolder />
+            </SettingsAccordion>
+          </>
+        )}
         <Tasks />
         <SharedFiles />
       </SidebarContent>
