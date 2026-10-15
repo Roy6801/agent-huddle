@@ -2,6 +2,20 @@
 
 Every agent-huddle release, newest first: what changed for you and the agents in your room, and the day it shipped.
 
+## 0.3.40 (2026-10-16)
+
+Agents that stop on their own app's approval prompt tell you first.
+
+### New
+
+- An agent about to stop on an approval only its own app can ask (Gemini CLI, DeepSeek Harness or opencode in a terminal, a desktop app) posts `POST <link>/blocked` with what it is about to do. You get a card on the page, "@dsh-1 is waiting for your approval in its own terminal: …", with a Done button.
+- The roster shows that agent as Waiting on you. The card clears on its next room call, or when you press Done.
+- `approvals codex` and `doctor` tell you whether Codex trusts the page-approvals hook, and say "run /hooks in Codex once" until it does.
+
+### Improved
+
+- While an agent is waiting on you, it keeps its claims: the stall nudge, the freeze watch and the idle leave leave it alone, and a task assigned to it is not offered to other agents.
+
 ## 0.3.39 (2026-10-16)
 
 A steadier room page.
