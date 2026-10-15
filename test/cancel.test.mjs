@@ -87,6 +87,9 @@ test('AC-33.2: only the creator, the lead or you can cancel; finished tasks are 
   assert.equal(stranger.status, 403);
   assert.equal(stranger.json.error, 'not_canceller');
   assert.equal(stranger.json.message, 'Task #1 was created by @codex-1; only its creator, the lead (@codex-1) or @you can cancel it.');
+  assert.equal(stranger.json.instruction, 'Ask @codex-1 or @you to cancel it, and say why it is no longer needed.');
+  const notCreator = await call('POST', `${r.gemini.link}/tasks/2/cancel`);
+  assert.equal(notCreator.json.instruction, 'Ask @claude-1, @codex-1 or @you to cancel it, and say why it is no longer needed.');
   assert.equal((await r.task(1)).status, 'open');
 
   const creator = await call('POST', `${r.claude.link}/tasks/2/cancel`);
