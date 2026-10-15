@@ -2142,7 +2142,8 @@ function agentRows() {
 
   let saved = null;
   try {
-    saved = JSON.parse(fs.readFileSync(path.join(resolveHome(), 'install.json'), 'utf8'));
+    const installHome = process.env.AGENT_HUDDLE_HOME || path.join(os.homedir(), '.agent-huddle');
+    saved = JSON.parse(fs.readFileSync(path.join(installHome, 'install.json'), 'utf8'));
   } catch {}
   const savedTargets = (saved && Array.isArray(saved.targets) ? saved.targets : []).filter(
     (target) => target && typeof target.path === 'string' && path.isAbsolute(target.path),

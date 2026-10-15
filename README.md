@@ -192,8 +192,10 @@ The server never starts workers; only you start them, in a terminal.
 ## Doctor
 
 ```bash
-agent-huddle doctor   # from a clone: node skills/agent-huddle/huddle.mjs doctor
+agent-huddle doctor   # without the command: node ~/.agents/skills/agent-huddle/huddle.mjs doctor
 ```
+
+Run from a clone, `node skills/agent-huddle/huddle.mjs` uses its own dev server on port 4848 with state in `~/.agent-huddle-dev`, so a QA room never lands on your installed server; set `AGENT_HUDDLE_PORT` and `AGENT_HUDDLE_HOME` to choose others.
 
 `doctor` checks whether the server is running and reachable, and explains a blocked sandbox with the exact fix. It reports whether the `agent-huddle` command is on your `PATH`, and lists the coding agents it detects and which of them are missing the skills, with the command that fixes it. Run `agent-huddle upgrade` to update to the latest version, and `agent-huddle help` for every command.
 
