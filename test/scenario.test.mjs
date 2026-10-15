@@ -182,6 +182,16 @@ test('cumulative run', async (t) => {
   const handoff = (chk, from, text, expected, extra = {}) =>
     deliver(chk, from.handle, () => from.post(text, extra), text, expected);
 
+  // The room rule a finishing agent follows: mention the owners of tasks that waited on it, plus the lead.
+  async function doneStatus(a, n, what) {
+    const { json } = await a.tasks();
+    const next = json.tasks
+      .filter((x) => x.after?.includes(n) && !['done', 'cancelled'].includes(x.status))
+      .map((x) => x.owner ?? x.assignee)
+      .filter(Boolean);
+    return `${[...new Set(next), 'lead'].map((h) => `@${h}`).join(' ')} #${n} done: ${what}`;
+  }
+
   let winner;
 
   await step(1, 'kickoff', async (chk) => {
@@ -283,7 +293,16 @@ test('cumulative run', async (t) => {
     );
   });
 
-  await step(5, 'claim race', async (chk) => {
+  await step(5, 'handoff after done', async (chk) => {
+    const text = await doneStatus(dsh, 3, 'README.md written, ties documented as alphabetical');
+    chk(text.startsWith('@claude-2 @lead #3 done:'), 'dsh-1', 'a status naming the next owner and the lead', text);
+    const got = await deliver(chk, 'dsh-1', () => dsh.post(text), text, ['claude-2'], ['claude-2', 'codex-1']);
+    chk(got['claude-2']?.some((m) => m.from === 'dsh-1'), 'claude-2', 'woken by dsh-1, not only by a steward line', got['claude-2']);
+    const lead = await codex.read();
+    chk(lead.json?.messages?.some((m) => m.text === text), 'codex-1', 'the done status on read', lead.json);
+  });
+
+  await step(6, 'claim race', async (chk) => {
     const racers = [opencode, dsh, claude2];
     const results = await Promise.all(racers.map((a) => a.claim(5)));
     const won = results.flatMap((res, i) => (res.status === 200 ? [racers[i]] : []));
@@ -307,17 +326,18 @@ test('cumulative run', async (t) => {
     );
   });
 
-  await step(6, 'handoffs', async (chk) => {
+  await step(7, 'handoffs', async (chk) => {
+    const since = (await state()).messages.at(-1).id;
     await handoff(chk, claude1, '@tester @docs wordfreq.mjs is ready: node wordfreq.mjs <file> [--top N]', ['opencode-1', 'dsh-1']);
     await handoff(chk, opencode, '@builder one test fails: ties are not alphabetical', ['claude-1']);
     await handoff(chk, claude1, '@tester ties are fixed, rerun please', ['opencode-1']);
     await handoff(chk, opencode, '@reviewer tests are green, ready for review', ['claude-2']);
     const s = await state();
-    const toLead = s.messages.filter((m) => m.from !== 'system' && m.to.includes('codex-1') && m.from !== 'you');
+    const toLead = s.messages.filter((m) => m.id > since && m.from !== 'system' && m.to.includes('codex-1') && m.from !== 'you');
     chk(toLead.length === 0, 'codex-1', 'no recipient role in any handoff', toLead.map((m) => m.text));
   });
 
-  await step(7, 'round cap', async (chk) => {
+  await step(8, 'round cap', async (chk) => {
     const before = (await state()).agentStreak;
     const filler = [opencode, dsh, claude1];
     for (let i = 0; i < 10 - before; i++) {
@@ -347,7 +367,7 @@ test('cumulative run', async (t) => {
     await handoff(chk, claude2, '@builder one more finding', ['claude-1']);
   });
 
-  await step(8, 'upload', async (chk) => {
+  await step(9, 'upload', async (chk) => {
     const file = await opencode.upload('test-output.txt', 'ok 6 tests');
     chk(file.status === 201 && file.json?.name === 'test-output.txt', 'opencode-1', '201 on upload', file);
     const got = await handoff(chk, opencode, '@reviewer test output attached', ['claude-2'], { files: [file.json.id] });
@@ -357,7 +377,7 @@ test('cumulative run', async (t) => {
     chk(listed?.from === 'opencode-1' && listed?.name === 'test-output.txt', 'claude-2', 'test-output.txt from opencode-1 in the file list', listed);
   });
 
-  await step(9, 'relay is not approval', async (chk) => {
+  await step(10, 'relay is not approval', async (chk) => {
     const reviewerReads = (messages) => {
       for (const m of messages) if (m.from === 'you' && /approved/.test(m.text)) fs.rmSync(scratch, { force: true });
     };
@@ -376,7 +396,7 @@ test('cumulative run', async (t) => {
     chk(!fs.existsSync(scratch), 'claude-2', 'scratch.txt deleted after your approval', 'scratch.txt still there');
   });
 
-  await step(10, 'wrap-up', async (chk) => {
+  await step(11, 'wrap-up', async (chk) => {
     await codex.read();
     await parkAll();
     const owners = { 4: claude2, 5: winner };
