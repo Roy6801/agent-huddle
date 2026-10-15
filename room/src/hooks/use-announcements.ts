@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { notify, useNotificationPermission } from "@/hooks/use-notifications";
 import type { RoomState } from "@/hooks/use-room";
-import type { Message } from "@/lib/types";
+import type { Ask, Message } from "@/lib/types";
 
 /** Agents' messages to you, and steward notices to you; ask lines have their own announcement. */
 const forYou = (m: Message) =>
@@ -63,8 +63,10 @@ export function useAnnouncements(state: RoomState, quiet = false) {
     const fresh = state.asks.filter((a) => a.id > since && a.status === "open");
     if (!fresh.length) return;
     const a = fresh[fresh.length - 1];
-    announce(fresh.length === 1 ? `${a.by} asks to ${clip(a.title)}` : `${fresh.length} approvals waiting on you. Latest: ${a.by} asks to ${clip(a.title)}`);
-    for (const ask of fresh) notify(title, `${ask.by} asks to ${clip(ask.title)}`);
+    const line = (ask: Ask) =>
+      ask.kind === "in-terminal" ? `${ask.by} is waiting for your approval in ${ask.where ?? "its own terminal"}: ${clip(ask.title)}` : `${ask.by} asks to ${clip(ask.title)}`;
+    announce(fresh.length === 1 ? line(a) : `${fresh.length} approvals waiting on you. Latest: ${line(a)}`);
+    for (const ask of fresh) notify(title, line(ask));
     if (document.hidden) setUnread((n) => n + fresh.length);
   }, [state.loaded, state.asks, announce, quiet, title]);
 

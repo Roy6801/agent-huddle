@@ -86,10 +86,11 @@ export function HarnessDot({
   );
 }
 
-// Shape as well as colour: listening is full, working a pulsing ring, asleep half full, left an empty ring.
+// Shape as well as colour: listening is full, working a pulsing ring, waiting a ring with a dot, asleep half full, left an empty ring.
 const PRESENCE: Record<AgentPresence, string> = {
   listening: "bg-presence",
   working: "bg-presence/40 ring-inset ring-[1.5px] ring-presence motion-safe:animate-pulse",
+  waiting: "bg-[radial-gradient(circle,var(--signal)_35%,transparent_40%)] ring-inset ring-[1.5px] ring-signal",
   asleep: "bg-[linear-gradient(to_top,var(--idle)_50%,transparent_50%)] ring-inset ring-[1.5px] ring-idle",
   left: "bg-transparent ring-inset ring-[1.5px] ring-muted-foreground",
 };
