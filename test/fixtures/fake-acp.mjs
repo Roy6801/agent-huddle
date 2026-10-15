@@ -5,7 +5,7 @@ import readline from 'node:readline';
 // node --test also globs this file; only serve when a test opts in
 if (!process.env.FAKE_ACP) process.exit(0);
 
-const { FAKE_ACP_LOG, FAKE_ACP_PID, FAKE_ACP_DELAY_MS, FAKE_ACP_STOP, FAKE_ACP_NEW_FAIL, FAKE_ACP_HANG, FAKE_ACP_GRANDCHILD, FAKE_ACP_REPLY, FAKE_ACP_PERMISSION, FAKE_ACP_MODES, FAKE_ACP_SPLIT } = process.env;
+const { FAKE_ACP_LOG, FAKE_ACP_PID, FAKE_ACP_DELAY_MS, FAKE_ACP_STOP, FAKE_ACP_NEW_FAIL, FAKE_ACP_HANG, FAKE_ACP_GRANDCHILD, FAKE_ACP_REPLY, FAKE_ACP_PERMISSION, FAKE_ACP_MODES, FAKE_ACP_SPLIT, FAKE_ACP_CALLS } = process.env;
 if (FAKE_ACP_PID) fs.writeFileSync(FAKE_ACP_PID, String(process.pid));
 if (FAKE_ACP_GRANDCHILD) {
   const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
@@ -16,6 +16,7 @@ const log = [];
 const cancels = [];
 const outcomes = [];
 const modes = [];
+const calls = [];
 const pendingReplies = new Map();
 let nextReq = 1;
 let sessions = 0;
@@ -34,9 +35,22 @@ const split = (sessionId, ids) => {
 };
 const save = () => {
   if (!FAKE_ACP_LOG) return;
-  fs.writeFileSync(`${FAKE_ACP_LOG}.tmp`, JSON.stringify({ prompts: log, cancels, outcomes, modes, maxConcurrency }));
+  fs.writeFileSync(`${FAKE_ACP_LOG}.tmp`, JSON.stringify({ prompts: log, cancels, outcomes, modes, calls, maxConcurrency }));
   fs.renameSync(`${FAKE_ACP_LOG}.tmp`, FAKE_ACP_LOG);
 };
+
+// Like an agent running curl from its protocol: on the first prompt, call each [method, path, body] on the
+// personal link the prompt carries and report the answers in the reply.
+async function roomCalls(text) {
+  const link = /Your personal link \(keep it, it is your identity\): (\S+)/.exec(text)?.[1];
+  if (!FAKE_ACP_CALLS || calls.length || !link) return '';
+  for (const [method, route, body] of JSON.parse(FAKE_ACP_CALLS)) {
+    const res = await fetch(`${link}/${route}`, { method, headers: { 'content-type': 'application/json' }, ...(body && { body: JSON.stringify(body) }) });
+    calls.push({ route, status: res.status, body: await res.json() });
+  }
+  save();
+  return calls.map((c) => `${c.route}: ${c.body.message ?? 'ok'}`).join('; ');
+}
 
 const methods = {
   initialize: () => ({ protocolVersion: 1, agentCapabilities: {} }),
@@ -55,6 +69,7 @@ const methods = {
     log.push({ sessionId, text });
     maxConcurrency = Math.max(maxConcurrency, ++inflight);
     save();
+    const answered = await roomCalls(text);
     let chosen = '';
     if (FAKE_ACP_PERMISSION) {
       const id = `req-${nextReq++}`;
@@ -91,7 +106,7 @@ const methods = {
           return done({ stopReason: 'end_turn' });
         }
         update(sessionId, 'agent_message_chunk', `echo(${sessionId}): `);
-        update(sessionId, 'agent_message_chunk', `${FAKE_ACP_REPLY ?? text.split('\n').at(-1)}${chosen && ` [${chosen}]`}`);
+        update(sessionId, 'agent_message_chunk', `${FAKE_ACP_REPLY ?? (answered || text.split('\n').at(-1))}${chosen && ` [${chosen}]`}`);
         if (FAKE_ACP_STOP === 'refusal') done({ stopReason: 'refusal' });
         else if (FAKE_ACP_STOP === 'meta-fail') done({ stopReason: 'end_turn', _meta: { jetbrains: { air: { sessionFailure: { title: 'boom', severity: 'error' } } } } });
         else done({ stopReason: 'end_turn' });

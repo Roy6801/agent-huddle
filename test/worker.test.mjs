@@ -154,6 +154,72 @@ test('a headless assignee sees the task description and spec in its prompt', asy
   assert.ok(second.text.includes(fileSpec));
 });
 
+const calls = (...list) => ({ FAKE_ACP_CALLS: JSON.stringify(list) });
+
+test('a headless agent gets the room commands of a terminal agent, minus the calls its worker makes', async () => {
+  const room = await setup('commands room');
+  const w = startWorker(room.created.join);
+  await until(() => w.out.includes('codex-1 is listening'));
+  await say(room.claude, '@codex-1 go');
+  const { text } = await until(() => readPrompts().prompts[0]);
+  assert.match(text, /Your personal link \(keep it, it is your identity\): http:\/\/127\.0\.0\.1:\d+\/s\/[^/]+\/as\/\S+/);
+  for (const cmd of ['Post:', 'List tasks:', 'Read task:', 'Claim task:', 'Finish task:', 'Release task:', 'Reopen task:', 'Upload file:', 'Attach files:']) {
+    assert.ok(text.includes(`  ${cmd}`), cmd);
+  }
+  for (const cmd of ['Read new:', 'Wait (<=25s):', 'Wait (long):', 'Spawn child:', 'Leave:']) assert.ok(!text.includes(`  ${cmd}`), cmd);
+  assert.match(text, /never say you claimed, finished or posted something the room refused/);
+  assert.match(text, /asking for network access, which @you approves on the room page/);
+  assert.doesNotMatch(text, /cannot reach the huddle/);
+
+  const terminal = await (await fetch(room.claude.link)).text();
+  assert.ok(terminal.includes('  Wait (<=25s):') && terminal.includes('  Leave:'));
+});
+
+test('a headless assignee claims its task, then finishes it with a note that wakes the creator', async () => {
+  const room = await setup('claim room');
+  const w = startWorker(room.created.join, calls(['POST', 'tasks/1/claim'], ['POST', 'tasks/1/done', { note: 'added --top N; 3 tests pass' }]));
+  await until(() => w.out.includes('codex-1 is listening'));
+  await fetch(`${room.claude.link}/tasks`, json({ title: 'Add a --top N flag', assignee: 'codex-1', description: 'print the N most frequent words' }));
+  const [reply] = await until(async () => {
+    const posts = await codexPosts(room);
+    return posts.length ? posts : null;
+  });
+
+  assert.deepEqual(readPrompts().calls.map((c) => c.status), [200, 200]);
+  const task = await (await fetch(`${room.claude.link}/tasks/1`)).json();
+  assert.equal(task.status, 'done');
+  assert.equal(task.owner, 'codex-1');
+  assert.equal(task.note, 'added --top N; 3 tests pass');
+  const messages = await state(room);
+  const claimed = messages.find((m) => m.text === 'codex-1 claimed task #1');
+  assert.ok(claimed && claimed.id < reply.id);
+  const { messages: forClaude } = await (await fetch(`${room.claude.link}/read?limit=500`)).json();
+  assert.ok(forClaude.some((m) => m.to?.includes('claude-1') && m.text === 'Task #1 "Add a --top N flag" is done by codex-1: added --top N; 3 tests pass'));
+});
+
+test('a refused claim reaches the agent as the structured error, and the task stays unclaimed', async () => {
+  const room = await setup('refused room');
+  const w = startWorker(room.created.join, calls(['POST', 'tasks/2/claim']));
+  await until(() => w.out.includes('codex-1 is listening'));
+  await fetch(`${room.claude.link}/tasks`, json({ title: 'Add a --top N flag', assignee: 'claude-1' }));
+  await fetch(`${room.claude.link}/tasks`, json({ title: 'Add tests for --top', assignee: 'codex-1', after: [1] }));
+  await say(room.claude, '@codex-1 take #2');
+  const [reply] = await until(async () => {
+    const posts = await codexPosts(room);
+    return posts.length ? posts : null;
+  });
+
+  const [call] = readPrompts().calls;
+  assert.equal(call.status, 409);
+  assert.equal(call.body.error, 'task_blocked');
+  assert.equal(call.body.message, 'Task #2 is blocked by #1.');
+  assert.match(call.body.instruction, /^Wait until those tasks are done/);
+  assert.match(reply.text, /tasks\/2\/claim: Task #2 is blocked by #1\./);
+  const task = await (await fetch(`${room.claude.link}/tasks/2`)).json();
+  assert.equal(task.status, 'open');
+  assert.equal(task.owner, null);
+});
+
 test('an off-shift wake runs no turn; the next mention does', async () => {
   const room = await setup('off shift room');
   const w = startWorker(room.created.join);
@@ -168,8 +234,9 @@ test('an off-shift wake runs no turn; the next mention does', async () => {
 
   await say(room.claude, '@codex-1 one more thing');
   const prompt = await until(() => readPrompts().prompts[0]);
-  assert.match(prompt.text, /one more thing/);
-  assert.doesNotMatch(prompt.text, /off shift/);
+  const batch = prompt.text.split('Room messages:\n').at(-1);
+  assert.match(batch, /one more thing/);
+  assert.doesNotMatch(batch, /off shift/);
 });
 
 test('a wake whose batch ends off shift with only system notes for it runs no turn', async () => {
@@ -650,5 +717,5 @@ test('a headless worker starts with the room folder and the brief', async () => 
   await say(claude, '@codex-1 go');
   const prompt = await until(() => readPrompts().prompts[0]);
   assert.ok(prompt.text.includes(`Room folder: ${home}`));
-  assert.ok(prompt.text.includes('Room brief:\nBuild the sprite loader'));
+  assert.match(prompt.text, /Brief \(set by @you at \d\d:\d\d\):\nBuild the sprite loader/);
 });
