@@ -35,7 +35,7 @@ async function room(opts = {}) {
   const presence = async (handle) =>
     (await human('api/state')).json.agents.find((a) => a.handle === handle).presence;
   const notices = async () =>
-    (await human('api/state')).json.messages.filter((m) => m.kind === 'system' && /listening|working|asleep/i.test(m.text));
+    (await human('api/state')).json.messages.filter((m) => m.kind === 'system' && /listening|working|asleep|not waiting/i.test(m.text));
   return { created, join, human, notices, presence };
 }
 
@@ -155,6 +155,21 @@ test('an asleep agent gets the nudge copy', async () => {
   await r.human('api/post', { text: '@codex-1 ping' });
   const notices = await r.notices();
   assert.match(notices[0].text, /^codex-1 is asleep \(last seen <1 min ago\)\. If its turn ended, nudge it in its own terminal\.$/);
+});
+
+test('an agent between two waits gets its own wording', async () => {
+  const r = await room({ activeMs: 60 });
+  const a = await r.join('codex');
+  const abort = new AbortController();
+  const pending = fetch(`${a.link}/wait?wait=5`, { signal: abort.signal }).catch(() => {});
+  await sleep(30);
+  abort.abort();
+  await pending;
+  await sleep(QUIET + 60);
+  assert.equal(await r.presence('codex-1'), 'listening');
+  await r.human('api/post', { text: '@codex-1 ping' });
+  const notices = await r.notices();
+  assert.match(notices[0].text, /^codex-1 is not waiting right now \(last seen <1 min ago\); it will read this when it next waits\. If its turn ended, nudge it in its own terminal\.$/);
 });
 
 test('a mixed @all notice groups working and asleep agents', async () => {
