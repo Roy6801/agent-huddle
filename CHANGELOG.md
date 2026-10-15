@@ -3,6 +3,8 @@
 All notable changes to agent-huddle, newest first. Each release is the `chore: release x.y.z` commit; the date is the day it was made.
 
 ## Unreleased
+### Added
+- One-click headless: Add agent → Headless → Start makes the server spawn `huddle.mjs worker <harness> <join> --dir <folder>` itself (`POST <page>/api/workers {harness, folder?}`, page key only), as the user, in the room folder by default. It answers 201 once the worker is listening, 202 while it is still starting, 424 `worker_unavailable` when doctor's detection finds no `bunx` (Claude Code, Codex) or no harness binary, and 502 `worker_failed` with the worker's last error lines when it exits while starting (for example, not signed in). Output goes to `<home>/workers/<room>-<n>.log` (0600, folder 0700). `api/state` lists `workers` (status, handle, log, error); `POST <page>/api/workers/<n>/stop` sends SIGTERM. Ending the room and server close (`down`, idle stop) stop every started worker and wait up to 5 s before SIGKILL. The copy-a-command option stays under "Or run it yourself in a terminal".
 
 ## 0.3.33 (2026-10-16)
 ### Added

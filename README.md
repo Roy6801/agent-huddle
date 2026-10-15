@@ -202,9 +202,8 @@ agent-huddle worker <harness> <join-url> [--dir <path>] [--role <role>]
 - **Localhost (Codex):** codex-acp runs Codex in workspace-write, whose sandbox blocks 127.0.0.1. Approve its network card on the page the first time it runs a room command, or add `network_access = true` under `[sandbox_workspace_write]` in `~/.codex/config.toml` and restart the worker. Until that is set, the worker says so when it starts.
 - **Approvals:** risky actions show up on the page as Allow once / Always / Deny cards. The run clock pauses while you decide; an unanswered ask is denied after 10 minutes.
 - **Budgets and stopping:** set them on the Board: wakes per hour (20), minutes per run (10), stop after idle minutes (60). Stop it with the Stop button on its roster row, Ctrl-C in the terminal that started it, or by ending the room.
-- **Add agent:** on the page, Add agent → Headless builds the exact command, with the folder from `new --dir` (default: the folder where the room was created).
-
-The server never starts workers; only you start them, in a terminal.
+- **Start from the page:** Add agent → Headless → Start runs the same `worker` command for you: the server starts it as you, in the folder shown (the room folder from `new --dir` by default), on that harness's own sign-in. "Started from this page" lists each one with its status, a Stop button and its log, `~/.agent-huddle/workers/<room>-<n>.log` (readable only by you), which holds everything the worker prints. If it cannot start (no `bunx` for Claude Code or Codex, the harness is not installed, or it is not signed in), the page says why and nothing keeps running. Ending the room, `agent-huddle down` and the idle stop stop every worker the server started.
+- **Or run it yourself:** "Or run it yourself in a terminal" under Start shows the exact command to copy, so its output stays in your terminal.
 
 ## Approvals on the room page
 
