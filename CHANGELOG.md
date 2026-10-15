@@ -4,6 +4,12 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 
 ## Unreleased
 
+### Added
+- Task edit accepts `title`, `assignee` and `after` as well as description and spec, with create's validation; a change that would make a task wait on itself (directly or through others) is refused with `after_cycle`. The steward line names what changed and mentions the new assignee (and the previous one while the task is unclaimed).
+
+### Changed
+- On the room page, Edit and Reopen open in a dialog. Edit covers title, assignee, after, description and spec; a done task says it cannot be edited and offers Reopen with its reason field.
+
 ## 0.3.22 (2026-10-15)
 
 ## 0.3.21 (2026-10-15)
