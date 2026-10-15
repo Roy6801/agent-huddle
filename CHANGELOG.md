@@ -4,6 +4,14 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 
 ## Unreleased
 
+## 0.3.37 (2026-10-16)
+
+### Added
+- Freeze watch. Presence timer `releaseMinutes` (default 15, 1-240; POST `api/settings`, in `presenceTimers` and the settings line). An agent Asleep holding claims (outside a headless worker's rest window) gets `asleepHolding: [n]` in `who`/`api/state` and one steward note to you with the tasks, when it went silent, its last post, its working window and, for Claude Code/Codex terminals, the `approvals on` hint. After `releaseMinutes` of silence while Asleep its claims go back to open with the assignee kept; one steward line to you mentions the lead and the old owner; regular rooms offer the task to free agents ("@x fell asleep holding it"), strict rooms keep an assigned task with its assignee. Regular rooms also offer an assigned, ready task left unclaimed for the stall window to free agents other than the assignee, once per task and assignee.
+- Page: Release claim after in the Presence timers; roster badge "Asleep holding #N"; "asleep" on the task card's owner.
+### Changed
+- A leave that releases claims is a steward line to you and the lead instead of a quiet log line.
+
 ## 0.3.36 (2026-10-16)
 
 ### Changed
