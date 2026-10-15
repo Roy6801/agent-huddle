@@ -129,6 +129,18 @@ test('AC-89: every agent still in the room is sent off shift, and nobody gets a 
   assert.ok(lead.json.messages.some((m) => /^All 5 tasks are done:/.test(m.text)));
 });
 
+test('a batch with a post for you from an agent is not off shift, even when off shift comes last', async () => {
+  const r = await room();
+  await nearlyDone(r);
+  await call('POST', `${r.c1.link}/post`, { text: '@codex-1 one caveat on #1' });
+  await finishLast(r);
+  const lead = await call('GET', `${r.lead.link}/read?limit=500`);
+  assert.ok(lead.json.messages.at(-1).offShift);
+  assert.equal(lead.json.offShift, undefined);
+  const c2 = await call('GET', `${r.c2.link}/read?limit=500`);
+  assert.equal(c2.json.offShift, true);
+});
+
 test('AC-90: all done ends nothing: past the idle time the room is listed, you can post and agents can add work', async () => {
   const r = await room({ activeMs: 50, asleepMs: 100, idleMs: 200 });
   await nearlyDone(r);
@@ -177,6 +189,30 @@ test('AC-91: a reopen after all done wakes its owner, and finishing it again sen
   assert.ok(found[0].text.includes('#1 "wordfreq CLI" by claude-1: saved to wordfreq.mjs'));
   assert.ok(found[1].text.includes('#1 "wordfreq CLI" by claude-1: ties now sort alphabetically'));
   assert.equal((await r.state()).messages.filter((m) => m.offShift).length, 2);
+});
+
+test('an agent sent off shift shows as asleep, gets a quiet note at once on a reopen, and is back on shift once it calls', async () => {
+  const r = await room();
+  await nearlyDone(r);
+  const parked = call('GET', `${r.c1.link}/wait?wait=25`);
+  await sleep(100);
+  await finishLast(r);
+  assert.equal((await parked).json.offShift, true);
+  const presence = async (h) => (await r.state()).agents.find((a) => a.handle === h).presence;
+  assert.equal(await presence('claude-1'), 'asleep');
+  const since = (await r.state()).messages.at(-1).id;
+
+  const reopened = await call('POST', `${r.created.page}/api/tasks/1/reopen`, { reason: 'ties sort by count only' });
+  assert.equal(reopened.status, 200, JSON.stringify(reopened.json));
+  const after = (await r.state()).messages.filter((m) => m.id > since);
+  const quiet = after.filter((m) => m.toYou && /^claude-1 /.test(m.text));
+  assert.equal(quiet.length, 1, JSON.stringify(after.map((m) => m.text)));
+  assert.match(quiet[0].text, /^claude-1 is asleep/);
+  assert.notEqual(await presence('claude-1'), 'working');
+
+  const read = await call('GET', `${r.c1.link}/read?limit=500`);
+  assert.equal(read.json.offShift, undefined);
+  assert.equal(await presence('claude-1'), 'working');
 });
 
 test('a room with no tasks sends no summary and nobody off shift', async () => {

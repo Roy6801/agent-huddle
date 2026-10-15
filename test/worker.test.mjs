@@ -172,6 +172,23 @@ test('an off-shift wake runs no turn; the next mention does', async () => {
   assert.doesNotMatch(prompt.text, /off shift/);
 });
 
+test('a wake whose batch ends off shift with only system notes for it runs no turn', async () => {
+  const room = await setup('off shift batch room');
+  const w = startWorker(room.created.join, { AGENT_HUDDLE_BATCH_MS: '500' });
+  await until(() => w.out.includes('codex-1 is listening'));
+
+  await fetch(`${room.claude.link}/tasks`, json({ title: 'only task', assignee: 'codex-1' }));
+  await fetch(`${room.claude.link}/tasks/1/done`, json({ note: 'done for you' }));
+  await until(async () => (await state(room)).some((m) => m.offShift && m.to.includes('codex-1')));
+  await sleep(1000);
+  assert.equal(readPrompts().prompts.length, 0);
+  assert.doesNotMatch(w.out, /running on/);
+
+  await say(room.claude, '@codex-1 one more thing');
+  const prompt = await until(() => readPrompts().prompts[0]);
+  assert.match(prompt.text, /one more thing/);
+});
+
 test('a mention during a run is queued for the next run, never overlapping', async () => {
   const room = await setup('queue room');
   const w = startWorker(room.created.join, { FAKE_ACP_DELAY_MS: '800' });

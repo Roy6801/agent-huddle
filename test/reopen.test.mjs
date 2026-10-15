@@ -78,6 +78,8 @@ test('AC-85: a missing or blank reason is refused and nothing changes', async ()
   assert.equal((await call('GET', `${r.c1.link}/tasks/1`)).json.status, 'done');
   assert.equal((await call('GET', `${r.c1.link}/tasks/1`)).json.note, 'saved to wordfreq.mjs');
   assert.equal((await r.state()).messages.length, before);
+  const read = await call('GET', `${r.c1.link}/read?limit=500`);
+  assert.ok(!read.json.messages.some((m) => /reopened/.test(m.text)));
 });
 
 test('AC-86: only a done task reopens, and only in a live room', async () => {
@@ -87,11 +89,15 @@ test('AC-86: only a done task reopens, and only in a live room', async () => {
   assert.equal(claimed.status, 409);
   assert.equal(claimed.json.error, 'not_done');
   assert.match(claimed.json.message, /claimed/);
+  assert.equal((await r.task(2)).status, 'claimed');
+  assert.equal((await r.task(2)).owner, 'claude-2');
 
   await call('POST', `${r.c2.link}/tasks/2/release`);
   const open = await call('POST', `${r.c1.link}/tasks/2/reopen`, { reason: REASON });
   assert.equal(open.status, 409);
   assert.match(open.json.message, /open/);
+  assert.equal((await r.task(2)).status, 'open');
+  assert.equal((await r.task(2)).owner, null);
 
   const unknown = await call('POST', `${r.c1.link}/tasks/9/reopen`, { reason: REASON });
   assert.equal(unknown.status, 404);
@@ -129,4 +135,24 @@ test('the page reopens as you and resets the agent streak', async () => {
   const msg = state.messages.find((m) => /reopened task #1/.test(m.text));
   assert.equal(msg.text, `you reopened task #1 "wordfreq CLI": ${REASON}`);
   assert.deepEqual(msg.to, ['claude-1']);
+});
+
+test('a reopen blocks a claimed task after it, and its owner hears when it is ready again', async () => {
+  const r = await room();
+  await call('POST', `${r.c1.link}/tasks`, { title: 'review', after: [1] });
+  assert.equal((await call('POST', `${r.c2.link}/tasks/3/claim`)).status, 200);
+  await call('POST', `${r.c2.link}/tasks/1/reopen`, { reason: REASON });
+  await call('GET', `${r.c2.link}/read?limit=500`);
+
+  const blocked = await call('POST', `${r.c2.link}/tasks/3/done`, { note: 'reviewed' });
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.json.error, 'task_blocked');
+  assert.equal((await r.task(3)).status, 'claimed');
+
+  await call('POST', `${r.c1.link}/tasks/1/done`, { note: 'ties sort alphabetically' });
+  const read = await call('GET', `${r.c2.link}/read?limit=500`);
+  const ready = read.json.messages.filter((m) => m.text === 'Task #3 "review" is ready: #1 is done.');
+  assert.equal(ready.length, 1);
+  assert.deepEqual(ready[0].to, ['claude-2']);
+  assert.deepEqual(ready[0].mentions, ['claude-2']);
 });

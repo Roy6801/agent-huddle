@@ -57,6 +57,11 @@ const QUIET_NOTES = {
   asleep: { label: 'asleep', one: (h, age) => `${h} is asleep (last seen ${age} ago). If its turn ended, nudge it in its own terminal.` },
 };
 const OFF_SHIFT = 'All tasks are done; you are off shift. Stop waiting and end your turn; @you or a reopened task brings you back.';
+// Off shift only when the newest message for handle sends it off shift and nothing for it came from @you or an agent.
+function offShiftBatch(messages, handle) {
+  const addressed = messages.filter((m) => m.to?.includes(handle));
+  return addressed.at(-1)?.offShift === true && addressed.every((m) => m.from === 'system');
+}
 const ROLE_RE = /^[a-z0-9-]{1,20}$/;
 // The lookahead capture is atomic, so a token like @types/node never backs off to @types.
 const MENTION_RE = /(?<![A-Za-z0-9_.@])@(?=([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*(?:\.\*)?))\1(?![A-Za-z0-9_/@*-])/gi;
@@ -476,6 +481,7 @@ export function createHuddle(opts = {}) {
       workingUntil: 0,
       restingAt: 0,
       nudgedAt: 0,
+      offShift: false,
       waiters: new Set(),
     };
     s.agents.set(handle, agent);
@@ -523,7 +529,7 @@ export function createHuddle(opts = {}) {
     for (const handle of m.to) {
       const agent = s.agents.get(handle);
       if (!agent || handle === m.from || handle === routedFor || now - agent.nudgedAt < nudgeRepeatMs || agent.waiters.size || agent.role === 'headless') continue;
-      if (agent.status !== 'left' && now - agent.lastSeen <= quietMs) continue;
+      if (agent.status !== 'left' && !agent.offShift && now - agent.lastSeen <= quietMs) continue;
       agent.nudgedAt = now;
       quiet.push(agent);
     }
@@ -542,9 +548,10 @@ export function createHuddle(opts = {}) {
   // Narrator lines (joins, leaves, claims, finishes) are a quiet log: in every read, addressed to nobody.
   const narrate = (s, text) => addMessage(s, 'system', text, { kind: 'log' });
 
+  // Being sent off shift is not activity: the agent keeps its last-seen times.
   function flushWaiters(s, agent) {
-    agent.lastSeen = agent.lastCallAt = Date.now();
     const payload = readFor(s, agent, 500);
+    if (!payload.offShift) agent.lastSeen = agent.lastCallAt = Date.now();
     for (const w of agent.waiters) {
       clearTimeout(w.timer);
       sendJson(w.res, 200, payload);
@@ -569,8 +576,8 @@ export function createHuddle(opts = {}) {
     messages.forEach((m, i) => m.task && m.to.includes(agent.handle) && latest.set(m.task, i));
     for (const [n, i] of latest) messages[i] = { ...messages[i], taskDetail: agentTaskView(s, agent, getTask(s, n)) };
     agent.cursor = cursor;
-    const newest = messages.findLast((m) => m.to.includes(agent.handle));
-    return { messages, cursor, ...(newest?.offShift && { offShift: true }) };
+    agent.offShift = offShiftBatch(messages, agent.handle);
+    return { messages, cursor, ...(agent.offShift && { offShift: true }) };
   }
 
   const unreadCount = (s, agent) =>
@@ -583,6 +590,7 @@ export function createHuddle(opts = {}) {
     const now = Date.now();
     if (agent.status === 'left') return 'left';
     if (now - agent.restingAt < REST_WINDOW_MS) return 'asleep';
+    if (agent.offShift) return agent.waiters.size ? 'listening' : 'asleep';
     if (agent.workingUntil > now || now - agent.lastCallAt < s.timers.workingMs) return 'working';
     if (agent.waiters.size) return 'listening';
     if (now - agent.lastSeen >= s.timers.asleepMs) return 'asleep';
@@ -892,7 +900,7 @@ export function createHuddle(opts = {}) {
     for (const t of s.tasks) {
       if (t.status === 'done' || !t.after.includes(done.id) || blockedBy(s, t).length) continue;
       const text = `Task #${t.id} "${t.title}" is ready: ${refs(t.after)} ${t.after.length > 1 ? 'are' : 'is'} done.`;
-      const who = t.assignee;
+      const who = t.owner ?? t.assignee;
       if (who && who !== finisher && s.agents.get(who)?.status !== 'left') system(s, text, { mentions: [who], to: [who], task: t.id });
       else narrate(s, text.charAt(0).toLowerCase() + text.slice(1));
     }
@@ -1441,8 +1449,10 @@ How the room works:
     agent.nudgedAt = 0;
     if (method === 'POST') markActivity(s);
     const resting = method === 'GET' && key === 'me' && url.searchParams.get('rest') === '1';
+    const waiting = method === 'GET' && key === 'wait';
     agent.restingAt = resting ? agent.lastSeen : 0;
-    if (!resting && !(method === 'GET' && key === 'wait')) agent.lastCallAt = agent.lastSeen;
+    if (!waiting) agent.offShift = false;
+    if (!resting && !waiting) agent.lastCallAt = agent.lastSeen;
     const leaving = method === 'POST' && key === 'leave';
     if (agent.status === 'left' && !leaving) {
       agent.status = 'active';
@@ -1450,7 +1460,8 @@ How the room works:
       narrate(s, `${agent.handle} rejoined`);
     }
     const ok = (obj) => sendJson(res, 200, obj);
-    const taskMatch = /^tasks\/(\d+)\/(claim|done|release|reopen)$/.exec(key);
+    const taskMatch = /^tasks\/(\d+)\/(claim|done|release)$/.exec(key);
+    const reopenMatch = /^tasks\/(\d+)\/reopen$/.exec(key);
     const fileMatch = /^files\/([\w-]+)$/.exec(key);
     const askMatch = /^asks\/(\d+)$/.exec(key);
     const taskIdMatch = /^tasks\/(\d+)$/.exec(key);
@@ -1491,8 +1502,9 @@ How the room works:
         case 'wait': {
           if (agent.stopRequested) return ok({ stop: true });
           if (hasAddressedUnread(s, agent)) {
-            agent.lastCallAt = agent.lastSeen;
-            return ok(readFor(s, agent, 500));
+            const payload = readFor(s, agent, 500);
+            if (!payload.offShift) agent.lastCallAt = agent.lastSeen;
+            return ok(payload);
           }
           return parkWaiter(agent, agent.waiters, { res }, clampWait(url.searchParams.get('wait')), () => res.writeHead(204).end(), true);
         }
@@ -1506,7 +1518,7 @@ How the room works:
           return ok(fileList(s));
       }
     } else if (method === 'POST') {
-      if (taskMatch && taskMatch[2] === 'reopen') return ok(agentTaskView(s, agent, reopenTask(s, agent.handle, taskMatch[1], body)));
+      if (reopenMatch) return ok(agentTaskView(s, agent, reopenTask(s, agent.handle, reopenMatch[1], body)));
       if (taskMatch) return ok(agentTaskView(s, agent, taskAction(s, agent, taskMatch[1], taskMatch[2], body)));
       if (taskIdMatch) {
         return ok(agentTaskView(s, agent, editTask(s, agent.handle, taskIdMatch[1], body)));
@@ -1935,7 +1947,7 @@ async function waitForTurn(args) {
     if (res.status === 200) {
       const body = await res.json();
       console.log(JSON.stringify(body));
-      if (body.offShift) process.exit(5);
+      if (body.offShift) process.exitCode = 5;
       return;
     }
     if (res.status === 410 || res.status === 401) {
@@ -2311,13 +2323,14 @@ async function runWorker(args) {
       if (res.status !== 200) return abort(1, `huddle error: ${(await res.json().catch(() => ({}))).message ?? res.status}`, false);
       const payload = await res.json();
       if (payload.stop) return stopNow();
+      // No extra read here: any call but wait puts the agent back on shift.
       if (payload.offShift) continue;
       const woken = payload.messages;
       await nap(Number(process.env.AGENT_HUDDLE_BATCH_MS) || 3000);
       if (signal.aborted) return;
       const more = await fetch(`${me.link}/read?limit=500`, { signal }).then((r) => (r.ok ? r.json() : { messages: [] }), () => ({ messages: [] }));
       const unread = [...new Map([...woken, ...more.messages].map((m) => [m.id, m])).values()];
-      if (!unread.some((m) => m.to?.includes(me.handle))) continue;
+      if (!unread.some((m) => m.to?.includes(me.handle)) || offShiftBatch(unread, me.handle)) continue;
       await refresh();
       if (stopAsked) return stopNow();
       const { runMs } = limits();
