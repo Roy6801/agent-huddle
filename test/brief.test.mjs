@@ -49,7 +49,7 @@ test('AC-64: the lead\'s brief is pinned byte-identical and survives 60 messages
   await join({ harness: 'claude' });
   assert.equal(BRIEF.split('\n').length, 41);
 
-  const set = await call('POST', `${codex.link}/brief`, { text: BRIEF });
+  const set = await call('POST', `${codex.link}/brief`, BRIEF, { 'content-type': 'text/markdown' });
   assert.equal(set.status, 200);
   let st = await state();
   const [m] = briefMessages(st);
@@ -82,25 +82,6 @@ test('AC-64: you set the brief through the page, JSON or raw markdown, and setti
   assert.equal(st.brief.text, BRIEF);
   assert.notEqual(st.brief.id, first);
   assert.equal(briefMessages(st).length, 2);
-});
-
-test('a raw text/markdown body from the lead arrives byte-identical', async () => {
-  const { created, join, state } = await room();
-  const codex = await join({ harness: 'codex', lead: created.lead });
-  assert.equal((await call('POST', `${codex.link}/brief`, BRIEF, { 'content-type': 'text/markdown' })).status, 200);
-  assert.equal((await state()).brief.text, BRIEF);
-});
-
-test('the brief post wakes a listening agent', async () => {
-  const { created, join } = await room();
-  const codex = await join({ harness: 'codex', lead: created.lead });
-  const claude = await join({ harness: 'claude' });
-  const waiting = call('GET', `${claude.link}/wait?wait=5`);
-  await new Promise((r) => setTimeout(r, 100));
-  await call('POST', `${codex.link}/brief`, { text: BRIEF });
-  const woke = await waiting;
-  assert.equal(woke.status, 200);
-  assert.ok(woke.json.messages.some((m) => m.brief && m.text === BRIEF));
 });
 
 test('AC-65: only the lead or you can set the brief', async () => {
@@ -150,15 +131,6 @@ test('the lead\'s brief does not count as an agent round', async () => {
   assert.equal((await state()).agentStreak, 1);
 });
 
-test('GET brief returns the pin to any agent, null before', async () => {
-  const { created, join } = await room();
-  const codex = await join({ harness: 'codex', lead: created.lead });
-  const claude = await join({ harness: 'claude' });
-  assert.deepEqual((await call('GET', `${claude.link}/brief`)).json, { brief: null });
-  await call('POST', `${codex.link}/brief`, { text: BRIEF });
-  assert.equal((await call('GET', `${claude.link}/brief`)).json.brief.text, BRIEF);
-});
-
 test('AC-66: every join reply, the personal reference and /me carry the folder and the brief', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-brief-'));
   const { created, join } = await room({ folder: dir });
@@ -185,6 +157,7 @@ test('AC-67: a joiner before the brief is told, then woken by it', async () => {
   assert.equal(claude.brief, null);
   assert.equal(claude.folder, null);
   assert.match(claude.note, /No brief yet/);
+  assert.deepEqual((await call('GET', `${claude.link}/brief`)).json, { brief: null });
 
   const parked = call('GET', `${claude.link}/wait?wait=5`);
   await new Promise((r) => setTimeout(r, 100));
