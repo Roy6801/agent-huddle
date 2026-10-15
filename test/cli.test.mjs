@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import { execFile, execFileSync } from 'node:child_process';
+import { serverDefaults } from '../skills/agent-huddle/huddle.mjs';
 
 const CLI = new URL('../skills/agent-huddle/huddle.mjs', import.meta.url).pathname;
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-cli-'));
@@ -199,4 +200,36 @@ test('start and rooms are aliases of new and ls', async () => {
   assert.match(help.stdout, /new, start +create a room/);
   assert.match(help.stdout, /ls, rooms +list live rooms/);
   assert.match((await cli('help', 'start')).stdout, /new \[name\]/);
+});
+
+test('the repo checkout defaults to its own port and home; installed copies keep 4747 and ~/.agent-huddle', () => {
+  const dev = { port: 4848, home: path.join(os.homedir(), '.agent-huddle-dev') };
+  const installed = { port: 4747, home: path.join(os.homedir(), '.agent-huddle') };
+  assert.deepEqual(serverDefaults(CLI), dev);
+
+  const place = (...parts) => {
+    const file = path.join(home, 'copies', ...parts, 'skills', 'agent-huddle', 'huddle.mjs');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '');
+    return file;
+  };
+  assert.deepEqual(serverDefaults(place('agents')), installed);
+  const plugin = place('plugins', 'cache', 'agent-huddle', 'agent-huddle', '0.3.5');
+  fs.writeFileSync(path.join(plugin, '..', '..', '..', 'package.json'), JSON.stringify({ name: 'agent-huddle' }));
+  assert.deepEqual(serverDefaults(plugin), installed);
+});
+
+test('AGENT_HUDDLE_PORT and AGENT_HUDDLE_HOME win over the checkout defaults', async () => {
+  const port = await freePort();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-cli-env-'));
+  const own = { ...process.env, AGENT_HUDDLE_HOME: dir, AGENT_HUDDLE_PORT: String(port) };
+  try {
+    const made = await run(own, 'new', 'qa room');
+    assert.equal(made.code, 0, made.stderr);
+    assert.match(made.stdout, new RegExp(`127\\.0\\.0\\.1:${port}/`));
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'server.json'), 'utf8')).port, port);
+  } finally {
+    await run(own, 'down');
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
