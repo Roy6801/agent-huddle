@@ -116,8 +116,8 @@ test('human page link 404 hints at the agent join url', async () => {
   const r = await room();
   const res = await r.human('wait');
   assert.equal(res.status, 404);
-  assert.ok(res.json.hint.includes(`${r.created.join}`));
-  assert.ok(res.json.hint.includes(`${r.created.join}/join`));
+  assert.ok(res.json.instruction.includes(`${r.created.join}`));
+  assert.ok(res.json.instruction.includes(`${r.created.join}/join`));
 });
 
 test('presence: parked wait is listening once the working window ends, other requests are working, aged ones asleep', async () => {

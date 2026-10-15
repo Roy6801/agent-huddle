@@ -132,7 +132,8 @@ test('empty text needs files; unknown or malformed file ids are 400', async () =
 
   const unknown = await postJson(`${a.link}/post`, { text: 'hi', files: ['nope'] });
   assert.equal(unknown.status, 400);
-  assert.match(unknown.json.error, /unknown file nope/);
+  assert.equal(unknown.json.error, 'unknown_attachment');
+  assert.match(unknown.json.message, /File nope /);
   assert.equal((await postJson(`${r.created.page}/api/post`, { text: 'hi', files: ['nope'] })).status, 400);
   assert.equal((await postJson(`${a.link}/post`, { text: 'hi', files: 'x' })).status, 400);
   assert.equal((await postJson(`${a.link}/post`, { text: 'hi', files: [1] })).status, 400);
@@ -149,7 +150,9 @@ test('file over maxFileBytes is 413 with the limit, declared or streamed', async
   assert.equal((await upload(a.link, 'ok.bin', Buffer.alloc(1000), 'application/octet-stream')).status, 201);
   const declared = await upload(a.link, 'big.bin', Buffer.alloc(1001), 'application/octet-stream');
   assert.equal(declared.status, 413);
-  assert.deepEqual(declared.json, { error: 'file too large', limit: 1000 });
+  assert.deepEqual(Object.keys(declared.json), ['error', 'message', 'instruction']);
+  assert.equal(declared.json.error, 'file_too_large');
+  assert.match(declared.json.message, /limit per file/);
 
   const streamed = await request(`${a.link}/files?name=big.bin`, {
     method: 'POST',
@@ -157,7 +160,7 @@ test('file over maxFileBytes is 413 with the limit, declared or streamed', async
     chunks: [Buffer.alloc(600), Buffer.alloc(600)],
   });
   assert.equal(streamed.status, 413);
-  assert.equal(streamed.json.limit, 1000);
+  assert.equal(streamed.json.error, 'file_too_large');
   assert.equal((await request(`${a.link}/files`)).json.files.length, 1);
 });
 
@@ -168,7 +171,8 @@ test('room storage cap is 413 and counts every upload', async () => {
   assert.equal((await upload(r.created.page, '2.bin', Buffer.alloc(1000), 'application/octet-stream', 'api/files')).status, 201);
   const full = await upload(a.link, '3.bin', Buffer.alloc(600), 'application/octet-stream');
   assert.equal(full.status, 413);
-  assert.deepEqual(full.json, { error: 'room file storage is full', limit: 2500 });
+  assert.deepEqual(Object.keys(full.json), ['error', 'message', 'instruction']);
+  assert.equal(full.json.error, 'room_storage_full');
   assert.equal((await upload(a.link, '3.bin', Buffer.alloc(500), 'application/octet-stream')).status, 201);
 });
 

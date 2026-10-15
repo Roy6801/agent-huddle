@@ -46,11 +46,106 @@ const ROLE_RE = /^[a-z0-9-]{1,20}$/;
 const MENTION_RE = /(?<![A-Za-z0-9_.@])@(?=([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*(?:\.\*)?))\1(?![A-Za-z0-9_/@*-])/gi;
 const CODE_RE = /```[\s\S]*?```|`[^`]+`/g;
 
+const OPTION_SHAPE = '{"optionId":"yes","kind":"allow_once","name":"Yes"}';
+
+// Every error reply is { error, message, instruction }: a stable snake_case code, what went wrong
+// and the viable next step, filled with the branch's specifics.
+export const ERRORS = {
+  internal_error: [500, 'The server hit an unexpected error.',
+    'Retry the call once; if it fails again, tell @you what you were doing.'],
+  body_too_large: [413, (p) => `The request body is over the ${p.kb} KB limit.`,
+    'Send less: shorten the text, or upload long content with POST files?name=<filename> and attach it.'],
+  invalid_json: [400, 'The request body is not valid JSON.',
+    'Send a JSON object with content-type application/json, for example {"text":"hi"}.'],
+  body_not_object: [400, 'The request body must be a JSON object.', 'Wrap the fields in an object, for example {"text":"hi"}.'],
+  not_found: [404, (p) => (p.join ? 'This path does not exist on the human page link.' : 'This path does not exist.'),
+    (p) => (p.join
+      ? `Agents join at ${p.join}: GET it for the protocol, then POST ${p.join}/join to join.`
+      : 'GET your personal link for the list of endpoints.')],
+  forbidden_host: [403, 'The Host header is not 127.0.0.1 or localhost on this port.',
+    (p) => `Call http://127.0.0.1:${p.port} directly, without a proxy or another hostname.`],
+  forbidden_origin: [403, 'Requests from another origin are not allowed.',
+    (p) => `Call the API from a local tool such as curl, or from the page at http://127.0.0.1:${p.port}.`],
+  unauthorized: [401, 'The admin token is missing or wrong.',
+    () => `Run admin commands such as \`${PROG} ls\` on this machine; the CLI sends the token.`],
+  unknown_room: [404, 'There is no live room with this id on this server.',
+    'Ask your user for a current join link; the room may have ended or the server restarted.'],
+  unknown_token: [401, 'This personal link does not belong to anyone in the room.',
+    (p) => `Join again with POST ${p.join}/join and use the link it returns.`],
+  wrong_page_link: [401, 'This human page link is not the one for this room.',
+    () => `Get the current page link with \`${PROG} open <room>\`.`],
+  room_ended: [410, 'This room has ended.', 'Stop calling it; @you will share a new join link if there is more to do.'],
+  invalid_text: [400, (p) => `${p.label} is missing, blank or longer than ${p.max} characters.`,
+    (p) => `Resend with a non-empty ${p.label} within the limit; long content fits better in a file.`],
+  invalid_file_name: [400, 'The upload has no file name.', 'Add ?name=<filename> to the URL, for example POST files?name=notes.md.'],
+  role_required: [400, 'A spawned agent needs a role.', 'Send a role such as {"role":"tester"}.'],
+  invalid_role: [400, 'The role is not allowed.', 'Use 1-20 lowercase letters, digits or dashes, other than all, you or system.'],
+  invalid_round_cap: [400, 'The round cap is not a valid value.',
+    () => `Send roundCap as a whole number from 1 to ${ROUND_CAP_MAX}, or "off".`],
+  invalid_number: [400, (p) => `${p.key} must be a whole number from ${p.min} to ${p.max}.`,
+    (p) => `Resend ${p.key} as a whole number in that range, or leave it out.`],
+  leave_before_asleep: [400, 'leaveMinutes must be longer than asleepMinutes.',
+    'Raise leaveMinutes or lower asleepMinutes so an agent sleeps before it is removed.'],
+  invalid_folder: [400, 'folder must be an absolute path of at most 1024 characters.',
+    'Send the full path, for example /Users/me/project, or leave folder out.'],
+  unknown_mention: [400, (p) => `@${p.tok} is not anyone in this room, so nothing was posted.`,
+    'Mention one of the valid handles or roles and post again; wrap code in backticks if this was not a mention.'],
+  invalid_options: [400, 'options must be a list of 1-6 choices.', `Send options as an array like [${OPTION_SHAPE}].`],
+  invalid_option: [400, 'Each option must be an object.', `Send each option as ${OPTION_SHAPE}.`],
+  unknown_kind: [400, 'An option has an unknown kind.', `Use one of ${[...ASK_KINDS].join(', ')}.`],
+  duplicate_option: [400, 'Two options share an optionId.', 'Give each option its own optionId.'],
+  unknown_ask: [404, (p) => `There is no ask #${p.n} here.`, 'Use the ask id returned when the ask was created.'],
+  ask_closed: [409, (p) => `Ask #${p.n} is already ${p.status}.`, 'Leave it as it is; create a new ask if a decision is still needed.'],
+  unknown_option: [400, (p) => `That optionId is not one of the options of ask #${p.n}.`,
+    (p) => `Answer with one of: ${p.ids.join(', ')}.`],
+  round_cap: [429, (p) => `The room has reached its round cap of ${p.cap} agent posts and is waiting on @you.`,
+    'Stop posting and wait until @you posts or changes the round cap.'],
+  spec_conflict: [400, 'The task has both spec and specFile.', 'Send spec for inline text or specFile for an uploaded file, not both.'],
+  unknown_file: [400, (p) => `specFile ${p.id} is not a file in this room.`, 'Use an id from the valid list, or upload the spec first with POST files?name=<filename>.'],
+  unknown_assignee: [400, (p) => `${p.assignee} is not an agent in this room.`,
+    'Assign the task to one of the valid handles, or leave assignee out.'],
+  unknown_task: [404, (p) => `There is no task #${p.n}.`, 'GET tasks for the current task numbers.'],
+  not_creator: [403, (p) => `Task #${p.n} was created by @${p.creator}; only its creator or @you can edit it.`,
+    (p) => `Ask @${p.creator}${p.creator === 'you' ? '' : ' or @you'} to make the change.`],
+  task_done: [409, (p) => `Task #${p.n} is already done.`, 'Create a new task for any follow-up work.'],
+  empty_edit: [400, 'The edit has nothing to change.', 'Send description, spec or specFile.'],
+  already_claimed: [409, (p) => `Task #${p.n} is claimed by @${p.owner}.`,
+    (p) => `Pick another open task from GET tasks, or ask @${p.owner} to release #${p.n}.`],
+  not_owner: [409, (p) => (p.owner ? `Task #${p.n} is held by @${p.owner}, not you.` : `Task #${p.n} is not claimed by you.`),
+    (p) => (p.owner ? `Leave it to @${p.owner}, or ask them to release #${p.n}.` : 'There is nothing to release.')],
+  invalid_files: [400, 'files must be an array of file ids.', 'Send files as ["<id>"] using ids from POST files or GET files.'],
+  too_many_files: [400, `A post can attach at most ${MAX_ATTACHMENTS} files.`, 'Split the files across several posts.'],
+  unknown_attachment: [400, (p) => `File ${p.id} is not in this room.`,
+    'Upload it first with POST files?name=<filename>, then attach the id it returns.'],
+  invalid_for: [400, 'for must be "you".', 'Send "for":"you" to relay to @you, or leave it out.'],
+  empty_settings: [400, 'The settings request changes nothing.',
+    'Send at least one of roundCap, wakesPerHour, runMinutes, idleMinutes, workingWindowMinutes, asleepMinutes or leaveMinutes.'],
+  unknown_agent: [404, (p) => `@${p.handle} is not a live agent in this room.`, 'Pick a live agent from the roster.'],
+  not_headless: [409, (p) => `@${p.handle} is not a headless agent.`, 'Ask it in the room to stop, or stop it in its own terminal.'],
+  file_too_large: [413, (p) => `The file is ${megabytes(p.size)}, over the ${megabytes(p.limit)} limit per file.`,
+    'Compress or split it, or share it by its path on disk instead.'],
+  room_storage_full: [413, (p) => `The room's file storage is full at ${megabytes(p.limit)}.`,
+    'Share the file by its path in the room folder instead.'],
+  file_not_found: [404, (p) => `There is no file ${p.id} in this room.`, 'GET files for the current file ids.'],
+  harness_required: [400, 'harness is missing or has no letters or digits.', 'Send your tool name, for example {"harness":"codex"}.'],
+  reserved_harness: [400, 'harness must not be all, you or system.', 'Use your tool name as the harness, for example codex.'],
+  nesting_limit: [400, `Spawning is limited to ${MAX_DEPTH} levels of nesting.`,
+    'Spawn from a higher-level agent, or do the work yourself.'],
+  server_unreachable: [null, 'The huddle server did not answer three times in a row.', (p) => `Run: node ${p.file} doctor`],
+};
+
+export function errorBody(code, p = {}) {
+  const [, message, instruction] = ERRORS[code];
+  const fill = (t) => (typeof t === 'function' ? t(p) : t);
+  return { error: code, message: fill(message), instruction: fill(instruction) };
+}
+
 class HttpError extends Error {
-  constructor(status, error, extra = {}) {
-    super(error);
-    this.status = status;
-    this.body = { error, ...extra };
+  constructor(code, p = {}, extra = {}) {
+    const body = errorBody(code, p);
+    super(body.message);
+    this.status = ERRORS[code][0];
+    this.body = { ...body, ...extra };
   }
 }
 
@@ -73,23 +168,23 @@ function sanitizeHarness(value) {
 }
 
 function cleanText(value, max, label) {
-  if (typeof value !== 'string') throw new HttpError(400, `${label} must be a string`);
+  if (typeof value !== 'string') throw new HttpError('invalid_text', { label, max });
   const text = value.trim();
   if (text.length < 1 || text.length > max) {
-    throw new HttpError(400, `${label} must be 1-${max} characters`);
+    throw new HttpError('invalid_text', { label, max });
   }
   return text;
 }
 
 // Basename only, no control or bidi characters, at most MAX_FILE_NAME characters (extension kept).
 function cleanFileName(value) {
-  if (typeof value !== 'string') throw new HttpError(400, 'name is required (?name=<filename>)');
+  if (typeof value !== 'string') throw new HttpError('invalid_file_name');
   let name = value
     .split(/[\\/]/)
     .pop()
     .replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '')
     .trim();
-  if (!name || name === '.' || name === '..') throw new HttpError(400, 'name is required (?name=<filename>)');
+  if (!name || name === '.' || name === '..') throw new HttpError('invalid_file_name');
   if (name.length > MAX_FILE_NAME) {
     const dot = name.lastIndexOf('.');
     const ext = dot > 0 && name.length - dot <= 16 ? name.slice(dot) : '';
@@ -111,11 +206,11 @@ const megabytes = (n) => `${+(n / (1024 * 1024)).toFixed(1)} MB`;
 
 function cleanRole(value, required) {
   if (value === undefined || value === null) {
-    if (required) throw new HttpError(400, 'role is required');
+    if (required) throw new HttpError('role_required');
     return null;
   }
   if (typeof value !== 'string' || !ROLE_RE.test(value) || RESERVED_ROLES.has(value)) {
-    throw new HttpError(400, 'role must match [a-z0-9-]{1,20} and not be all, you or system');
+    throw new HttpError('invalid_role');
   }
   return value;
 }
@@ -126,14 +221,14 @@ const ROUND_CAP_MAX = 100;
 function parseRoundCap(v) {
   if (v === null || v === 'off') return null;
   if (Number.isInteger(v) && v >= 1 && v <= ROUND_CAP_MAX) return v;
-  throw new HttpError(400, `roundCap must be a whole number from 1 to ${ROUND_CAP_MAX}, or "off"`);
+  throw new HttpError('invalid_round_cap');
 }
 
 const HEADLESS_LIMITS = { wakesPerHour: [1, 120], runMinutes: [1, 120], idleMinutes: [5, 1440] };
 
 function parseWhole(key, value, [min, max]) {
   if (!Number.isInteger(value) || value < min || value > max) {
-    throw new HttpError(400, `${key} must be a whole number from ${min} to ${max}`);
+    throw new HttpError('invalid_number', { key, min, max });
   }
   return value;
 }
@@ -156,7 +251,7 @@ function parsePresence(body, current) {
     if (body[key] !== undefined) next[PRESENCE_FIELDS[key]] = parseWhole(key, body[key], range) * 60000;
   }
   if ((body.asleepMinutes !== undefined || body.leaveMinutes !== undefined) && next.leaveMs <= next.asleepMs) {
-    throw new HttpError(400, 'leaveMinutes must be longer than asleepMinutes');
+    throw new HttpError('leave_before_asleep');
   }
   return next;
 }
@@ -170,7 +265,7 @@ const presenceTimers = (timers) => ({
 function parseFolder(v) {
   if (v === undefined || v === null) return null;
   if (typeof v !== 'string' || v.length > 1024 || !path.isAbsolute(v)) {
-    throw new HttpError(400, 'folder must be an absolute path of at most 1024 characters');
+    throw new HttpError('invalid_folder');
   }
   return v;
 }
@@ -200,7 +295,7 @@ export function createHuddle(opts = {}) {
     handle(req, res).catch((err) => {
       if (res.headersSent) return res.end();
       if (err instanceof HttpError) return sendJson(res, err.status, err.body);
-      sendJson(res, 500, { error: 'internal error' });
+      sendError(res, 'internal_error');
     });
   });
 
@@ -212,6 +307,8 @@ export function createHuddle(opts = {}) {
     res.end(JSON.stringify(obj) + '\n');
   }
 
+  const sendError = (res, code, p) => sendJson(res, ERRORS[code][0], errorBody(code, p));
+
   function sendText(res, status, text, type = 'text/plain; charset=utf-8') {
     res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' });
     res.end(text);
@@ -219,7 +316,7 @@ export function createHuddle(opts = {}) {
 
   async function readBody(req, limit = BODY_LIMIT) {
     const declared = Number(req.headers['content-length'] || 0);
-    if (declared > limit) throw new HttpError(413, 'body too large');
+    if (declared > limit) throw new HttpError('body_too_large', { kb: limit / 1024 });
     const chunks = [];
     let size = 0;
     let tooBig = false;
@@ -228,16 +325,16 @@ export function createHuddle(opts = {}) {
       if (size > limit) tooBig = true;
       else chunks.push(chunk);
     }
-    if (tooBig) throw new HttpError(413, 'body too large');
+    if (tooBig) throw new HttpError('body_too_large', { kb: limit / 1024 });
     if (size === 0) return {};
     let parsed;
     try {
       parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     } catch {
-      throw new HttpError(400, 'invalid JSON');
+      throw new HttpError('invalid_json');
     }
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new HttpError(400, 'body must be a JSON object');
+      throw new HttpError('body_not_object');
     }
     return parsed;
   }
@@ -283,13 +380,13 @@ export function createHuddle(opts = {}) {
     for (const agent of s.agents.values()) {
       for (const w of agent.waiters) {
         clearTimeout(w.timer);
-        sendJson(w.res, 410, { error: 'room ended' });
+        sendError(w.res, 'room_ended');
       }
       agent.waiters.clear();
     }
     for (const w of s.askWaiters) {
       clearTimeout(w.timer);
-      sendJson(w.res, 410, { error: 'room ended' });
+      sendError(w.res, 'room_ended');
     }
     s.askWaiters.clear();
     s.files.clear();
@@ -480,9 +577,7 @@ export function createHuddle(opts = {}) {
       } else {
         const byRole = live.filter((a) => a.role === tok);
         if (!byRole.length) {
-          throw new HttpError(400, `unknown mention @${tok}; wrap code in backticks if this was not a mention`, {
-            valid: validMentions(s),
-          });
+          throw new HttpError('unknown_mention', { tok }, { valid: validMentions(s) });
         }
         byRole.forEach((a) => to.add(a.handle));
       }
@@ -531,14 +626,14 @@ export function createHuddle(opts = {}) {
     const title = cleanText(body.title, MAX_ASK_TITLE, 'title');
     const detail = body.detail === undefined || body.detail === null ? null : cleanText(body.detail, MAX_ASK_DETAIL, 'detail');
     if (!Array.isArray(body.options) || body.options.length < 1 || body.options.length > 6) {
-      throw new HttpError(400, 'options must be a list of 1-6 choices');
+      throw new HttpError('invalid_options');
     }
     const options = body.options.map((o) => {
-      if (o === null || typeof o !== 'object' || Array.isArray(o)) throw new HttpError(400, 'each option must be an object');
-      if (!ASK_KINDS.has(o.kind)) throw new HttpError(400, `kind must be one of ${[...ASK_KINDS].join(', ')}`, { valid: [...ASK_KINDS] });
+      if (o === null || typeof o !== 'object' || Array.isArray(o)) throw new HttpError('invalid_option');
+      if (!ASK_KINDS.has(o.kind)) throw new HttpError('unknown_kind');
       return { optionId: cleanText(o.optionId, 100, 'optionId'), kind: o.kind, name: cleanText(o.name, 60, 'name') };
     });
-    if (new Set(options.map((o) => o.optionId)).size !== options.length) throw new HttpError(400, 'optionId must be unique');
+    if (new Set(options.map((o) => o.optionId)).size !== options.length) throw new HttpError('duplicate_option');
     const ask = { id: s.asks.length + 1, by: agent.handle, title, detail, options, status: 'open', at: new Date().toISOString() };
     s.asks.push(ask);
     system(s, `${agent.handle} asks: ${title}`, { toYou: true, ask: ask.id });
@@ -547,16 +642,16 @@ export function createHuddle(opts = {}) {
 
   function getAsk(s, agent, n) {
     const ask = s.asks[Number(n) - 1];
-    if (!ask || ask.by !== agent.handle) throw new HttpError(404, `no ask #${n}`);
+    if (!ask || ask.by !== agent.handle) throw new HttpError('unknown_ask', { n });
     return ask;
   }
 
   function answerAsk(s, n, body) {
     const ask = s.asks[Number(n) - 1];
-    if (!ask) throw new HttpError(404, `no ask #${n}`);
-    if (ask.status !== 'open') throw new HttpError(409, `ask is ${ask.status}`);
+    if (!ask) throw new HttpError('unknown_ask', { n });
+    if (ask.status !== 'open') throw new HttpError('ask_closed', { n, status: ask.status });
     const option = ask.options.find((o) => o.optionId === body.optionId);
-    if (!option) throw new HttpError(400, 'optionId is not one of the options', { valid: ask.options.map((o) => o.optionId) });
+    if (!option) throw new HttpError('unknown_option', { n, ids: ask.options.map((o) => o.optionId) });
     ask.answer = { optionId: option.optionId, kind: option.kind };
     ask.answeredAt = new Date().toISOString();
     settleAsk(s, ask, 'answered');
@@ -566,7 +661,7 @@ export function createHuddle(opts = {}) {
 
   function cancelAsk(s, agent, n) {
     const ask = getAsk(s, agent, n);
-    if (ask.status !== 'open') throw new HttpError(409, `ask is ${ask.status}`);
+    if (ask.status !== 'open') throw new HttpError('ask_closed', { n, status: ask.status });
     settleAsk(s, ask, 'cancelled');
     system(s, `${ask.title} cancelled`, { ask: ask.id });
     return ask;
@@ -591,7 +686,7 @@ export function createHuddle(opts = {}) {
   }
 
   function countAgentRound(s) {
-    if (s.roundCap !== null && s.agentStreak >= s.roundCap) throw new HttpError(429, 'waiting on @you', { streak: s.agentStreak });
+    if (s.roundCap !== null && s.agentStreak >= s.roundCap) throw new HttpError('round_cap', { cap: s.roundCap });
     s.agentStreak++;
   }
 
@@ -600,11 +695,11 @@ export function createHuddle(opts = {}) {
     if (body.description !== undefined) {
       out.description = body.description === null ? null : cleanText(body.description, MAX_DESCRIPTION, 'description');
     }
-    if (body.spec != null && body.specFile != null) throw new HttpError(400, 'send spec or specFile, not both');
+    if (body.spec != null && body.specFile != null) throw new HttpError('spec_conflict');
     if (body.spec !== undefined) out.spec = body.spec === null ? null : cleanText(body.spec, MAX_SPEC, 'spec');
     if (body.specFile !== undefined) {
       if (body.specFile !== null && !s.files.has(body.specFile)) {
-        throw new HttpError(400, 'unknown file', { valid: [...s.files.keys()] });
+        throw new HttpError('unknown_file', { id: body.specFile }, { valid: [...s.files.keys()] });
       }
       out.specFile = body.specFile;
     }
@@ -637,7 +732,7 @@ export function createHuddle(opts = {}) {
     if (body.assignee !== undefined && body.assignee !== null) {
       assignee = typeof body.assignee === 'string' ? body.assignee.replace(/^@/, '').toLowerCase() : '';
       if (!s.agents.has(assignee)) {
-        throw new HttpError(400, `unknown assignee ${body.assignee}`, { valid: [...s.agents.keys()] });
+        throw new HttpError('unknown_assignee', { assignee: body.assignee }, { valid: [...s.agents.keys()] });
       }
     }
     const fields = taskFields(s, body);
@@ -666,18 +761,18 @@ export function createHuddle(opts = {}) {
 
   function getTask(s, n) {
     const task = s.tasks[Number(n) - 1];
-    if (!task) throw new HttpError(404, `no task #${n}`);
+    if (!task) throw new HttpError('unknown_task', { n });
     return task;
   }
 
   function editTask(s, editor, n, body) {
     const task = getTask(s, n);
     if (editor !== 'you' && task.createdBy !== editor) {
-      throw new HttpError(403, `only the creator or you can edit task #${n}`);
+      throw new HttpError('not_creator', { n, creator: task.createdBy });
     }
-    if (task.status === 'done') throw new HttpError(409, 'task is done');
+    if (task.status === 'done') throw new HttpError('task_done', { n });
     const fields = taskFields(s, body);
-    if (!Object.keys(fields).length) throw new HttpError(400, 'send description, spec or specFile');
+    if (!Object.keys(fields).length) throw new HttpError('empty_edit');
     Object.assign(task, fields);
     const target = task.owner ?? task.assignee;
     const notify = Boolean(target) && target !== editor && s.agents.get(target)?.status !== 'left';
@@ -693,15 +788,15 @@ export function createHuddle(opts = {}) {
     const task = getTask(s, n);
     const h = agent.handle;
     if (action === 'claim') {
-      if (task.status === 'done') throw new HttpError(409, 'task is done');
+      if (task.status === 'done') throw new HttpError('task_done', { n });
       if (task.owner === h) return task;
-      if (task.owner) throw new HttpError(409, 'already claimed', { owner: task.owner });
+      if (task.owner) throw new HttpError('already_claimed', { n, owner: task.owner });
       task.status = 'claimed';
       task.owner = h;
       system(s, `${h} claimed task #${task.id}`);
     } else if (action === 'done') {
-      if (task.status === 'done') throw new HttpError(409, 'task is done');
-      if (task.owner && task.owner !== h) throw new HttpError(409, 'already claimed', { owner: task.owner });
+      if (task.status === 'done') throw new HttpError('task_done', { n });
+      if (task.owner && task.owner !== h) throw new HttpError('already_claimed', { n, owner: task.owner });
       const note = body.note === undefined || body.note === null ? null : cleanText(body.note, MAX_TEXT, 'note');
       task.status = 'done';
       task.owner = h;
@@ -713,7 +808,7 @@ export function createHuddle(opts = {}) {
       });
     } else {
       if (task.status !== 'claimed' || task.owner !== h) {
-        throw new HttpError(409, 'only the owner can release', { owner: task.owner });
+        throw new HttpError('not_owner', { n, owner: task.owner === h ? null : task.owner });
       }
       task.status = 'open';
       task.owner = null;
@@ -729,13 +824,13 @@ export function createHuddle(opts = {}) {
   function attachments(s, value) {
     if (value === undefined || value === null) return [];
     if (!Array.isArray(value) || value.some((id) => typeof id !== 'string')) {
-      throw new HttpError(400, 'files must be an array of file ids');
+      throw new HttpError('invalid_files');
     }
     const ids = [...new Set(value)];
-    if (ids.length > MAX_ATTACHMENTS) throw new HttpError(400, `at most ${MAX_ATTACHMENTS} files per post`);
+    if (ids.length > MAX_ATTACHMENTS) throw new HttpError('too_many_files');
     return ids.map((id) => {
       const f = s.files.get(id);
-      if (!f) throw new HttpError(400, `unknown file ${id}; upload it first with POST files?name=<filename>`);
+      if (!f) throw new HttpError('unknown_attachment', { id });
       return fileMeta(f);
     });
   }
@@ -751,7 +846,7 @@ export function createHuddle(opts = {}) {
     const files = attachments(s, body.files);
     const text = postText(body, files);
     if (body.for !== undefined && body.for !== null && body.for !== 'you') {
-      throw new HttpError(400, 'for must be "you"');
+      throw new HttpError('invalid_for');
     }
     const { mentions, to, toYou } = resolveMentions(s, text, agent.handle);
     const minutes = body.workingMinutes === undefined ? undefined : parseWhole('workingMinutes', body.workingMinutes, WORKING_DECLARATION);
@@ -769,7 +864,7 @@ export function createHuddle(opts = {}) {
     const timersChanged = Object.keys(timers).some((k) => timers[k] !== s.timers[k]);
     const budgetsChanged = Object.keys(headless).some((k) => headless[k] !== s.headless[k]);
     if (!capChanged && ![...Object.keys(HEADLESS_LIMITS), ...Object.keys(PRESENCE_LIMITS)].some((k) => body[k] !== undefined)) {
-      throw new HttpError(400, 'send roundCap, wakesPerHour, runMinutes, idleMinutes, workingWindowMinutes, asleepMinutes or leaveMinutes');
+      throw new HttpError('empty_settings');
     }
     s.roundCap = cap;
     s.headless = headless;
@@ -789,8 +884,8 @@ export function createHuddle(opts = {}) {
 
   function stopAgent(s, handle) {
     const agent = s.agents.get(handle);
-    if (!agent || agent.status === 'left') throw new HttpError(404, 'unknown agent');
-    if (agent.role !== 'headless') throw new HttpError(409, 'only headless agents can be stopped here');
+    if (!agent || agent.status === 'left') throw new HttpError('unknown_agent', { handle });
+    if (agent.role !== 'headless') throw new HttpError('not_headless', { handle });
     if (agent.stopRequested) return { ok: true };
     agent.stopRequested = true;
     system(s, `you asked ${handle} to stop`);
@@ -816,7 +911,7 @@ export function createHuddle(opts = {}) {
 
   function getFile(s, id) {
     const f = s.files.get(id);
-    if (!f) throw new HttpError(404, 'unknown file');
+    if (!f) throw new HttpError('file_not_found', { id });
     return f;
   }
 
@@ -826,8 +921,8 @@ export function createHuddle(opts = {}) {
     const type = cleanFileType(req.headers['content-type']);
     const tooBig = (size) => {
       res.setHeader('connection', 'close');
-      if (size > maxFileBytes) return new HttpError(413, 'file too large', { limit: maxFileBytes });
-      return new HttpError(413, 'room file storage is full', { limit: maxRoomBytes });
+      if (size > maxFileBytes) return new HttpError('file_too_large', { size, limit: maxFileBytes });
+      return new HttpError('room_storage_full', { limit: maxRoomBytes });
     };
     const fits = (size) => size <= maxFileBytes && s.fileBytes + size <= maxRoomBytes;
     const declared = Number(req.headers['content-length']);
@@ -850,7 +945,7 @@ export function createHuddle(opts = {}) {
       });
       req.on('end', () => {
         if (failed) return;
-        if (s.ended) return reject(new HttpError(410, 'room ended'));
+        if (s.ended) return reject(new HttpError('room_ended'));
         if (!fits(size)) return reject(tooBig(size));
         const f = { id: newToken(), name, size, type, from, at: new Date().toISOString(), data: Buffer.concat(chunks) };
         s.files.set(f.id, f);
@@ -989,14 +1084,14 @@ How the room works:
   }
 
   function adminRoute(req, res, method, parts, base) {
-    if (!isAdmin(req)) return sendJson(res, 401, { error: 'unauthorized' });
+    if (!isAdmin(req)) return sendError(res, 'unauthorized');
     if (method === 'GET' && parts.length === 2 && parts[1] === 'rooms') {
       const list = liveRooms().reverse().map((s) => adminView(s, base));
       return sendJson(res, 200, { rooms: list });
     }
     if (method === 'POST' && parts.length === 4 && parts[1] === 'rooms' && parts[3] === 'end') {
       const s = rooms.get(parts[2]);
-      if (!s || s.ended) return sendJson(res, 404, { error: 'unknown room' });
+      if (!s || s.ended) return sendError(res, 'unknown_room');
       endRoom(s);
       return sendJson(res, 200, { id: s.id, name: s.name, ended: true });
     }
@@ -1006,7 +1101,7 @@ How the room works:
       res.once('finish', onStop);
       return sendJson(res, 200, { stopping: true });
     }
-    return sendJson(res, 404, { error: 'not found' });
+    return sendError(res, 'not_found');
   }
 
   // ---- routing ----
@@ -1016,17 +1111,17 @@ How the room works:
     const port = server.address().port;
     const host = req.headers.host;
     if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) {
-      return sendJson(res, 403, { error: 'forbidden host' });
+      return sendError(res, 'forbidden_host', { port });
     }
     const origin = req.headers.origin;
     if (origin !== undefined && origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`) {
-      return sendJson(res, 403, { error: 'forbidden origin' });
+      return sendError(res, 'forbidden_origin', { port });
     }
     const base = `http://${host}`;
     const method = req.method;
     const url = new URL(req.url, base);
     const parts = url.pathname.split('/').filter(Boolean);
-    const notFound = () => sendJson(res, 404, { error: 'not found' });
+    const notFound = () => sendError(res, 'not_found');
 
     if (method === 'GET' && parts.length === 1 && parts[0] === 'health') {
       return sendJson(res, 200, { ok: true, name: 'agent-huddle', version: VERSION });
@@ -1050,7 +1145,7 @@ How the room works:
     if (parts[0] !== 's' || parts.length < 2) return notFound();
 
     const s = rooms.get(parts[1]);
-    if (!s) return sendJson(res, 404, { error: 'unknown room' });
+    if (!s) return sendError(res, 'unknown_room');
     const rest = parts.slice(2);
 
     if (rest.length === 0) {
@@ -1060,7 +1155,7 @@ How the room works:
     }
     if (rest[0] === 'join' && rest.length === 1) {
       if (method !== 'POST') return notFound();
-      if (s.ended) throw new HttpError(410, 'room ended');
+      if (s.ended) throw new HttpError('room_ended');
       const body = await readBody(req);
       return sendJson(res, 200, joinAgent(s, body, base));
     }
@@ -1075,8 +1170,8 @@ How the room works:
 
   function joinAgent(s, body, base) {
     const harness = sanitizeHarness(body.harness);
-    if (!harness) throw new HttpError(400, 'harness is required');
-    if (RESERVED_ROLES.has(harness)) throw new HttpError(400, 'harness must not be all, you or system');
+    if (!harness) throw new HttpError('harness_required');
+    if (RESERVED_ROLES.has(harness)) throw new HttpError('reserved_harness');
     const role = cleanRole(body.role, false);
     const n = (s.counters.get(harness) ?? 0) + 1;
     s.counters.set(harness, n);
@@ -1092,7 +1187,7 @@ How the room works:
   function spawnChild(s, parent, body, base) {
     const role = cleanRole(body.role, true);
     if (parent.handle.split('.').length + 1 > MAX_DEPTH) {
-      throw new HttpError(400, `nesting is limited to ${MAX_DEPTH} levels`);
+      throw new HttpError('nesting_limit');
     }
     let handle = `${parent.handle}.${role}`;
     for (let i = 2; s.agents.has(handle); i++) handle = `${parent.handle}.${role}-${i}`;
@@ -1102,9 +1197,9 @@ How the room works:
   }
 
   async function agentRoute(s, req, res, method, url, base, token, key) {
-    if (s.ended) throw new HttpError(410, 'room ended');
+    if (s.ended) throw new HttpError('room_ended');
     const agent = s.byToken.get(token);
-    if (!agent) return sendJson(res, 401, { error: 'unknown token' });
+    if (!agent) return sendError(res, 'unknown_token', { join: `${base}/s/${s.id}` });
     const upload = method === 'POST' && key === 'files';
     const body = method === 'POST' && !upload ? await readBody(req, /^tasks(\/\d+)?$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
     agent.lastSeen = Date.now();
@@ -1195,12 +1290,12 @@ How the room works:
         }
       }
     }
-    return sendJson(res, 404, { error: 'not found' });
+    return sendError(res, 'not_found');
   }
 
   async function humanRoute(s, req, res, method, url, base, token, key) {
-    if (token !== s.humanToken) return sendJson(res, 401, { error: 'unknown token' });
-    if (s.ended && !(method === 'GET' && key === '')) throw new HttpError(410, 'room ended');
+    if (token !== s.humanToken) return sendError(res, 'wrong_page_link');
+    if (s.ended && !(method === 'GET' && key === '')) throw new HttpError('room_ended');
     const upload = method === 'POST' && key === 'api/files';
     const body = method === 'POST' && !upload ? await readBody(req, /^api\/tasks(\/\d+)?$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
     s.humanSeen = Date.now();
@@ -1252,10 +1347,7 @@ How the room works:
       const f = await receiveFile(s, req, res, url, 'you');
       return acted(201, { ...fileMeta(f), url: `${base}/s/${s.id}/h/${token}/api/files/${f.id}` });
     }
-    return sendJson(res, 404, {
-      error: 'not found',
-      hint: `This is the human page link. Agents join at ${base}/s/${s.id} (GET it for the protocol, POST ${base}/s/${s.id}/join to join).`,
-    });
+    return sendError(res, 'not_found', { join: `${base}/s/${s.id}` });
   }
 
   // ---- lifecycle ----
@@ -1834,7 +1926,7 @@ async function runWorker(args) {
     const res = await fetch(`${me.link}/post`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ text: body }), signal }).catch(() => null);
     if (res?.status === 429) console.log('round cap reached; waiting for @you');
     else if (res?.status === 400) {
-      const why = String((await res.json().catch(() => ({}))).error ?? 'bad request').replace(/@/g, '');
+      const why = String((await res.json().catch(() => ({}))).message ?? 'bad request').replace(/@/g, '');
       console.log(`could not post: ${why}`);
       if (fallback) await post(`@you ${me.handle} reply could not be posted: ${why}`, false);
     } else if (!res?.ok) console.log(`could not post (${res?.status ?? 'unreachable'})`);

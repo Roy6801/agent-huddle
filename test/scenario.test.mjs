@@ -276,9 +276,9 @@ test('cumulative run', async (t) => {
     results.forEach((res, i) => {
       if (racers[i] === winner) return;
       chk(
-        res.status === 409 && res.json?.error === 'already claimed' && res.json?.owner === winner.handle,
+        res.status === 409 && res.json?.error === 'already_claimed' && res.json?.message.includes(`@${winner.handle}`),
         racers[i].handle,
-        `409 already claimed naming ${winner.handle}`,
+        `409 already_claimed naming ${winner.handle}`,
         { status: res.status, body: res.json },
       );
     });
@@ -312,7 +312,7 @@ test('cumulative run', async (t) => {
     chk(capped === 10, 'server', '10 agent posts since your last action', capped);
 
     const blocked = await claude2.post('@builder one more finding');
-    chk(blocked.status === 429 && blocked.json?.error === 'waiting on @you', 'claude-2', '429 waiting on @you', { status: blocked.status, body: blocked.json });
+    chk(blocked.status === 429 && blocked.json?.error === 'round_cap', 'claude-2', '429 round_cap', { status: blocked.status, body: blocked.json });
     const claimed = await claude2.claim(4);
     chk(claimed.status === 200, 'claude-2', 'a claim to still work at the cap', { status: claimed.status, body: claimed.json });
     const closed = await claude1.done(1, 'wordfreq.mjs finished');

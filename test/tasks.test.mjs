@@ -59,17 +59,18 @@ test('task create: invalid description, spec or file is refused and nothing chan
   const messagesBefore = (await r.state()).messages.length;
 
   const cases = [
-    [{ description: 'd'.repeat(2001) }, 'description must be 1-2000 characters'],
-    [{ spec: 's'.repeat(20001) }, 'spec must be 1-20000 characters'],
-    [{ specFile: 'nope' }, 'unknown file'],
-    [{ spec: 'text', specFile: file.id }, 'send spec or specFile, not both'],
+    [{ description: 'd'.repeat(2001) }, 'invalid_text', /description .* 2000 characters/],
+    [{ spec: 's'.repeat(20001) }, 'invalid_text', /spec .* 20000 characters/],
+    [{ specFile: 'nope' }, 'unknown_file', /nope/],
+    [{ spec: 'text', specFile: file.id }, 'spec_conflict', /spec and specFile/],
   ];
-  for (const [fields, error] of cases) {
+  for (const [fields, error, message] of cases) {
     const wait = fetch(`${claude.link}/wait?wait=1`);
     const res = await call('POST', `${codex.link}/tasks`, { title: 'bad', assignee: 'claude-1', ...fields });
     assert.equal(res.status, 400);
     assert.equal(res.json.error, error);
-    if (error === 'unknown file') assert.deepEqual(res.json.valid, [file.id]);
+    assert.match(res.json.message, message);
+    if (error === 'unknown_file') assert.deepEqual(res.json.valid, [file.id]);
     assert.equal((await wait).status, 204);
     assert.equal((await taskList(codex)).length, 0);
     assert.equal((await r.state()).messages.length, messagesBefore);
@@ -266,7 +267,8 @@ test('edit: only the creator or you may edit, a refused edit changes nothing', a
   for (const who of [dsh, claude]) {
     const res = await call('POST', `${who.link}/tasks/1`, { description: 'x' });
     assert.equal(res.status, 403);
-    assert.equal(res.json.error, 'only the creator or you can edit task #1');
+    assert.equal(res.json.error, 'not_creator');
+    assert.match(res.json.message, /^Task #1 was created by @codex-1/);
   }
   assert.equal((await call('GET', `${codex.link}/tasks/1`)).json.description, 'keep');
   assert.equal(await count(), before);
@@ -282,7 +284,7 @@ test('edit: done tasks and empty bodies are refused, null removes the spec, a fi
 
   const empty = await call('POST', `${codex.link}/tasks/1`, {});
   assert.equal(empty.status, 400);
-  assert.equal(empty.json.error, 'send description, spec or specFile');
+  assert.equal(empty.json.error, 'empty_edit');
 
   const viaFile = await call('POST', `${codex.link}/tasks/1`, { specFile: file.id });
   assert.equal(viaFile.json.spec, null);
@@ -296,7 +298,7 @@ test('edit: done tasks and empty bodies are refused, null removes the spec, a fi
   await call('POST', `${claude.link}/tasks/2/done`);
   const done = await call('POST', `${codex.link}/tasks/2`, { description: 'late' });
   assert.equal(done.status, 409);
-  assert.equal(done.json.error, 'task is done');
+  assert.equal(done.json.error, 'task_done');
 });
 
 test('the personal protocol lists the create, read and edit task calls', async () => {
