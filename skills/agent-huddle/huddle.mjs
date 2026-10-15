@@ -270,13 +270,15 @@ export function createHuddle(opts = {}) {
     s.tombstone.unref();
   }
 
-  function addAgent(s, handle, harness, role, parent) {
+  function addAgent(s, handle, harness, role, parent, base) {
+    const token = newToken();
     const agent = {
       handle,
       harness,
       role,
       parent,
-      token: newToken(),
+      token,
+      link: `${base}/s/${s.id}/as/${token}`,
       status: 'active',
       cursor: 0,
       lastSeen: Date.now(),
@@ -367,7 +369,7 @@ export function createHuddle(opts = {}) {
     }
     const latest = new Map();
     messages.forEach((m, i) => m.task && m.to.includes(agent.handle) && latest.set(m.task, i));
-    for (const [n, i] of latest) messages[i] = { ...messages[i], taskDetail: taskDetail(s, agent, n) };
+    for (const [n, i] of latest) messages[i] = { ...messages[i], taskDetail: agentTaskView(s, agent, getTask(s, n)) };
     agent.cursor = cursor;
     return { messages, cursor };
   }
@@ -561,28 +563,27 @@ export function createHuddle(opts = {}) {
       }
       out.specFile = body.specFile;
     }
+    if (out.spec != null) out.specFile = null;
+    else if (out.specFile != null) out.spec = null;
     return out;
   }
 
-  function taskView(s, task, full) {
+  function taskView(s, task) {
     const f = task.specFile ? s.files.get(task.specFile) : null;
-    const view = { ...task, specFile: f ? { id: f.id, name: f.name, size: f.size } : null };
-    if (full) return view;
-    const { spec, ...rest } = view;
+    return { ...task, specFile: f ? { id: f.id, name: f.name, size: f.size } : null };
+  }
+
+  function listView(s, task) {
+    const { spec, ...rest } = taskView(s, task);
     return { ...rest, specSize: spec ? spec.length : 0 };
   }
 
   function agentTaskView(s, agent, task) {
-    const view = taskView(s, task, true);
+    const view = taskView(s, task);
     if (view.specFile) {
       view.specFile.download = `curl -s ${agent.link}/files/${view.specFile.id}`;
     }
     return view;
-  }
-
-  function taskDetail(s, agent, n) {
-    const { id, title, description, spec, specFile } = agentTaskView(s, agent, getTask(s, n));
-    return { id, title, description, spec, specFile };
   }
 
   function createTask(s, creator, body) {
@@ -615,7 +616,7 @@ export function createHuddle(opts = {}) {
       to: wake ? [assignee] : [],
       task: task.id,
     });
-    return taskView(s, task, true);
+    return task;
   }
 
   function getTask(s, n) {
@@ -633,8 +634,6 @@ export function createHuddle(opts = {}) {
     const fields = taskFields(s, body);
     if (!Object.keys(fields).length) throw new HttpError(400, 'send description, spec or specFile');
     Object.assign(task, fields);
-    if (fields.spec != null) task.specFile = null;
-    else if (fields.specFile != null) task.spec = null;
     const target = task.owner ?? task.assignee;
     const notify = Boolean(target) && target !== editor && s.agents.get(target)?.status !== 'left';
     system(s, `${editor} edited task #${task.id} "${task.title}"`, {
@@ -642,7 +641,7 @@ export function createHuddle(opts = {}) {
       to: notify ? [target] : [],
       task: task.id,
     });
-    return taskView(s, task, true);
+    return task;
   }
 
   function taskAction(s, agent, n, action, body) {
@@ -650,7 +649,7 @@ export function createHuddle(opts = {}) {
     const h = agent.handle;
     if (action === 'claim') {
       if (task.status === 'done') throw new HttpError(409, 'task is done');
-      if (task.owner === h) return agentTaskView(s, agent, task);
+      if (task.owner === h) return task;
       if (task.owner) throw new HttpError(409, 'already claimed', { owner: task.owner });
       task.status = 'claimed';
       task.owner = h;
@@ -675,7 +674,7 @@ export function createHuddle(opts = {}) {
       task.owner = null;
       system(s, `${h} released task #${task.id}`);
     }
-    return agentTaskView(s, agent, task);
+    return task;
   }
 
   // ---- posting ----
@@ -853,8 +852,8 @@ How the room works:
 `;
   }
 
-  function agentProtocol(s, agent, base) {
-    const link = `${base}/s/${s.id}/as/${agent.token}`;
+  function agentProtocol(s, agent) {
+    const link = agent.link;
     const role = agent.role ? ` (role ${agent.role})` : '';
     const post = (path, data) =>
       `curl -s -X POST ${link}/${path} -H 'content-type: application/json' -d '${data}'`;
@@ -1022,13 +1021,12 @@ How the room works:
     const role = cleanRole(body.role, false);
     const n = (s.counters.get(harness) ?? 0) + 1;
     s.counters.set(harness, n);
-    const agent = addAgent(s, `${harness}-${n}`, harness, role, null);
+    const agent = addAgent(s, `${harness}-${n}`, harness, role, null, base);
     system(s, `${agent.handle} joined${role ? ` as ${role}` : ''}`);
-    return agentView(s, agent, base);
+    return agentView(s, agent);
   }
 
-  function agentView(s, agent, base) {
-    agent.link = `${base}/s/${s.id}/as/${agent.token}`;
+  function agentView(s, agent) {
     return { handle: agent.handle, role: agent.role, token: agent.token, link: agent.link };
   }
 
@@ -1039,9 +1037,9 @@ How the room works:
     }
     let handle = `${parent.handle}.${role}`;
     for (let i = 2; s.agents.has(handle); i++) handle = `${parent.handle}.${role}-${i}`;
-    const child = addAgent(s, handle, parent.harness, role, parent.handle);
+    const child = addAgent(s, handle, parent.harness, role, parent.handle, base);
     system(s, `${parent.handle} spawned ${handle}`);
-    return { ...agentView(s, child, base), parent: parent.handle };
+    return { ...agentView(s, child), parent: parent.handle };
   }
 
   async function agentRoute(s, req, res, method, url, base, token, key) {
@@ -1063,12 +1061,12 @@ How the room works:
     const taskMatch = /^tasks\/(\d+)\/(claim|done|release)$/.exec(key);
     const fileMatch = /^files\/([\w-]+)$/.exec(key);
     const askMatch = /^asks\/(\d+)$/.exec(key);
-    const taskGetMatch = /^tasks\/(\d+)$/.exec(key);
+    const taskIdMatch = /^tasks\/(\d+)$/.exec(key);
     const askCancelMatch = /^asks\/(\d+)\/cancel$/.exec(key);
 
     if (method === 'GET') {
       if (fileMatch) return sendFile(res, getFile(s, fileMatch[1]));
-      if (taskGetMatch) return ok(agentTaskView(s, agent, getTask(s, taskGetMatch[1])));
+      if (taskIdMatch) return ok(agentTaskView(s, agent, getTask(s, taskIdMatch[1])));
       if (askMatch) {
         const ask = getAsk(s, agent, askMatch[1]);
         if (ask.status !== 'open') return ok(ask);
@@ -1076,7 +1074,7 @@ How the room works:
       }
       switch (key) {
         case '':
-          return sendText(res, 200, agentProtocol(s, agent, base));
+          return sendText(res, 200, agentProtocol(s, agent));
         case 'me':
           return ok({
             handle: agent.handle,
@@ -1103,20 +1101,19 @@ How the room works:
         case 'who':
           return ok(whoView(s));
         case 'tasks':
-          return ok({ tasks: s.tasks.map((t) => taskView(s, t, false)) });
+          return ok({ tasks: s.tasks.map((t) => listView(s, t)) });
         case 'files':
           return ok(fileList(s));
       }
     } else if (method === 'POST') {
-      if (taskMatch) return ok(taskAction(s, agent, taskMatch[1], taskMatch[2], body));
-      if (taskGetMatch) {
-        editTask(s, agent.handle, taskGetMatch[1], body);
-        return ok(agentTaskView(s, agent, getTask(s, taskGetMatch[1])));
+      if (taskMatch) return ok(agentTaskView(s, agent, taskAction(s, agent, taskMatch[1], taskMatch[2], body)));
+      if (taskIdMatch) {
+        return ok(agentTaskView(s, agent, editTask(s, agent.handle, taskIdMatch[1], body)));
       }
       if (askCancelMatch) return ok(cancelAsk(s, agent, askCancelMatch[1]));
       if (upload) {
         const f = await receiveFile(s, req, res, url, agent.handle);
-        return sendJson(res, 201, { ...fileMeta(f), url: `${base}/s/${s.id}/as/${token}/files/${f.id}` });
+        return sendJson(res, 201, { ...fileMeta(f), url: `${agent.link}/files/${f.id}` });
       }
       switch (key) {
         case 'post':
@@ -1124,7 +1121,7 @@ How the room works:
         case 'spawn':
           return ok(spawnChild(s, agent, body, base));
         case 'tasks':
-          return ok(createTask(s, agent.handle, body));
+          return ok(agentTaskView(s, agent, createTask(s, agent.handle, body)));
         case 'asks':
           return ok(createAsk(s, agent, body));
         case 'leave': {
@@ -1161,7 +1158,7 @@ How the room works:
         room: { id: s.id, name: s.name, join: `${base}/s/${s.id}`, invite: inviteText(s.name, `${base}/s/${s.id}`) },
         messages,
         ...whoView(s),
-        tasks: s.tasks.map((t) => taskView(s, t, true)),
+        tasks: s.tasks.map((t) => taskView(s, t)),
         asks: s.asks,
         roundCap: s.roundCap,
         headless: s.headless,
@@ -1179,9 +1176,9 @@ How the room works:
     if (method === 'POST' && key === 'api/settings') return acted(200, setSettings(s, body));
     const stopMatch = method === 'POST' && /^api\/agents\/([\w-]+)\/stop$/.exec(key);
     if (stopMatch) return acted(200, stopAgent(s, stopMatch[1]));
-    if (method === 'POST' && key === 'api/tasks') return acted(200, createTask(s, 'you', body));
+    if (method === 'POST' && key === 'api/tasks') return acted(200, taskView(s, createTask(s, 'you', body)));
     const taskEditMatch = method === 'POST' && /^api\/tasks\/(\d+)$/.exec(key);
-    if (taskEditMatch) return acted(200, editTask(s, 'you', taskEditMatch[1], body));
+    if (taskEditMatch) return acted(200, taskView(s, editTask(s, 'you', taskEditMatch[1], body)));
     if (method === 'POST' && askMatch) return acted(200, answerAsk(s, askMatch[1], body));
     if (method === 'GET' && key === 'api/files') return sendJson(res, 200, fileList(s));
     if (method === 'GET' && fileMatch) return sendFile(res, getFile(s, fileMatch[1]));
@@ -1939,7 +1936,6 @@ async function runWorker(args) {
   process.exit(ending.code);
 }
 
-// The line to paste into each agent that has the skill. Mirrored in room/src/lib/join-lines.ts.
 function taskLines(detail) {
   if (!detail) return [];
   return [
@@ -1949,6 +1945,7 @@ function taskLines(detail) {
   ].filter(Boolean);
 }
 
+// The line to paste into each agent that has the skill. Mirrored in room/src/lib/join-lines.ts.
 export function joinLines(join) {
   return [
     ['Claude Code', `/huddle-join ${join}`],
