@@ -157,6 +157,7 @@ export function createHuddle(opts = {}) {
     quietMs = 30000,
     activeMs = ACTIVE_WINDOW_MS,
     asleepMs = ASLEEP_WINDOW_MS,
+    minuteMs = 60000,
     serverIdleMs = 1800000,
     askMs = 600000,
     roundCap = ROUND_CAP_DEFAULT,
@@ -415,6 +416,7 @@ export function createHuddle(opts = {}) {
         presence: presence(s, a),
         stopRequested: a.stopRequested === true,
         lastSeen: new Date(a.lastSeen).toISOString(),
+        ...(a.workingUntil > Date.now() && { workingUntil: new Date(a.workingUntil).toISOString() }),
       })),
       you: { online: humanOnline(s) },
     };
@@ -722,7 +724,12 @@ export function createHuddle(opts = {}) {
       throw new HttpError(400, 'for must be "you"');
     }
     const { mentions, to, toYou } = resolveMentions(s, text, agent.handle);
+    const minutes = body.workingMinutes;
+    if (minutes !== undefined && (!Number.isInteger(minutes) || minutes < 1 || minutes > 120)) {
+      throw new HttpError(400, 'workingMinutes must be a whole number from 1 to 120');
+    }
     countAgentRound(s);
+    if (minutes !== undefined) agent.workingUntil = Date.now() + minutes * minuteMs;
     const m = addMessage(s, agent.handle, text, { for: body.for ?? null, mentions, to, toYou, files });
     return { id: m.id };
   }
@@ -1223,7 +1230,7 @@ How the room works:
       }
       for (const agent of s.agents.values()) {
         if (agent.waiters.size) waiting = true;
-        else if (agent.status !== 'left' && now - agent.lastSeen > s.timers.leaveMs) leaveAgent(s, agent, 'idle');
+        else if (agent.status !== 'left' && now - Math.max(agent.lastSeen, agent.workingUntil ?? 0) > s.timers.leaveMs) leaveAgent(s, agent, 'idle');
       }
     }
     if (!waiting && !idleFired && now - lastRequest > serverIdleMs) {
