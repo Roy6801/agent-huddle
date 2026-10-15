@@ -3,7 +3,7 @@ export const base = location.pathname.replace(/\/$/, "");
 
 export const fileUrl = (id: string) => `${base}/api/files/${encodeURIComponent(id)}`;
 
-export type ApiError = { error?: string; valid?: string[]; limit?: number };
+export type ApiError = { error?: string; message?: string; instruction?: string; valid?: string[] };
 
 export type Posted<T> = { r: Response; data: (T & ApiError) | null };
 
@@ -22,7 +22,7 @@ export async function postJson<T = ApiError>(path: string, body: unknown): Promi
   return { r, data };
 }
 
-export type UploadReply = { id?: string; size?: number; error?: string; limit?: number };
+export type UploadReply = { id?: string; size?: number } & ApiError;
 
 export type UploadOutcome = { kind: "load"; status: number; data: UploadReply | null } | { kind: "error" } | { kind: "abort" };
 
@@ -54,11 +54,22 @@ export function uploadFile(file: File, name: string, onProgress: (pct: number) =
 }
 
 export function errMain(r: Response, data: ApiError | null) {
-  if (r.status === 401 || r.status === 404) return "This link is wrong or the room is gone.";
-  return data?.error || `Request failed (HTTP ${r.status})`;
+  if (r.status === 401 || data?.error === "unknown_room" || data?.error === "not_found") return "This link is wrong or the room is gone.";
+  return data?.message || `Request failed (HTTP ${r.status})`;
 }
 
-export const validOf = (data: ApiError | null) => (data && Array.isArray(data.valid) ? data.valid : null);
+const CHIPS: Record<string, { label: string; prefix: string }> = {
+  unknown_mention: { label: "Valid mentions", prefix: "" },
+  unknown_assignee: { label: "Valid assignees", prefix: "@" },
+  unknown_file: { label: "Valid files", prefix: "" },
+};
+
+/** The valid values an error lists, labelled and shown the way you would type them. */
+export function chipsOf(data: ApiError | null) {
+  const chips = data?.error ? CHIPS[data.error] : undefined;
+  if (!chips || !Array.isArray(data?.valid)) return {};
+  return { valid: data.valid.map((v) => chips.prefix + v), validLabel: chips.label };
+}
 
 export async function copyText(str: string) {
   try {

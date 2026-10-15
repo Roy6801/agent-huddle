@@ -35,7 +35,7 @@ export function ErrorBox({
             <span>{error.validLabel}:</span>
             {error.valid.map((v) => (
               <span key={v} className="rounded bg-muted px-1 font-mono text-xs text-foreground">
-                {v.startsWith("@") ? v : `@${v}`}
+                {v}
               </span>
             ))}
           </div>

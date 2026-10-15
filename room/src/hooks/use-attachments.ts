@@ -1,7 +1,7 @@
 import { useCallback, useLayoutEffect, useReducer, useRef } from "react";
 
 import type { Upload, UploadReply } from "@/lib/api";
-import { fmtSize, INLINE_TYPES } from "@/lib/format";
+import { INLINE_TYPES } from "@/lib/format";
 
 export const MAX_ATTACH = 10;
 
@@ -27,14 +27,8 @@ type Callbacks = {
 };
 
 function uploadError(att: Att, status: number, data: UploadReply | null) {
-  if (status === 413) {
-    const limit = data?.limit ? fmtSize(data.limit) : "";
-    return data && /full/.test(data.error || "")
-      ? `This room has no space left for ${att.name}${limit ? ` (${limit} in total).` : "."}`
-      : `${att.name} is larger than the ${limit || "upload"} limit.`;
-  }
   if (status === 401 || status === 404) return "This link is wrong or the room is gone.";
-  return `Could not upload ${att.name}: ${data?.error || `HTTP ${status}`}.`;
+  return `Could not upload ${att.name}: ${data?.message || `HTTP ${status}`}`;
 }
 
 // Clipboard screenshots arrive as image.png; give them a name that says where they came from.

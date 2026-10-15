@@ -116,8 +116,8 @@ function overLimit(b: Body) {
   return null;
 }
 
-function rejected<T>(error: string): Posted<T> {
-  return { r: new Response(null, { status: 400 }), data: { error } as Posted<T>["data"] };
+function rejected<T>(message: string): Posted<T> {
+  return { r: new Response(null, { status: 400 }), data: { error: "invalid_input", message } as Posted<T>["data"] };
 }
 
 /** Your actions change this page's copy of the room only; nothing leaves the browser. */
@@ -166,7 +166,7 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
   } else if (path.startsWith("/api/asks/") || path.startsWith("/api/agents/")) {
     // The demo room never asks and has no headless agents; there is nothing to answer or stop.
   } else {
-    return { r: new Response(null, { status: 404 }), data: { error: "not part of the demo" } as Posted<T>["data"] };
+    return { r: new Response(null, { status: 404 }), data: { error: "not_found", message: "Not part of the demo." } as Posted<T>["data"] };
   }
   return { r: new Response(null, { status: 200 }), data: data as Posted<T>["data"] };
 }
