@@ -129,3 +129,52 @@ test('AC-53: the quiet note depends on the harness', async () => {
     assert.match(note.text, /is working .*it will read this when it next waits/, harness);
   }
 });
+
+async function asleepLeadRoom() {
+  const r = await room({ activeMs: 20, asleepMs: 60 });
+  const codex = await r.join({ harness: 'codex', lead: r.created.lead });
+  const dsh = await r.join({ harness: 'dsh' });
+  const claude = await r.join({ harness: 'claude' });
+  const task = async (agent, title) =>
+    (await fetch(`${agent.link}/tasks`, { method: 'POST', body: JSON.stringify({ title }) }).then((res) => res.json())).id;
+  const done = (agent, n, note) => fetch(`${agent.link}/tasks/${n}/done`, { method: 'POST', body: JSON.stringify({ note }) });
+  const finished = async (n) => (await r.state()).messages.find((m) => m.text.includes(`finished task #${n} `));
+  return { ...r, codex, dsh, claude, task, done, finished };
+}
+
+test('AC-54: done notes for an asleep creator are marked for you and still mention it', async () => {
+  const r = await asleepLeadRoom();
+  const cli = await r.task(r.codex, 'Implement wordfreq CLI');
+  const readme = await r.task(r.dsh, 'Write README');
+  await sleep(90);
+  await r.done(r.claude, cli, 'CLI done, 30 tests pass');
+  await r.done(r.claude, readme, 'README written');
+  for (const n of [cli, readme]) {
+    const line = await r.finished(n);
+    assert.equal(line.toYou, true);
+    assert.equal(line.mentions.length, 1);
+  }
+  const state = await r.state();
+  assert.ok(!state.messages.some((m) => m.from === 'system' && /^(codex|dsh)-1 (cannot be woken|is asleep)|^Not listening/.test(m.text)), 'no quiet note on top');
+});
+
+test('AC-54: a listening lead is woken by the done note, which is not for you', async () => {
+  const r = await asleepLeadRoom();
+  const n = await r.task(r.codex, 'Implement wordfreq CLI');
+  await sleep(30);
+  const waiting = fetch(`${r.codex.link}/wait?wait=5`).then((res) => res.json());
+  await sleep(20);
+  await r.done(r.claude, n, 'CLI done');
+  const woken = await waiting;
+  assert.ok(woken.messages.some((m) => m.text.includes(`finished task #${n} `)));
+  assert.equal((await r.finished(n)).toYou, false);
+});
+
+test('AC-55: a report to an asleep lead is also marked for you', async () => {
+  const r = await asleepLeadRoom();
+  await sleep(90);
+  assert.equal(await r.post(r.dsh, '@codex-1 README done, examples and exit codes verified'), 200);
+  assert.equal(await r.post(r.dsh, '@claude-1 thanks'), 200);
+  const messages = (await r.state()).messages.filter((m) => m.from === 'dsh-1');
+  assert.deepEqual(messages.map((m) => m.toYou), [true, false]);
+});

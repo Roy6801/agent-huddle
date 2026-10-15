@@ -443,7 +443,7 @@ export function createHuddle(opts = {}) {
     for (const agent of s.agents.values()) {
       if (agent.waiters.size && m.to.includes(agent.handle)) flushWaiters(s, agent);
     }
-    if (m.to.length) noticeQuiet(s, m);
+    if (m.to.length && !(from === 'system' && m.toYou)) noticeQuiet(s, m);
     return m;
   }
 
@@ -809,10 +809,13 @@ export function createHuddle(opts = {}) {
       task.status = 'done';
       task.owner = h;
       task.note = note;
-      const notify = task.createdBy !== h && s.agents.get(task.createdBy)?.status === 'active';
+      const creator = s.agents.get(task.createdBy);
+      const state = creator ? presence(s, creator) : null;
+      const notify = task.createdBy !== h && creator !== undefined && state !== 'left';
       system(s, `${h} finished task #${task.id} "${task.title}"${note ? `: ${note}` : ''}`, {
         mentions: notify ? [task.createdBy] : [],
         to: notify ? [task.createdBy] : [],
+        toYou: task.createdBy === 'you' || state === 'asleep' || state === 'left',
       });
     } else {
       if (task.status === 'done') throw new HttpError('task_done', { n });
@@ -858,10 +861,11 @@ export function createHuddle(opts = {}) {
       throw new HttpError('invalid_for');
     }
     const { mentions, to, toYou } = resolveMentions(s, text, agent.handle);
+    const lead = s.lead !== agent.handle && to.includes(s.lead) ? presence(s, s.agents.get(s.lead)) : null;
     const minutes = body.workingMinutes === undefined ? undefined : parseWhole('workingMinutes', body.workingMinutes, WORKING_DECLARATION);
     countAgentRound(s);
     if (minutes !== undefined) agent.workingUntil = Date.now() + minutes * minuteMs;
-    const m = addMessage(s, agent.handle, text, { for: body.for ?? null, mentions, to, toYou, files });
+    const m = addMessage(s, agent.handle, text, { for: body.for ?? null, mentions, to, toYou: toYou || lead === 'asleep' || lead === 'left', files });
     if (s.agentStreak === s.roundCap) {
       system(s, `The round cap of ${s.roundCap} agent posts is reached: agents are waiting on @you. Post, or change the cap in settings, to let them continue.`, { toYou: true });
     }
