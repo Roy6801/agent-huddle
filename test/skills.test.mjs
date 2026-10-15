@@ -155,3 +155,45 @@ test('AC-27.2: room rules say one wait at a time and list exit 6', () => {
     assert.match(rules, /6 \(`wait_replaced`: a newer wait from you took over; stop this one\)/, skill);
   }
 });
+
+test('AC-27.1: agents report by mention on claim, done and blocked, without the old over-quiet rules', () => {
+  const src = fs.readFileSync(new URL('../skills/agent-huddle/huddle.mjs', import.meta.url), 'utf8');
+  for (const skill of ['huddle-start', 'huddle-join']) {
+    const rules = roomRules(skill);
+    assert.match(rules, /Report by mention, in 1-2 concrete lines, so nobody is left only monitoring/, skill);
+    assert.match(rules, /- Claim: tell the lead \(or the task's creator\) what you are starting: `@codex-1 on #2/, skill);
+    assert.match(rules, /- Done: tell whoever is next, the owners or assignees of tasks that waited on yours .*plus the lead: what changed and where: `@claude-2 @codex-1 #2 done/, skill);
+    assert.match(rules, /- Blocked or stuck: tell whoever can unblock you, else @you: `@claude-1 #2 blocked/, skill);
+    assert.match(rules, /Hand off to the next agent yourself; the `system` ready and finish lines are a log, not a handoff/, skill);
+    assert.match(rules, /No chatter: no thanks, no acks, no restating/, skill);
+    assert.match(rules, /429 `round_cap`: stop posting until the human posts/, skill);
+    assert.doesNotMatch(rules, /Post only what moves the work|Reply only when addressed|One confirmation is enough/, skill);
+  }
+  assert.match(src, /Agents reply when they are addressed, and report by mention in 1-2 concrete lines:\n {2}on claim, to the lead or task creator/);
+  assert.match(src, /post a short status by mention on claim, done and blocked; handoffs go by\n {2}mention to the next agent/);
+  assert.match(src, /'Report by mention in 1-2 concrete lines, with no thanks, acks or restating: when you claim, tell the lead what you start; when done, tell the owners of tasks that waited on yours/);
+  assert.doesNotMatch(src, /- Agents reply when they are addressed\.\n/);
+});
+
+test('AC-27.3: only @you approves, and nobody claims an approval @you did not post', () => {
+  for (const skill of ['huddle-start', 'huddle-join']) {
+    const rules = roomRules(skill);
+    assert.match(rules, /A relayed post \(`for: "you"`\) is NOT approval/, skill);
+    assert.match(rules, /Never tell the room that @you approved or authorized something @you did not post in the room/, skill);
+    assert.match(rules, /approves only your own actions/, skill);
+  }
+  const leading = read('huddle-start').split('## Leading')[1].split('<!-- room-rules:start')[0];
+  assert.match(leading, /Only @you approves\. Never tell the room that @you approved or authorized something unless @you posted it in the room/);
+  assert.match(leading, /hand off by mention yourself; a freeze, where everyone only monitors, must not happen/);
+  const src = fs.readFileSync(new URL('../skills/agent-huddle/huddle.mjs', import.meta.url), 'utf8');
+  assert.match(src, /Never tell the room @you approved something @you did not post in the room/);
+  assert.match(src, /only @you\\'s own posts approve: never say @you approved something @you did not post/);
+});
+
+test('AC-27.4: a requested artifact is uploaded and named in the done note', () => {
+  for (const skill of ['huddle-start', 'huddle-join']) {
+    assert.match(roomRules(skill), /When the task asks for an artifact or file \(test output, a report, a screenshot\), upload it \(Share files, below\) and name it in the done note/, skill);
+  }
+  const src = fs.readFileSync(new URL('../skills/agent-huddle/huddle.mjs', import.meta.url), 'utf8');
+  assert.equal(src.match(/upload it and name it in the done note/g)?.length, 2);
+});
