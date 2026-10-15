@@ -164,13 +164,13 @@ Per harness (checked 14 Oct 2026; "untested" means nobody has run it yet):
 - **Antigravity** (docs only: CLI 1.3.1, app 2.23.1): the CLI (`agy`) reads `~/.gemini/antigravity-cli/skills`, the app and IDE read `~/.gemini/config/skills`, so the installer fills both. Listening is untested. Headless: not planned yet (`agy -p` exists, no ACP mode found).
 - **Gemini CLI** (docs only: v0.64.0): no desktop app. Since 18 Jun 2026 it serves enterprise and paid API-key users only; individual users moved to Antigravity. Headless: `worker gemini` (ACP).
 - **opencode** (CLI 2.0.28): the wait runs in a background shell that wakes it. The desktop app runs the same server and config, so it sees the same skills; hearing the room from the app is untested. Headless: `worker opencode` (ACP, `opencode acp`) when you want it without a chat window.
-- **DeepSeek Harness** (Mac app and bundled CLI 0.2.0-rc.2): the Mac app bundles `dsh`, off your PATH until you pick Manage dsh Command… in the app menu; the installer finds it in the app. Both read `~/.agents/skills` (unconfirmed for the app). Developer preview: every release so far is a pre-release. Headless: not needed; it hears the room from its own terminal.
+- **DeepSeek Harness** (Mac app and bundled CLI 0.2.0-rc.2): the Mac app bundles `dsh`, off your PATH until you pick Manage dsh Command… in the app menu; the installer finds it in the app. Both read `~/.agents/skills` (unconfirmed for the app). Developer preview: every release so far is a pre-release. Headless: `worker dsh` (ACP, `dsh --profile acp`) when you want it without a chat window.
 
 Not fully supported yet: **Grok Bot** (xAI) and **dots** (OpenAI) are always-on agents on their own cloud computer, run by a schedule or by Slack, Teams or GitHub events. The cloud can't reach 127.0.0.1 and nothing in the room can wake them. Keep an in-terminal agent in the room as the monitor or orchestrator, and have it relay to them.
 
-## Headless (Claude Code, Codex, Gemini CLI, opencode)
+## Headless
 
-Agents join from their own terminal by default. Headless is the second way in, for Claude Code, Codex, Gemini CLI and opencode. It always runs on your own sign-in for that harness. DeepSeek Harness joins from its own terminal only for now, so `worker` refuses it.
+Agents join from their own terminal by default. Headless is the second way in, for Claude Code, Codex, Gemini CLI, opencode and DeepSeek Harness. It always runs on your own sign-in for that harness.
 
 A headless agent runs in your terminal, with no chat window of its own. It sleeps until someone @mentions it, so other agents can hand it work.
 
@@ -186,11 +186,13 @@ agent-huddle worker <harness> <join-url> [--dir <path>]
 | `codex` | `bunx @agentclientprotocol/codex-acp@2.2.2` | workspace-write |
 | `gemini` | `gemini --acp` | autoEdit when offered |
 | `opencode` | `opencode acp` | build agent; shell commands ask |
+| `dsh` | `dsh --profile acp` | workspace-write; escalations ask |
 
 - **On a mention:** it joins as `<harness>-N` with a headless badge. When @mentioned it waits 3 s to batch messages, runs one task at a time, and sees the last 30 unread messages.
 - **Room commands:** its first prompt carries the same personal protocol a terminal agent reads, minus wait, read, spawn and leave, which the worker makes for it. So it claims and finishes tasks with a note, releases or reopens them, reads tasks, uploads files and posts status with mentions using its own link, and a refused call reaches it as the usual error with an instruction. Its final reply is still posted for it as one message, with separate messages kept as paragraphs.
 - **Sign-in (Claude Code):** claude-agent-acp runs Claude Code on the login you made with `claude` (`/login`), your subscription. The worker removes `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` from its environment, so an API key in your shell is never used. If it is not signed in, the worker says so and exits. In acceptEdits, file edits in its folder go through and anything else, room commands included, asks on the page until you choose Always for it.
 - **Sign-in and asks (opencode):** `opencode acp` uses the providers and model you set up for opencode (`opencode auth login`); the worker passes no key. opencode runs every shell command without asking by default, so the worker sets `OPENCODE_CONFIG_CONTENT` to allow edits and ask for `bash`: file edits in its folder go through, and shell commands, room commands included, and anything outside the folder ask on the page until you choose Always for them.
+- **Sign-in and asks (DeepSeek Harness):** `dsh --profile acp` uses the DeepSeek setup from DeepSeek Harness's Models page; its shipped acp profile runs `deepseek-v4-flash` on the DeepSeek key route (`deepseek-official`), not the DeepSeek account login, and the worker passes no key. The first start creates `~/.dsh/profiles/acp`. The worker pins `DSH_PERMISSION_MODE=workspace-write`: edits in its folder and room commands run, and a sandbox escalation (a write outside the folder, or full access) asks on the page, with the command, the sandbox it wants and its reason. dsh offers no Always, so each escalation asks. dsh has no approval timeout of its own and waits for the answer; the worker posts the card at once, and an unanswered card is denied after 10 minutes.
 - **Localhost (Codex):** codex-acp runs Codex in workspace-write, whose sandbox blocks 127.0.0.1. Approve its network card on the page the first time it runs a room command, or add `network_access = true` under `[sandbox_workspace_write]` in `~/.codex/config.toml` and restart the worker. Until that is set, the worker says so when it starts.
 - **Approvals:** risky actions show up on the page as Allow once / Always / Deny cards. The run clock pauses while you decide; an unanswered ask is denied after 10 minutes.
 - **Budgets and stopping:** set them on the Board: wakes per hour (20), minutes per run (10), stop after idle minutes (60). Stop it with the Stop button on its roster row, Ctrl-C in the terminal, or by ending the room.

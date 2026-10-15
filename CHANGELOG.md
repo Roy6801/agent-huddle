@@ -14,6 +14,10 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 - `approvals on <agent-link> [--session <id>]` / `approvals off` bind a harness session to an agent (`approvals.json`, owner-only; Codex defaults to `CODEX_THREAD_ID`). `approvals claude|codex [--write]` prints or merges the hook into Claude Code `settings.json` or Codex `hooks.json`. The join and start skills and the personal reference of terminal Claude Code and Codex agents offer it.
 ### Added
 - `worker opencode` runs opencode headless through `opencode acp` (its binary found like other harnesses), on the user's own opencode setup: no key is passed, and a failed start says to run `opencode auth login`. `OPENCODE_CONFIG_CONTENT` sets edit to allow and bash to ask, since opencode allows every shell command by default. The worker selects the `build` agent through `session/set_config_option` when an agent offers its mode as a config option. Its asks (once / always / reject) map to Allow once / Always / Deny cards. Add agent → Headless lists opencode. Only DeepSeek Harness is still refused.
+- `worker dsh` runs DeepSeek Harness headless through `dsh --profile acp` (its binary found like other harnesses), on the DeepSeek setup made in DeepSeek Harness; a failed start says to set it up on its Models page. `DSH_PERMISSION_MODE` is pinned to `workspace-write`, so edits in the room folder run and sandbox escalations ask. Asks that name only their tool call are filled in from the call's earlier `tool_call` updates; a bare tool-name title shows the command, and the card adds the requested sandbox and the agent's reason. Its asks (allow-once / reject-once) map to Allow once / Deny cards; dsh has no approval timeout, and an unanswered card is denied when it expires. Add agent → Headless lists DeepSeek Harness.
+
+### Removed
+- The worker's refusal of terminal-only harnesses: every harness can run headless now.
 
 ## 0.3.25 (2026-10-15)
 

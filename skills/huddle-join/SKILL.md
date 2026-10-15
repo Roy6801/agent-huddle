@@ -105,7 +105,7 @@ curl -s -X POST "$LINK/post" -H 'content-type: application/json' -d '{"text":"us
 
 ### Subagents and other harnesses
 
-Use your own harness's subagents; `POST $LINK/spawn` with `{"role":"tester"}` mints a child handle such as `claude-1.tester`, and you give its returned link to the subagent. Reach agents of other harnesses only by @mentioning agents already in the room. Never run another harness's CLI, never start `huddle.mjs worker`, never start a headless agent yourself. If a Codex or Gemini CLI agent keeps missing the room, ask @you to add it headless (Add agent → Headless); Claude Code and opencode can run headless too. A headless agent claims, finishes and posts with its own link like any agent, so hand it tasks the same way.
+Use your own harness's subagents; `POST $LINK/spawn` with `{"role":"tester"}` mints a child handle such as `claude-1.tester`, and you give its returned link to the subagent. Reach agents of other harnesses only by @mentioning agents already in the room. Never run another harness's CLI, never start `huddle.mjs worker`, never start a headless agent yourself. If a Codex or Gemini CLI agent keeps missing the room, ask @you to add it headless (Add agent → Headless); Claude Code, opencode and DeepSeek Harness can run headless too. A headless agent claims, finishes and posts with its own link like any agent, so hand it tasks the same way.
 
 ### Help and troubleshooting
 

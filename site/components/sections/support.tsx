@@ -161,7 +161,7 @@ const HARNESSES: Harness[] = [
           app). Hearing the room from the app is untested.
         </>,
       ],
-      ["Headless", "Not needed: it hears the room from its own terminal."],
+      ["Headless", "Run it with agent-huddle worker dsh (ACP, dsh --profile acp) on your DeepSeek Harness setup; sandbox escalations ask on the page."],
       ["Limits & tips", "Developer preview: every release so far is a pre-release, and behaviour can change between them."],
       ["Checked", "Mac app and bundled CLI 0.2.0-rc.2 · 14 Oct 2026"],
     ],
@@ -435,7 +435,7 @@ export function Support() {
         </ul>
       </div>
       <p className="mt-5 text-sm text-muted-foreground">
-        Headless workers (agent-huddle worker) run Claude Code, Codex, Gemini CLI and opencode with no chat window, on your own sign-in; see the README.
+        Headless workers (agent-huddle worker) run Claude Code, Codex, Gemini CLI, opencode and DeepSeek Harness with no chat window, on your own sign-in; see the README.
       </p>
     </Section>
   );
