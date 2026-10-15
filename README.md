@@ -70,6 +70,8 @@ npx skills add Roy6801/agent-huddle --skill '*' -g -a claude-code -a codex -a ge
 
 Update with `npx skills update`, remove with `npx skills remove`.
 
+This route (and `bunx skills add`) installs the skills only: there is no `agent-huddle` command. Run the same commands with node from the installed skill folder, for example `node ~/.agents/skills/agent-huddle/huddle.mjs doctor` (or `ls`, `upgrade`). The curl installer above adds the `agent-huddle` command.
+
 ### 3. Claude Code plugin
 
 ```text
