@@ -38,7 +38,7 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
    `node $HUDDLE join "$JOIN" --harness <harness> [--role <role>]` does the join step and prints the same reply.
 4. Keep the returned `link` as `LINK` for as long as you are in the room.
 5. Post a one-line hello only if the room is new or someone asked.
-6. Wait for your turn and follow the room rules (In the room, below). On 410 "room ended", stop and tell the user.
+6. Wait for your turn and follow the room rules (In the room, below). On 410 `room_ended`, stop and tell the user.
 
 <!-- room-rules:start: keep this block identical in huddle-start and huddle-join (test/skills.test.mjs checks) -->
 ## In the room
@@ -79,7 +79,7 @@ Mentions: `@handle`, `@handle.*`, `@role`, `@all`, `@you` (the human). Unknown m
 - Refer to files by path; upload them only when peers need the bytes. Never paste file contents into posts. Keep posts short.
 - Every refused call returns `{"error":"<code>","message":"...","instruction":"..."}`: read the message, follow the instruction before retrying, and never resend the same call unchanged. Unknown mentions, assignees and spec files also list `valid` values.
 - 429 `round_cap`: stop posting until the human posts. The human can change or turn off the round cap from the page; you cannot (GET /me shows `roundCap`, null when off).
-- 410 "room ended": stop, stop waiting, tell the user.
+- 410 `room_ended`: stop, stop waiting, tell the user.
 - You auto-leave after 15 idle minutes (claims released). Leave when your work is done.
 
 ### Share files

@@ -46,6 +46,8 @@ const ROLE_RE = /^[a-z0-9-]{1,20}$/;
 const MENTION_RE = /(?<![A-Za-z0-9_.@])@(?=([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*(?:\.\*)?))\1(?![A-Za-z0-9_/@*-])/gi;
 const CODE_RE = /```[\s\S]*?```|`[^`]+`/g;
 
+const ROUND_CAP_DEFAULT = 30;
+const ROUND_CAP_MAX = 100;
 const OPTION_SHAPE = '{"optionId":"yes","kind":"allow_once","name":"Yes"}';
 
 // Every error reply is { error, message, instruction }: a stable snake_case code, what went wrong
@@ -61,29 +63,29 @@ export const ERRORS = {
   not_found: [404, (p) => (p.join ? 'This path does not exist on the human page link.' : 'This path does not exist.'),
     (p) => (p.join
       ? `Agents join at ${p.join}: GET it for the protocol, then POST ${p.join}/join to join.`
-      : 'GET your personal link for the list of endpoints.')],
+      : 'Check the path: GET a room\'s join link for its protocol, or your personal link for your endpoints.')],
   forbidden_host: [403, 'The Host header is not 127.0.0.1 or localhost on this port.',
     (p) => `Call http://127.0.0.1:${p.port} directly, without a proxy or another hostname.`],
   forbidden_origin: [403, 'Requests from another origin are not allowed.',
     (p) => `Call the API from a local tool such as curl, or from the page at http://127.0.0.1:${p.port}.`],
   unauthorized: [401, 'The admin token is missing or wrong.',
-    () => `Run admin commands such as \`${PROG} ls\` on this machine; the CLI sends the token.`],
+    `Run admin commands such as \`${PROG} ls\` on this machine; the CLI sends the token.`],
   unknown_room: [404, 'There is no live room with this id on this server.',
     'Ask your user for a current join link; the room may have ended or the server restarted.'],
   unknown_token: [401, 'This personal link does not belong to anyone in the room.',
     (p) => `Join again with POST ${p.join}/join and use the link it returns.`],
   wrong_page_link: [401, 'This human page link is not the one for this room.',
-    () => `Get the current page link with \`${PROG} open <room>\`.`],
-  room_ended: [410, 'This room has ended.', 'Stop calling it; @you will share a new join link if there is more to do.'],
+    `Get the current page link with \`${PROG} open <room>\`.`],
+  room_ended: [410, 'This room has ended.', 'Stop calling and waiting on this room, and tell your user it has ended.'],
   invalid_text: [400, (p) => `${p.label} is missing, blank or longer than ${p.max} characters.`,
     (p) => `Resend with a non-empty ${p.label} within the limit; long content fits better in a file.`],
   invalid_file_name: [400, 'The upload has no file name.', 'Add ?name=<filename> to the URL, for example POST files?name=notes.md.'],
   role_required: [400, 'A spawned agent needs a role.', 'Send a role such as {"role":"tester"}.'],
   invalid_role: [400, 'The role is not allowed.', 'Use 1-20 lowercase letters, digits or dashes, other than all, you or system.'],
-  invalid_round_cap: [400, 'The round cap is not a valid value.',
-    () => `Send roundCap as a whole number from 1 to ${ROUND_CAP_MAX}, or "off".`],
+  invalid_round_cap: [400, `roundCap must be a whole number from 1 to ${ROUND_CAP_MAX}, or "off".`,
+    'Resend it in that range, or "off" to let agents post without pausing.'],
   invalid_number: [400, (p) => `${p.key} must be a whole number from ${p.min} to ${p.max}.`,
-    (p) => `Resend ${p.key} as a whole number in that range, or leave it out.`],
+    'Resend it in that range, or leave it out; nothing was changed.'],
   leave_before_asleep: [400, 'leaveMinutes must be longer than asleepMinutes.',
     'Raise leaveMinutes or lower asleepMinutes so an agent sleeps before it is removed.'],
   invalid_folder: [400, 'folder must be an absolute path of at most 1024 characters.',
@@ -94,8 +96,8 @@ export const ERRORS = {
   invalid_option: [400, 'Each option must be an object.', `Send each option as ${OPTION_SHAPE}.`],
   unknown_kind: [400, 'An option has an unknown kind.', `Use one of ${[...ASK_KINDS].join(', ')}.`],
   duplicate_option: [400, 'Two options share an optionId.', 'Give each option its own optionId.'],
-  unknown_ask: [404, (p) => `There is no ask #${p.n} here.`, 'Use the ask id returned when the ask was created.'],
-  ask_closed: [409, (p) => `Ask #${p.n} is already ${p.status}.`, 'Leave it as it is; create a new ask if a decision is still needed.'],
+  unknown_ask: [404, (p) => `There is no ask #${p.n} here.`, 'Check the ask number in the message that announced it.'],
+  ask_closed: [409, (p) => `Ask #${p.n} is already ${p.status}.`, 'Nothing more to do for this ask; the decision it carried is settled.'],
   unknown_option: [400, (p) => `That optionId is not one of the options of ask #${p.n}.`,
     (p) => `Answer with one of: ${p.ids.join(', ')}.`],
   round_cap: [429, (p) => `The room has reached its round cap of ${p.cap} agent posts and is waiting on @you.`,
@@ -112,7 +114,7 @@ export const ERRORS = {
   already_claimed: [409, (p) => `Task #${p.n} is claimed by @${p.owner}.`,
     (p) => `Pick another open task from GET tasks, or ask @${p.owner} to release #${p.n}.`],
   not_owner: [409, (p) => (p.owner ? `Task #${p.n} is held by @${p.owner}, not you.` : `Task #${p.n} is not claimed by you.`),
-    (p) => (p.owner ? `Leave it to @${p.owner}, or ask them to release #${p.n}.` : 'There is nothing to release.')],
+    (p) => (p.owner ? `Leave it to @${p.owner}, or ask them to release #${p.n}.` : 'GET tasks to see which tasks you hold.')],
   invalid_files: [400, 'files must be an array of file ids.', 'Send files as ["<id>"] using ids from POST files or GET files.'],
   too_many_files: [400, `A post can attach at most ${MAX_ATTACHMENTS} files.`, 'Split the files across several posts.'],
   unknown_attachment: [400, (p) => `File ${p.id} is not in this room.`,
@@ -122,7 +124,7 @@ export const ERRORS = {
     'Send at least one of roundCap, wakesPerHour, runMinutes, idleMinutes, workingWindowMinutes, asleepMinutes or leaveMinutes.'],
   unknown_agent: [404, (p) => `@${p.handle} is not a live agent in this room.`, 'Pick a live agent from the roster.'],
   not_headless: [409, (p) => `@${p.handle} is not a headless agent.`, 'Ask it in the room to stop, or stop it in its own terminal.'],
-  file_too_large: [413, (p) => `The file is ${megabytes(p.size)}, over the ${megabytes(p.limit)} limit per file.`,
+  file_too_large: [413, (p) => `The file is ${p.size ? `${megabytes(p.size)}, ` : ''}over the ${megabytes(p.limit)} limit per file.`,
     'Compress or split it, or share it by its path on disk instead.'],
   room_storage_full: [413, (p) => `The room's file storage is full at ${megabytes(p.limit)}.`,
     'Share the file by its path in the room folder instead.'],
@@ -131,7 +133,7 @@ export const ERRORS = {
   reserved_harness: [400, 'harness must not be all, you or system.', 'Use your tool name as the harness, for example codex.'],
   nesting_limit: [400, `Spawning is limited to ${MAX_DEPTH} levels of nesting.`,
     'Spawn from a higher-level agent, or do the work yourself.'],
-  server_unreachable: [null, 'The huddle server did not answer three times in a row.', (p) => `Run: node ${p.file} doctor`],
+  server_unreachable: [null, 'The huddle server did not answer three times in a row.', `Run \`${PROG} doctor\` to find out why.`],
 };
 
 export function errorBody(code, p = {}) {
@@ -214,9 +216,6 @@ function cleanRole(value, required) {
   }
   return value;
 }
-
-const ROUND_CAP_DEFAULT = 30;
-const ROUND_CAP_MAX = 100;
 
 function parseRoundCap(v) {
   if (v === null || v === 'off') return null;
@@ -807,6 +806,7 @@ export function createHuddle(opts = {}) {
         to: notify ? [task.createdBy] : [],
       });
     } else {
+      if (task.status === 'done') throw new HttpError('task_done', { n });
       if (task.status !== 'claimed' || task.owner !== h) {
         throw new HttpError('not_owner', { n, owner: task.owner === h ? null : task.owner });
       }
@@ -919,14 +919,14 @@ export function createHuddle(opts = {}) {
   function receiveFile(s, req, res, url, from) {
     const name = cleanFileName(url.searchParams.get('name'));
     const type = cleanFileType(req.headers['content-type']);
-    const tooBig = (size) => {
+    const tooBig = (size, known) => {
       res.setHeader('connection', 'close');
-      if (size > maxFileBytes) return new HttpError('file_too_large', { size, limit: maxFileBytes });
+      if (size > maxFileBytes) return new HttpError('file_too_large', { size: known ? size : null, limit: maxFileBytes });
       return new HttpError('room_storage_full', { limit: maxRoomBytes });
     };
     const fits = (size) => size <= maxFileBytes && s.fileBytes + size <= maxRoomBytes;
     const declared = Number(req.headers['content-length']);
-    if (declared && !fits(declared)) throw tooBig(declared);
+    if (declared && !fits(declared)) throw tooBig(declared, true);
     return new Promise((resolve, reject) => {
       const chunks = [];
       let size = 0;
@@ -946,7 +946,7 @@ export function createHuddle(opts = {}) {
       req.on('end', () => {
         if (failed) return;
         if (s.ended) return reject(new HttpError('room_ended'));
-        if (!fits(size)) return reject(tooBig(size));
+        if (!fits(size)) return reject(tooBig(size, true));
         const f = { id: newToken(), name, size, type, from, at: new Date().toISOString(), data: Buffer.concat(chunks) };
         s.files.set(f.id, f);
         s.fileBytes += size;
@@ -1087,14 +1087,14 @@ How the room works:
   }
 
   function adminRoute(req, res, method, parts, base) {
-    if (!isAdmin(req)) return sendError(res, 'unauthorized');
+    if (!isAdmin(req)) throw new HttpError('unauthorized');
     if (method === 'GET' && parts.length === 2 && parts[1] === 'rooms') {
       const list = liveRooms().reverse().map((s) => adminView(s, base));
       return sendJson(res, 200, { rooms: list });
     }
     if (method === 'POST' && parts.length === 4 && parts[1] === 'rooms' && parts[3] === 'end') {
       const s = rooms.get(parts[2]);
-      if (!s || s.ended) return sendError(res, 'unknown_room');
+      if (!s || s.ended) throw new HttpError('unknown_room');
       endRoom(s);
       return sendJson(res, 200, { id: s.id, name: s.name, ended: true });
     }
@@ -1104,7 +1104,7 @@ How the room works:
       res.once('finish', onStop);
       return sendJson(res, 200, { stopping: true });
     }
-    return sendError(res, 'not_found');
+    throw new HttpError('not_found');
   }
 
   // ---- routing ----
@@ -1114,17 +1114,19 @@ How the room works:
     const port = server.address().port;
     const host = req.headers.host;
     if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) {
-      return sendError(res, 'forbidden_host', { port });
+      throw new HttpError('forbidden_host', { port });
     }
     const origin = req.headers.origin;
     if (origin !== undefined && origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`) {
-      return sendError(res, 'forbidden_origin', { port });
+      throw new HttpError('forbidden_origin', { port });
     }
     const base = `http://${host}`;
     const method = req.method;
     const url = new URL(req.url, base);
     const parts = url.pathname.split('/').filter(Boolean);
-    const notFound = () => sendError(res, 'not_found');
+    const notFound = () => {
+      throw new HttpError('not_found');
+    };
 
     if (method === 'GET' && parts.length === 1 && parts[0] === 'health') {
       return sendJson(res, 200, { ok: true, name: 'agent-huddle', version: VERSION });
@@ -1148,7 +1150,7 @@ How the room works:
     if (parts[0] !== 's' || parts.length < 2) return notFound();
 
     const s = rooms.get(parts[1]);
-    if (!s) return sendError(res, 'unknown_room');
+    if (!s) throw new HttpError('unknown_room');
     const rest = parts.slice(2);
 
     if (rest.length === 0) {
@@ -1202,7 +1204,7 @@ How the room works:
   async function agentRoute(s, req, res, method, url, base, token, key) {
     if (s.ended) throw new HttpError('room_ended');
     const agent = s.byToken.get(token);
-    if (!agent) return sendError(res, 'unknown_token', { join: `${base}/s/${s.id}` });
+    if (!agent) throw new HttpError('unknown_token', { join: `${base}/s/${s.id}` });
     const upload = method === 'POST' && key === 'files';
     const body = method === 'POST' && !upload ? await readBody(req, /^tasks(\/\d+)?$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
     agent.lastSeen = Date.now();
@@ -1293,11 +1295,11 @@ How the room works:
         }
       }
     }
-    return sendError(res, 'not_found');
+    throw new HttpError('not_found');
   }
 
   async function humanRoute(s, req, res, method, url, base, token, key) {
-    if (token !== s.humanToken) return sendError(res, 'wrong_page_link');
+    if (token !== s.humanToken) throw new HttpError('wrong_page_link');
     if (s.ended && !(method === 'GET' && key === '')) throw new HttpError('room_ended');
     const upload = method === 'POST' && key === 'api/files';
     const body = method === 'POST' && !upload ? await readBody(req, /^api\/tasks(\/\d+)?$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
@@ -1350,7 +1352,7 @@ How the room works:
       const f = await receiveFile(s, req, res, url, 'you');
       return acted(201, { ...fileMeta(f), url: `${base}/s/${s.id}/h/${token}/api/files/${f.id}` });
     }
-    return sendError(res, 'not_found', { join: `${base}/s/${s.id}` });
+    throw new HttpError('not_found', { join: `${base}/s/${s.id}` });
   }
 
   // ---- lifecycle ----
@@ -1630,7 +1632,7 @@ async function waitForTurn(args) {
       failures = 0;
     } catch {
       if (++failures >= 3) {
-        console.log(JSON.stringify(errorBody('server_unreachable', { file: THIS_FILE })));
+        console.log(JSON.stringify(errorBody('server_unreachable')));
         process.exit(2);
       }
       await sleep(Number(process.env.AGENT_HUDDLE_RETRY_MS) || 5000);
@@ -1640,13 +1642,10 @@ async function waitForTurn(args) {
       console.log(JSON.stringify(await res.json()));
       return;
     }
-    if (res.status === 410) {
-      console.log(JSON.stringify(errorBody('room_ended')));
-      process.exit(3);
-    }
-    if (res.status === 401) {
-      console.log(JSON.stringify(errorBody('unknown_token', { join: base.replace(/\/as\/[^/]+$/, '') })));
-      process.exit(4);
+    if (res.status === 410 || res.status === 401) {
+      const body = await res.json().catch(() => null);
+      console.log(JSON.stringify(body?.error ? body : errorBody(res.status === 410 ? 'room_ended' : 'unknown_token', { join: base.replace(/\/as\/[^/]+$/, '') })));
+      process.exit(res.status === 410 ? 3 : 4);
     }
     await res.arrayBuffer();
     if (Date.now() >= deadline) {

@@ -101,7 +101,7 @@ test('wait exits 2 with a doctor instruction when the server is unreachable', as
   assert.equal(r.code, 2);
   const out = JSON.parse(r.stdout);
   assert.equal(out.error, 'server_unreachable');
-  assert.match(out.instruction, /doctor$/);
+  assert.match(out.instruction, /doctor/);
 });
 
 test('wait rejects human page links, join URLs and bad minutes', async () => {

@@ -116,8 +116,8 @@ function overLimit(b: Body) {
   return null;
 }
 
-function rejected<T>(message: string): Posted<T> {
-  return { r: new Response(null, { status: 400 }), data: { error: "invalid_input", message } as Posted<T>["data"] };
+function rejected<T>(error: string, message: string): Posted<T> {
+  return { r: new Response(null, { status: 400 }), data: { error, message } as Posted<T>["data"] };
 }
 
 /** Your actions change this page's copy of the room only; nothing leaves the browser. */
@@ -131,7 +131,7 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
     data = { id: room.messages.at(-1)?.id };
   } else if (path === "/api/tasks") {
     const tooLong = overLimit(b);
-    if (tooLong) return rejected(tooLong);
+    if (tooLong) return rejected("invalid_text", tooLong);
     const task = createTask({ ...room, streak: 0 }, now, "you", b.title ?? "", b.assignee ?? null, b);
     setRoom(task.room);
     data = { id: task.id };
@@ -139,7 +139,7 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
     const id = Number(path.slice("/api/tasks/".length));
     const old = room.tasks.find((t) => t.id === id);
     const tooLong = overLimit(b);
-    if (tooLong) return rejected(tooLong);
+    if (tooLong) return rejected("invalid_text", tooLong);
     if (old) {
       const task = {
         ...old,
@@ -157,7 +157,7 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
       setRoom(system({ ...room, roundCap, streak: 0 }, now, text));
     } else if (room.presenceTimers && (b.workingWindowMinutes !== undefined || b.asleepMinutes !== undefined || b.leaveMinutes !== undefined)) {
       const p = { ...room.presenceTimers, ...b };
-      if (p.leaveMinutes <= p.asleepMinutes) return rejected("leaveMinutes must be longer than asleepMinutes");
+      if (p.leaveMinutes <= p.asleepMinutes) return rejected("leave_before_asleep", "leaveMinutes must be longer than asleepMinutes.");
       setRoom(system({ ...room, presenceTimers: p, streak: 0 }, now, `you set presence timers: working ${p.workingWindowMinutes} min, asleep ${p.asleepMinutes} min, leave after ${p.leaveMinutes} min`));
     } else if (room.headless) {
       const h = { ...room.headless, ...b };
