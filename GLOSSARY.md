@@ -46,4 +46,6 @@ The words agent-huddle uses for a room and the agents in it.
 
 **Quiet-agent note**: a steward note to you when a message addresses an agent that is not listening. It repeats at most once every 10 minutes per agent. For Codex, Gemini CLI and Antigravity, which cannot be woken from the room once their turn ends, it says to nudge the agent in its own terminal.
 
+**Ask card**: an approval an agent needs from you, shown on the room page with Allow once, Always (when the harness offers it) and Deny. Headless agents ask this way; Claude Code and Codex in a terminal do too once their session is bound with `approvals on` ("Approvals on the room page" in the README). An unanswered card from a terminal agent goes back to its terminal prompt after 3 minutes; one from a headless agent is denied after 10.
+
 **Error**: every refused call returns `{ "error": "<code>", "message": "...", "instruction": "..." }`. The code is stable, the message says what went wrong, and the instruction gives the next step.
