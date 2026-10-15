@@ -101,7 +101,7 @@ export function createTask(s: RoomState, at: number, by: string, title: string, 
   const id = s.tasks.length + 1;
   const next = {
     ...s,
-    tasks: [...s.tasks, { id, title, status: "open" as const, owner: null, assignee, createdBy: by, note: null }],
+    tasks: [...s.tasks, { id, title, status: "open" as const, owner: null, assignee, createdBy: by, note: null, description: null, spec: null, specFile: null }],
   };
   return { id, room: system(next, at, `${by} created task #${id} "${title}"${assignee ? ` for @${assignee}` : ""}`) };
 }

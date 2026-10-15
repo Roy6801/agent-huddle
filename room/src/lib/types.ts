@@ -27,9 +27,13 @@ export type Message = {
   files: FileMeta[];
   /** Set on system notes about an ask; the page shows the ask card instead. */
   ask?: number;
+  /** Set on system notes about a task. */
+  task?: number;
 };
 
 export type TaskStatus = "open" | "claimed" | "done";
+
+export type TaskSpecFile = { id: string; name: string; size: number };
 
 export type Task = {
   id: number;
@@ -39,6 +43,9 @@ export type Task = {
   assignee: string | null;
   createdBy: string;
   note: string | null;
+  description: string | null;
+  spec: string | null;
+  specFile: TaskSpecFile | null;
 };
 
 export type AskKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";
