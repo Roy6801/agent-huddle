@@ -12,7 +12,12 @@ export type Field<K extends string> = { key: K; label: string; unit: string; min
 type EditorProps = {
   /** Prefix of the element ids, e.g. "headless". */
   id: string;
-  title: string;
+  /** The heading above the summary; omit it when `lead` brings its own. */
+  title?: string;
+  /** Replaces the heading, e.g. a meter; its heading should have the id `${id}-h`. */
+  lead?: ReactNode;
+  /** The accessible name of the form when there is no `title`. */
+  label?: string;
   /** Screen-reader suffix of the Change button, e.g. "headless budgets". */
   noun: string;
   icon?: LucideIcon;
@@ -21,6 +26,8 @@ type EditorProps = {
   alignStart?: boolean;
   /** Fills the form fields from the current values each time the form opens. */
   onOpen: () => void;
+  /** A counter; the form opens each time it changes to a new non-zero value. */
+  openRequest?: number;
   /** The request body for POST api/settings, or a message when the fields are not acceptable. */
   toBody: () => object | string;
   /** The form fields; receives the id of the error message while one is shown. */
@@ -28,7 +35,20 @@ type EditorProps = {
 };
 
 /** A titled summary line that opens a form saved with POST api/settings. */
-export function SettingsEditor({ id, title, noun, icon: Icon = Settings2Icon, summary, alignStart, onOpen, toBody, children }: EditorProps) {
+export function SettingsEditor({
+  id,
+  title,
+  lead,
+  label,
+  noun,
+  icon: Icon = Settings2Icon,
+  summary,
+  alignStart,
+  onOpen,
+  openRequest,
+  toBody,
+  children,
+}: EditorProps) {
   const { state, pollNow } = useRoom();
   const { post } = useSource();
   const { ended } = state;
@@ -42,22 +62,36 @@ export function SettingsEditor({ id, title, noun, icon: Icon = Settings2Icon, su
     if (ended) setOpen(false);
   }, [ended]);
 
+  function focusField() {
+    const f = form.current;
+    (f?.querySelector<HTMLElement>("[data-autofocus]") ?? f?.querySelector("input"))?.focus();
+  }
+
   function show(next: boolean) {
     if (next && ended) return;
     if (next) {
       onOpen();
       setError(null);
-      requestAnimationFrame(() => form.current?.querySelector("input")?.focus());
+      requestAnimationFrame(focusField);
     } else {
       requestAnimationFrame(() => trigger.current?.focus());
     }
     setOpen(next);
   }
 
+  useEffect(() => {
+    // Only a new request opens the form; a value change from elsewhere must not.
+    if (openRequest) show(true);
+  }, [openRequest]);
+
   async function save() {
     if (ended) return;
     const body = toBody();
-    if (typeof body === "string") return setError({ message: body });
+    if (typeof body === "string") {
+      setError({ message: body });
+      focusField();
+      return;
+    }
     setSaving(true);
     try {
       const { r, data } = await post("/api/settings", body);
@@ -73,9 +107,11 @@ export function SettingsEditor({ id, title, noun, icon: Icon = Settings2Icon, su
 
   return (
     <Collapsible open={open} onOpenChange={show} className="flex flex-col gap-2">
-      <h3 id={`${id}-h`} className="text-xs font-medium text-muted-foreground">
-        {title}
-      </h3>
+      {lead ?? (
+        <h3 id={`${id}-h`} className="text-xs font-medium text-muted-foreground">
+          {title}
+        </h3>
+      )}
       <div className={`flex ${alignStart ? "items-start" : "items-center"} justify-between gap-2 text-[11px] text-muted-foreground`}>
         {summary}
         <CollapsibleTrigger asChild>
@@ -91,7 +127,8 @@ export function SettingsEditor({ id, title, noun, icon: Icon = Settings2Icon, su
           ref={form}
           noValidate
           autoComplete="off"
-          aria-labelledby={`${id}-h`}
+          aria-labelledby={title ? `${id}-h` : undefined}
+          aria-label={title ? undefined : label}
           className="mb-1 grid gap-3 rounded-lg border bg-background p-3"
           onSubmit={(e) => {
             e.preventDefault();
