@@ -7,6 +7,7 @@ import {
   CopyIcon,
   DownloadIcon,
   LockIcon,
+  MoonIcon,
   PlusIcon,
   UndoIcon,
   UserRoundIcon,
@@ -748,9 +749,7 @@ function TaskCard({ task }: { task: Task }) {
             </>
           )}
           {ownerAsleep && (
-            <Badge aria-hidden variant="outline" className="h-[18px] border-signal px-1.5 text-[10.5px] font-medium text-signal">
-              asleep
-            </Badge>
+            <MoonIcon aria-hidden className="size-3.5 shrink-0 text-signal" />
           )}
           <Badge variant="outline" className={cn("h-[18px] px-1.5 text-[10.5px] font-medium", status.badge)}>
             {status.label}
