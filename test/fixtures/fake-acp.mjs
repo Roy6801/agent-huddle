@@ -5,7 +5,7 @@ import readline from 'node:readline';
 // node --test also globs this file; only serve when a test opts in
 if (!process.env.FAKE_ACP) process.exit(0);
 
-const { FAKE_ACP_LOG, FAKE_ACP_PID, FAKE_ACP_DELAY_MS, FAKE_ACP_STOP, FAKE_ACP_NEW_FAIL, FAKE_ACP_HANG, FAKE_ACP_GRANDCHILD, FAKE_ACP_REPLY, FAKE_ACP_PERMISSION, FAKE_ACP_MODES, FAKE_ACP_SPLIT, FAKE_ACP_CALLS } = process.env;
+const { FAKE_ACP_LOG, FAKE_ACP_PID, FAKE_ACP_DELAY_MS, FAKE_ACP_STOP, FAKE_ACP_NEW_FAIL, FAKE_ACP_HANG, FAKE_ACP_GRANDCHILD, FAKE_ACP_REPLY, FAKE_ACP_PERMISSION, FAKE_ACP_MODES, FAKE_ACP_CONFIG_MODES, FAKE_ACP_SPLIT, FAKE_ACP_CALLS } = process.env;
 if (FAKE_ACP_PID) fs.writeFileSync(FAKE_ACP_PID, String(process.pid));
 if (FAKE_ACP_GRANDCHILD) {
   const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
@@ -35,7 +35,7 @@ const split = (sessionId, ids) => {
 };
 const save = () => {
   if (!FAKE_ACP_LOG) return;
-  const env = { apiKey: 'ANTHROPIC_API_KEY' in process.env, authToken: 'ANTHROPIC_AUTH_TOKEN' in process.env };
+  const env = { apiKey: 'ANTHROPIC_API_KEY' in process.env, authToken: 'ANTHROPIC_AUTH_TOKEN' in process.env, opencodeConfig: process.env.OPENCODE_CONFIG_CONTENT ?? null };
   fs.writeFileSync(`${FAKE_ACP_LOG}.tmp`, JSON.stringify({ prompts: log, cancels, outcomes, modes, calls, maxConcurrency, env }));
   fs.renameSync(`${FAKE_ACP_LOG}.tmp`, FAKE_ACP_LOG);
 };
@@ -71,13 +71,35 @@ const CLAUDE_ASK = {
     { optionId: 'allow-with-updates', kind: 'allow_always', name: "Yes, and don't ask again for rm commands" },
   ],
 };
+// opencode 1.19.0 (acp/permission.ts): a bash call titled with its command, with once / always / reject.
+const OPENCODE_ASK = {
+  toolCall: { toolCallId: 'call_1', title: 'rm -rf build', kind: 'execute', status: 'pending', locations: [], rawInput: { command: 'rm -rf build' } },
+  options: [
+    { optionId: 'once', kind: 'allow_once', name: 'Allow once' },
+    { optionId: 'always', kind: 'allow_always', name: 'Always allow' },
+    { optionId: 'reject', kind: 'reject_once', name: 'Reject' },
+  ],
+};
+const ASKS = { claude: CLAUDE_ASK, opencode: OPENCODE_ASK };
 
 const methods = {
   initialize: () => ({ protocolVersion: 1, agentCapabilities: {} }),
   'session/new': () => {
     if (FAKE_ACP_NEW_FAIL) throw Object.assign(new Error('auth required'), { code: -32000 });
     const availableModes = FAKE_ACP_MODES?.split(',').map((id) => ({ id, name: id }));
-    return { sessionId: `fake-${++sessions}`, ...(availableModes && { modes: { currentModeId: 'default', availableModes } }) };
+    // Like opencode: the mode is a config option whose first value is the current one.
+    const values = FAKE_ACP_CONFIG_MODES?.split(',');
+    const configOptions = values && [{ id: 'mode', name: 'Session Mode', category: 'mode', type: 'select', currentValue: values[0], options: values.map((value) => ({ value, name: value })) }];
+    return {
+      sessionId: `fake-${++sessions}`,
+      ...(availableModes && { modes: { currentModeId: 'default', availableModes } }),
+      ...(configOptions && { configOptions }),
+    };
+  },
+  'session/set_config_option': ({ sessionId, configId, value }) => {
+    modes.push({ sessionId, configId, value });
+    save();
+    return { configOptions: [] };
   },
   'session/set_mode': ({ sessionId, modeId }) => {
     modes.push({ sessionId, modeId });
@@ -99,7 +121,7 @@ const methods = {
         method: 'session/request_permission',
         params: {
           sessionId,
-          ...(FAKE_ACP_PERMISSION === 'claude' ? CLAUDE_ASK : CODEX_ASK),
+          ...(ASKS[FAKE_ACP_PERMISSION] ?? CODEX_ASK),
         },
       });
       const outcome = (await answer).outcome;

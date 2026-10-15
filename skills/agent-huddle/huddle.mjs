@@ -2639,7 +2639,7 @@ function failureReason(result) {
 
 const bin = (agent) => foundBins(harnesses().find((h) => h.agent === agent))[0]?.file ?? agent;
 
-const TERMINAL_HARNESSES = { opencode: 'opencode', dsh: 'DeepSeek Harness' };
+const TERMINAL_HARNESSES = { dsh: 'DeepSeek Harness' };
 
 // Headless runs on the harness's own login: Claude Code prefers an API key from the environment, so the adapter never gets one.
 export const WORKER_HARNESSES = {
@@ -2652,6 +2652,14 @@ export const WORKER_HARNESSES = {
   },
   codex: { label: 'Codex', argv: () => ['bunx', '@agentclientprotocol/codex-acp@2.2.2'], env: { INITIAL_AGENT_MODE: 'workspace-write' }, blocksLocalhost: () => !codexNetworkAllowed() },
   gemini: { label: 'Gemini CLI', argv: () => [bin('gemini'), '--acp'], mode: 'autoEdit' },
+  // opencode allows every shell command by default; this config, merged last, makes them ask on the page.
+  opencode: {
+    label: 'opencode',
+    argv: () => [bin('opencode'), 'acp'],
+    env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: { edit: 'allow', bash: 'ask' } }) },
+    mode: 'build',
+    signIn: 'run opencode auth login in a terminal, then start the worker again',
+  },
 };
 
 function acpCommand(spec) {
@@ -2895,11 +2903,15 @@ async function runWorker(args) {
       await acp.request('initialize', { protocolVersion: 1, clientCapabilities: CLIENT_CAPABILITIES, clientInfo: { name: 'agent-huddle', version: VERSION } });
       const created = await acp.request('session/new', { cwd: folder, mcpServers: [] });
       sessionId = created.sessionId;
-      if (spec.mode && created.modes?.availableModes?.some((m) => m.id === spec.mode)) {
-        await acp.request('session/set_mode', { sessionId, modeId: spec.mode }).then(
+      const setMode = (method, params) =>
+        acp.request(method, { sessionId, ...params }).then(
           () => (mode = spec.mode),
           (err) => console.log(`could not set mode ${spec.mode}: ${err.message}`),
         );
+      const modeOption = spec.mode && created.configOptions?.find((o) => o.category === 'mode');
+      if (spec.mode && created.modes?.availableModes?.some((m) => m.id === spec.mode)) await setMode('session/set_mode', { modeId: spec.mode });
+      else if (modeOption?.options?.flatMap((o) => o.options ?? [o]).some((o) => o.value === spec.mode)) {
+        await setMode('session/set_config_option', { configId: modeOption.id, value: spec.mode });
       }
     } catch (err) {
       return abort(1, `could not start the agent: ${err.message}${spec.signIn ? `; if ${spec.label} is not signed in, ${spec.signIn}` : ''}`);
@@ -3863,12 +3875,12 @@ const COMMANDS = {
   },
   worker: {
     group: 'Agents',
-    summary: 'run a headless agent (Claude Code, Codex, Gemini CLI) that answers when addressed',
+    summary: 'run a headless agent (Claude Code, Codex, Gemini CLI, opencode) that answers when addressed',
     usage: 'worker <harness> <join-url> [--dir <path>]',
     options: [
       '--dir <path>  folder the agent works in (default: current folder)',
       `harness      ${Object.keys(WORKER_HARNESSES).join(', ')}`,
-      "It uses the harness's own sign-in. opencode and DeepSeek Harness join with the invite instead.",
+      "It uses the harness's own sign-in. DeepSeek Harness joins with the invite instead.",
     ],
     example: 'node huddle.mjs worker codex http://127.0.0.1:4747/s/<id> --dir ~/code/api',
   },
