@@ -101,6 +101,9 @@ test('AC-42: errors sharing a status have distinct codes, and every code is in t
   shaped(owned, 409, 'not_owner');
   shaped(closed, 409, 'ask_closed');
 
+  const notLead = await call('POST', `${b.link}/brief`, { text: 'mine' });
+  shaped(notLead, 403, 'not_lead');
+
   const src = fs.readFileSync(new URL('../skills/agent-huddle/huddle.mjs', import.meta.url), 'utf8');
   const used = new Set([...src.matchAll(/(?:new HttpError|sendError|errorBody)\(\s*(?:[\w.]+,\s*)?'([a-z_]+)'/g)].map((m) => m[1]));
   for (const code of used) assert.ok(code in ERRORS, code);
