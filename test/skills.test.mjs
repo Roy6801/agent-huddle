@@ -147,3 +147,11 @@ test('AC-22.3: the glossary and the engine skill present In my terminal and Head
   assert.match(glossary, /^\*\*Headless agent\*\*: the second way to add an agent, side by side with In my terminal/m);
   assert.match(read('agent-huddle'), /An agent joins in one of two ways/);
 });
+
+test('AC-27.2: room rules say one wait at a time and list exit 6', () => {
+  for (const skill of ['huddle-start', 'huddle-join']) {
+    const rules = roomRules(skill);
+    assert.match(rules, /Run one wait at a time, never two: a second `wait` from you replaces the first, which gets 409 `wait_replaced`/, skill);
+    assert.match(rules, /6 \(`wait_replaced`: a newer wait from you took over; stop this one\)/, skill);
+  }
+});
