@@ -41,74 +41,74 @@ async function room(opts = {}) {
 
 test('quiet mentioned agent gets one notice shown to the human', async () => {
   const r = await room();
-  await r.join('codex');
+  await r.join('claude');
   await sleep(QUIET + 30);
-  await r.human('api/post', { text: '@codex-1 ping' });
+  await r.human('api/post', { text: '@claude-1 ping' });
   const notices = await r.notices();
   assert.equal(notices.length, 1);
-  assert.match(notices[0].text, /^codex-1 is working \(last seen <1 min ago\); it will read this when it next waits\./);
+  assert.match(notices[0].text, /^claude-1 is working \(last seen <1 min ago\); it will read this when it next waits\./);
   assert.equal(notices[0].toYou, true);
   assert.deepEqual(notices[0].to, []);
 });
 
 test('no second notice until the agent makes a request', async () => {
   const r = await room();
-  const a = await r.join('codex');
+  const a = await r.join('claude');
   await sleep(QUIET + 30);
-  await r.human('api/post', { text: '@codex-1 one' });
-  await r.human('api/post', { text: '@codex-1 two' });
+  await r.human('api/post', { text: '@claude-1 one' });
+  await r.human('api/post', { text: '@claude-1 two' });
   assert.equal((await r.notices()).length, 1);
   await call('GET', `${a.link}/me`);
   await sleep(QUIET + 30);
-  await r.human('api/post', { text: '@codex-1 three' });
+  await r.human('api/post', { text: '@claude-1 three' });
   assert.equal((await r.notices()).length, 2);
 });
 
 test('agent waiting gets the message and no notice', async () => {
   const r = await room();
-  const a = await r.join('codex');
+  const a = await r.join('claude');
   await sleep(QUIET + 30);
   const pending = call('GET', `${a.link}/wait?wait=5`);
   await sleep(20);
-  await r.human('api/post', { text: '@codex-1 ping' });
+  await r.human('api/post', { text: '@claude-1 ping' });
   const got = await pending;
-  assert.ok(got.json.messages.some((m) => m.text === '@codex-1 ping'));
+  assert.ok(got.json.messages.some((m) => m.text === '@claude-1 ping'));
   assert.equal((await r.notices()).length, 0);
 });
 
 test('recently seen agent is not flagged', async () => {
   const r = await room();
-  await r.join('codex');
-  await r.human('api/post', { text: '@codex-1 ping' });
+  await r.join('claude');
+  await r.human('api/post', { text: '@claude-1 ping' });
   assert.equal((await r.notices()).length, 0);
 });
 
 test('@all with two quiet agents posts one combined notice', async () => {
   const r = await room();
-  await r.join('codex');
+  await r.join('claude');
   await r.join('opencode');
   await sleep(QUIET + 30);
   await r.human('api/post', { text: '@all status?' });
   const notices = await r.notices();
   assert.equal(notices.length, 1);
-  assert.match(notices[0].text, /^Not listening: codex-1 \(working, <1 min\), opencode-1 \(working, <1 min\)\. Working agents read this/);
+  assert.match(notices[0].text, /^Not listening: claude-1 \(working, <1 min\), opencode-1 \(working, <1 min\)\. Working agents read this/);
 });
 
 test('task assigned to a quiet agent posts a notice', async () => {
   const r = await room();
-  await r.join('codex');
+  await r.join('claude');
   await sleep(QUIET + 30);
-  await r.human('api/tasks', { title: 'draw sprite', assignee: 'codex-1' });
+  await r.human('api/tasks', { title: 'draw sprite', assignee: 'claude-1' });
   const notices = await r.notices();
   assert.equal(notices.length, 1);
-  assert.match(notices[0].text, /codex-1 is working/);
+  assert.match(notices[0].text, /claude-1 is working/);
 });
 
 test('an agent is never noticed about its own post', async () => {
   const r = await room();
-  const a = await r.join('codex');
+  const a = await r.join('claude');
   await sleep(QUIET + 30);
-  await call('POST', `${a.link}/post`, { text: '@codex-1 note to self' });
+  await call('POST', `${a.link}/post`, { text: '@claude-1 note to self' });
   assert.equal((await r.notices()).length, 0);
 });
 
@@ -122,71 +122,71 @@ test('human page link 404 hints at the agent join url', async () => {
 
 test('presence: parked wait is listening once the working window ends, other requests are working, aged ones asleep', async () => {
   const r = await room({ activeMs: 150, asleepMs: 100 });
-  const a = await r.join('codex');
-  assert.equal(await r.presence('codex-1'), 'working');
+  const a = await r.join('claude');
+  assert.equal(await r.presence('claude-1'), 'working');
   const pending = call('GET', `${a.link}/wait?wait=1`);
   await sleep(30);
-  assert.equal(await r.presence('codex-1'), 'working');
+  assert.equal(await r.presence('claude-1'), 'working');
   await sleep(150);
-  assert.equal(await r.presence('codex-1'), 'listening');
+  assert.equal(await r.presence('claude-1'), 'listening');
   await pending;
   await call('GET', `${a.link}/me`);
-  assert.equal(await r.presence('codex-1'), 'working');
+  assert.equal(await r.presence('claude-1'), 'working');
   await sleep(200);
-  assert.equal(await r.presence('codex-1'), 'asleep');
+  assert.equal(await r.presence('claude-1'), 'asleep');
   assert.equal((await call('GET', `${a.link}/me`)).json.presence, 'working');
   await call('POST', `${a.link}/leave`, {});
-  assert.equal(await r.presence('codex-1'), 'left');
+  assert.equal(await r.presence('claude-1'), 'left');
 });
 
 test('presence: me?rest=1 is asleep until any other request', async () => {
   const r = await room();
-  const a = await r.join('codex');
+  const a = await r.join('claude');
   await call('GET', `${a.link}/me?rest=1`);
-  assert.equal(await r.presence('codex-1'), 'asleep');
+  assert.equal(await r.presence('claude-1'), 'asleep');
   await call('GET', `${a.link}/me`);
-  assert.equal(await r.presence('codex-1'), 'working');
+  assert.equal(await r.presence('claude-1'), 'working');
 });
 
 test('an asleep agent gets the nudge copy', async () => {
   const r = await room({ activeMs: 60, asleepMs: 60 });
-  await r.join('codex');
+  await r.join('claude');
   await sleep(QUIET + 30);
-  await r.human('api/post', { text: '@codex-1 ping' });
+  await r.human('api/post', { text: '@claude-1 ping' });
   const notices = await r.notices();
-  assert.match(notices[0].text, /^codex-1 is asleep \(last seen <1 min ago\)\. If its turn ended, nudge it in its own terminal\.$/);
+  assert.match(notices[0].text, /^claude-1 is asleep \(last seen <1 min ago\)\. If its turn ended, nudge it in its own terminal\.$/);
 });
 
 test('an agent between two waits gets its own wording', async () => {
   const r = await room({ activeMs: 60 });
-  const a = await r.join('codex');
+  const a = await r.join('claude');
   const abort = new AbortController();
   const pending = fetch(`${a.link}/wait?wait=5`, { signal: abort.signal }).catch(() => {});
   await sleep(30);
   abort.abort();
   await pending;
   await sleep(QUIET + 60);
-  assert.equal(await r.presence('codex-1'), 'listening');
-  await r.human('api/post', { text: '@codex-1 ping' });
+  assert.equal(await r.presence('claude-1'), 'listening');
+  await r.human('api/post', { text: '@claude-1 ping' });
   const notices = await r.notices();
-  assert.match(notices[0].text, /^codex-1 is not waiting right now \(last seen <1 min ago\); it will read this when it next waits\. If its turn ended, nudge it in its own terminal\.$/);
+  assert.match(notices[0].text, /^claude-1 is not waiting right now \(last seen <1 min ago\); it will read this when it next waits\. If its turn ended, nudge it in its own terminal\.$/);
 });
 
 test('a mixed @all notice groups working and asleep agents', async () => {
   const r = await room({ activeMs: 150, asleepMs: 150 });
-  await r.join('codex');
+  await r.join('claude');
   await sleep(QUIET + 130);
   await r.join('opencode');
   await sleep(QUIET + 30);
   await r.human('api/post', { text: '@all status?' });
   const notices = await r.notices();
-  assert.match(notices[0].text, /^Not listening: codex-1 \(asleep, <1 min\), opencode-1 \(working, <1 min\)\./);
+  assert.match(notices[0].text, /^Not listening: claude-1 \(asleep, <1 min\), opencode-1 \(working, <1 min\)\./);
 });
 
 test('a headless agent is never noticed', async () => {
   const r = await room();
-  await call('POST', `${r.created.join}/join`, { harness: 'codex', role: 'headless' });
+  await call('POST', `${r.created.join}/join`, { harness: 'claude', role: 'headless' });
   await sleep(QUIET + 30);
-  await r.human('api/post', { text: '@codex-1 ping' });
+  await r.human('api/post', { text: '@claude-1 ping' });
   assert.equal((await r.notices()).length, 0);
 });
