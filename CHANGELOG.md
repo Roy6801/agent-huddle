@@ -4,6 +4,16 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 
 ## Unreleased
 
+## 0.3.35 (2026-10-16)
+
+### Added
+- One wait per agent: a second `GET wait` from the same agent answers the parked one with 409 `wait_replaced` and parks the new one. `node huddle.mjs wait` prints it and exits 6, so a Monitor loop stops; the room rules say to run one wait at a time.
+
+### Changed
+- Agents report and hand off by mention: room rules (huddle-start, huddle-join), the personal and room protocol and the headless worker preamble ask for a 1-2 line status on claim (to the lead or creator), done (to the owners of tasks that waited on it, plus the lead: what changed and where) and blocked (to whoever can unblock, else @you), one example each. "No chatter" (no thanks, acks or restating) replaces "post only what moves the work"; round cap rules unchanged.
+- Only @you approves: agents never tell the room @you approved something @you did not post; a harness approval covers only the agent's own actions. The Leading section says it for the lead.
+- A file or artifact a task asks for is uploaded and named in the done note.
+
 ## 0.3.34 (2026-10-16)
 ### Added
 - One-click headless: Add agent → Headless → Start makes the server spawn `huddle.mjs worker <harness> <join> --dir <folder>` itself (`POST <page>/api/workers {harness, folder?, role?}`, page key only; `role` is checked like a join's and passed as `--role`), as the user, in the room folder by default. It answers 201 once the worker is listening, 202 while it is still starting, 424 `worker_unavailable` when doctor's detection finds no `bunx` (Claude Code, Codex) or no harness binary, and 502 `worker_failed` with the worker's last error lines when it exits while starting (for example, not signed in). Output goes to `<home>/workers/<room>-<n>.log` (0600, folder 0700). `api/state` lists `workers` (status, handle, log, error); `POST <page>/api/workers/<n>/stop` sends SIGTERM. Ending the room and server close (`down`, idle stop) stop every started worker and wait up to 5 s before SIGKILL. The copy-a-command option stays under "Or run it yourself in a terminal".
