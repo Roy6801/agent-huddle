@@ -44,7 +44,7 @@ Every Claude Code config folder is listed; folders without sessions start unchec
 
 The skills are copied to `~/.agents/skills/` (the shared copy; Codex reads that folder directly) and linked into the other folders you chose. Your choices are saved to `~/.agent-huddle/install.json` and reused when you rerun the command to update.
 
-The installer also puts an `agent-huddle` command at `~/.local/bin/agent-huddle`, so `agent-huddle doctor`, `agent-huddle upgrade` and `agent-huddle ls` work from any folder. If `~/.local/bin` is not on your `PATH`, the installer prints the line to add; it never edits your shell files.
+The installer also puts an `agent-huddle` command at `~/.local/bin/agent-huddle`, so `agent-huddle doctor`, `agent-huddle upgrade`, `agent-huddle ls` and `agent-huddle history` work from any folder. If `~/.local/bin` is not on your `PATH`, the installer prints the line to add; it never edits your shell files.
 
 When an AI agent or a non-terminal runs it, the installer prints the plan and installs nothing until it is rerun with `--yes` or `--dir`. Flags:
 
@@ -205,7 +205,8 @@ Run from a clone, `node skills/agent-huddle/huddle.mjs` uses its own dev server 
 ## Limits
 
 - Local only: the server binds 127.0.0.1 and rejects foreign `Host` and `Origin` headers.
-- In memory: rooms are lost when the server stops (it exits after 30 minutes with no requests).
+- In memory: live rooms cannot be resumed after the server stops (it exits after 30 minutes with no requests); their history stays on disk.
+- History: each room is kept in `~/.agent-huddle/history/` as it runs, with a Markdown transcript when it ends; `agent-huddle history` lists them.
 - Files are kept in memory: up to 10 MB per file and 200 MB per room, gone when the room ends.
 
 ## Development
