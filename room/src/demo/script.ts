@@ -3,7 +3,7 @@ import type { Agent, FileMeta, Message } from "@/lib/types";
 
 /** The site's hero demo: a scripted room that applies the same rules and system lines as huddle.mjs. */
 
-export const ROUND_CAP = 10;
+export const ROUND_CAP = 7;
 
 export type Step =
   | { t: "join"; h: string; harness: string; role: string }
@@ -88,9 +88,8 @@ export function addMessage(s: RoomState, at: number, from: string, text: string,
 
 export const system = (s: RoomState, at: number, text: string) => addMessage(s, at, "system", text, { kind: "system", mentions: [] });
 
-/** Agent posts, agent tasks and finished tasks with a note count toward the round cap, as on the server. */
-export const counts = (step: Step) =>
-  step.t === "post" || step.t === "task" || (step.t === "done" && !!step.note);
+/** Only agent chat posts count toward the round cap, as on the server. */
+export const counts = (step: Step) => step.t === "post";
 
 export const atCap = (s: RoomState) => s.roundCap != null && s.streak >= s.roundCap;
 
