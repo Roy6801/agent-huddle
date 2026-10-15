@@ -334,7 +334,7 @@ export function createHuddle(opts = {}) {
     res.end(text);
   }
 
-  async function readBody(req, limit = BODY_LIMIT, rawText = false) {
+  async function readBody(req, limit = BODY_LIMIT) {
     const declared = Number(req.headers['content-length'] || 0);
     if (declared > limit) throw new HttpError('body_too_large', { kb: limit / 1024 });
     const chunks = [];
@@ -348,7 +348,7 @@ export function createHuddle(opts = {}) {
     if (tooBig) throw new HttpError('body_too_large', { kb: limit / 1024 });
     if (size === 0) return {};
     const raw = Buffer.concat(chunks).toString('utf8');
-    if (rawText && /^text\/(plain|markdown)\b/i.test(req.headers['content-type'] || '')) return { text: raw };
+    if (/^text\/markdown\s*(;|$)/i.test(req.headers['content-type'] || '')) return { text: raw };
     let parsed;
     try {
       parsed = JSON.parse(raw);
@@ -586,8 +586,10 @@ export function createHuddle(opts = {}) {
 
   // ---- mentions ----
 
+  const liveAgents = (s) => [...s.agents.values()].filter((a) => a.status !== 'left');
+
   function validMentions(s) {
-    const live = [...s.agents.values()].filter((a) => a.status !== 'left');
+    const live = liveAgents(s);
     const valid = live.map((a) => `@${a.handle}`);
     for (const a of live) if (childrenOf(s, a.handle).length) valid.push(`@${a.handle}.*`);
     for (const role of new Set(live.map((a) => a.role).filter(Boolean))) valid.push(`@${role}`);
@@ -597,7 +599,7 @@ export function createHuddle(opts = {}) {
 
   function resolveMentions(s, text, poster) {
     const mentions = [...new Set([...text.replace(CODE_RE, ' ').matchAll(MENTION_RE)].map((m) => m[1].toLowerCase()))];
-    const live = [...s.agents.values()].filter((a) => a.status !== 'left');
+    const live = liveAgents(s);
     const to = new Set();
     let toYou = false;
     for (const tok of mentions) {
@@ -1276,8 +1278,9 @@ How the room works:
   }
 
   function setBrief(s, by, text) {
-    cleanText(text, MAX_BRIEF, 'brief');
-    const to = [...s.agents.values()].filter((a) => a.status !== 'left' && a.handle !== by).map((a) => a.handle);
+    if (typeof text !== 'string' || !text.trim() || text.length > MAX_BRIEF) throw new HttpError('invalid_text', { label: 'brief', max: MAX_BRIEF });
+    const paused = by !== 'you' && s.roundCap !== null && s.agentStreak >= s.roundCap;
+    const to = paused ? [] : liveAgents(s).filter((a) => a.handle !== by).map((a) => a.handle);
     const m = system(s, text, { brief: true, to });
     s.brief = { text, by, at: m.at, id: m.id };
     return s.brief;
@@ -1288,7 +1291,7 @@ How the room works:
     const agent = s.byToken.get(token);
     if (!agent) throw new HttpError('unknown_token', { join: `${base}/s/${s.id}` });
     const upload = method === 'POST' && key === 'files';
-    const body = method === 'POST' && !upload ? await readBody(req, /^(tasks(\/\d+)?|brief)$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT, key === 'brief') : {};
+    const body = method === 'POST' && !upload ? await readBody(req, /^(tasks(\/\d+)?|brief)$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
     agent.lastSeen = Date.now();
     agent.nudgedAt = 0;
     if (method === 'POST') markActivity(s);
@@ -1392,7 +1395,7 @@ How the room works:
     if (token !== s.humanToken) throw new HttpError('wrong_page_link');
     if (s.ended && !(method === 'GET' && key === '')) throw new HttpError('room_ended');
     const upload = method === 'POST' && key === 'api/files';
-    const body = method === 'POST' && !upload ? await readBody(req, /^api\/(tasks(\/\d+)?|brief)$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT, key === 'api/brief') : {};
+    const body = method === 'POST' && !upload ? await readBody(req, /^api\/(tasks(\/\d+)?|brief)$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
     s.humanSeen = Date.now();
     const fileMatch = /^api\/files\/([\w-]+)$/.exec(key);
     const askMatch = /^api\/asks\/(\d+)$/.exec(key);
@@ -2173,7 +2176,7 @@ async function runWorker(args) {
         const file = m.taskDetail?.specFile;
         if (file && file.size <= MAX_SPEC * 4) file.text = await fetch(`${me.link}/files/${file.id}`, { signal }).then((r) => (r.ok ? r.text() : null), () => null);
       }
-      const lines = messages.flatMap((m) => [`${m.to?.includes(me.handle) ? '→ you ' : ''}[${m.from}] ${m.text}`, ...taskLines(m.taskDetail)]);
+      const lines = messages.flatMap((m) => [`${m.to?.includes(me.handle) ? '→ you ' : ''}[${m.from}${m.brief ? ', room brief' : ''}] ${m.text}`, ...taskLines(m.taskDetail)]);
       const text = (first ? preamble : '') + lines.join('\n');
       first = false;
       chunks = [];
@@ -2281,7 +2284,7 @@ export function announceText(name, join, page) {
 }
 
 function inviteText(name, join) {
-  const safeName = name.replace(/\s+/g, ' ').replace(/["`]/g, "'").trim();
+  const safeName = safeText(name);
   return `Join my agent-huddle room "${safeName}": a local chat with my other coding agents on this machine (127.0.0.1 only).
 1. Join: curl -s -X POST ${join}/join -H 'content-type: application/json' -d '{"harness":"<claude|codex|agy|gemini|opencode|dsh>"}'
 2. Keep the "link" in the reply; it is your identity in the room; the reply also carries the room \`brief\` and \`folder\`, so work in that folder. \`curl -s <link>\` lists the endpoints (read, post, wait, tasks, files).
@@ -2329,10 +2332,10 @@ async function newRoom(args) {
 }
 
 async function liveRoomNames() {
-  const state = readState();
-  if (!state?.adminToken) return null;
+  const ctx = adminCtx();
+  if (!ctx) return null;
   try {
-    const { rooms } = await admin({ base: `http://127.0.0.1:${state.port}`, token: state.adminToken }, 'GET', 'rooms');
+    const { rooms } = await admin(ctx, 'GET', 'rooms');
     return rooms.map((r) => safeText(r.name));
   } catch {
     return null;
@@ -2785,6 +2788,11 @@ async function upgrade(args) {
 
 // ---- room management ----
 
+function adminCtx() {
+  const state = readState();
+  return state?.adminToken ? { base: `http://127.0.0.1:${state.port}`, token: state.adminToken } : null;
+}
+
 async function adminContext(required) {
   const state = readState();
   const running = state ? await health(state.port).then(() => true, () => false) : false;
@@ -2792,8 +2800,9 @@ async function adminContext(required) {
     console[required ? 'error' : 'log']('No huddle server is running.');
     process.exit(required ? 1 : 0);
   }
-  if (!state.adminToken) throw new Error('the running server has no admin token; restart it with: node huddle.mjs down');
-  return { base: `http://127.0.0.1:${state.port}`, token: state.adminToken };
+  const ctx = adminCtx();
+  if (!ctx) throw new Error('the running server has no admin token; restart it with: node huddle.mjs down');
+  return ctx;
 }
 
 async function admin(ctx, method, route) {

@@ -122,6 +122,32 @@ test('a brief over 20,000 characters or blank is refused and nothing is posted',
   assert.equal(st.brief, null);
 });
 
+test('whitespace padding past 20,000 raw characters is refused', async () => {
+  const { created, join, state } = await room();
+  const codex = await join({ harness: 'codex', lead: created.lead });
+  const res = await call('POST', `${codex.link}/brief`, `x${' '.repeat(20000)}`, { 'content-type': 'text/markdown; charset=utf-8' });
+  assert.equal(res.status, 400);
+  assert.equal(res.json.error, 'invalid_text');
+  assert.equal((await state()).brief, null);
+});
+
+test('a brief set while the room is paused at the round cap addresses no agent, unless you set it', async () => {
+  const { created, join, state } = await room({ roundCap: 1 });
+  const codex = await join({ harness: 'codex', lead: created.lead });
+  const claude = await join({ harness: 'claude' });
+  await call('POST', `${claude.link}/post`, { text: 'hello' });
+  assert.equal((await state()).agentStreak, 1);
+
+  assert.equal((await call('POST', `${codex.link}/brief`, { text: 'lead brief' })).status, 200);
+  let st = await state();
+  assert.equal(st.brief.text, 'lead brief');
+  assert.deepEqual(briefMessages(st).at(-1).to, []);
+
+  assert.equal((await call('POST', `${created.page}/api/brief`, { text: 'your brief' })).status, 200);
+  st = await state();
+  assert.deepEqual(briefMessages(st).at(-1).to, ['codex-1', 'claude-1']);
+});
+
 test('the lead\'s brief does not count as an agent round', async () => {
   const { created, join, state } = await room();
   const codex = await join({ harness: 'codex', lead: created.lead });
@@ -131,7 +157,7 @@ test('the lead\'s brief does not count as an agent round', async () => {
   assert.equal((await state()).agentStreak, 1);
 });
 
-test('AC-66: every join reply, the personal reference and /me carry the folder and the brief', async () => {
+test('AC-66: every join reply and the personal reference carry the folder and the brief, and /me the folder', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-brief-'));
   const { created, join } = await room({ folder: dir });
   const codex = await join({ harness: 'codex', lead: created.lead });
