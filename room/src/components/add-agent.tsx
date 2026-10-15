@@ -21,6 +21,7 @@ const FALLBACK_HARNESSES: readonly (readonly [string, string])[] = [
   ["codex", "Codex"],
   ["gemini", "Gemini CLI"],
   ["opencode", "opencode"],
+  ["dsh", "DeepSeek Harness"],
 ];
 
 type Mode = "terminal" | "headless";
