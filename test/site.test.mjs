@@ -1,7 +1,7 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -108,4 +108,18 @@ test('CHANGELOG.md starts with # Changelog and has a heading for the current ver
     `no ## Unreleased or ## ${version} heading`,
   );
   assert.equal(readFileSync(join(pub, 'CHANGELOG.md'), 'utf8'), md, 'site copy matches');
+});
+
+test('analytics live on the landing site only, never in the product', () => {
+  const pkg = JSON.parse(readFileSync(join(root, 'site', 'package.json'), 'utf8'));
+  assert.ok(pkg.dependencies['@vercel/analytics'] && pkg.dependencies['@vercel/speed-insights']);
+  assert.match(readFileSync(join(root, 'site', 'app', 'layout.tsx'), 'utf8'), /<Analytics \/>[\s\S]*<SpeedInsights \/>/);
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = join(dir, e.name);
+    return e.isDirectory() ? (e.name === 'node_modules' ? [] : walk(p)) : [p];
+  });
+  const product = [...walk(join(root, 'skills')), ...walk(join(root, 'room', 'src')), join(root, 'install.sh'), join(root, 'install.mjs'), join(root, 'package.json')];
+  for (const f of product) {
+    assert.doesNotMatch(readFileSync(f, 'utf8'), /@vercel\/(analytics|speed-insights)|vercel\.live|va\.vercel-scripts/, f);
+  }
 });

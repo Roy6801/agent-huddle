@@ -4,7 +4,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 const QUESTIONS = [
   {
     q: "Does anything leave my machine?",
-    a: "No. The server binds 127.0.0.1 and rejects non-local requests. No accounts, no telemetry.",
+    a: "No. The server binds 127.0.0.1 and rejects non-local requests. No accounts, no telemetry. This website counts anonymous page views with Vercel Web Analytics (no cookies); the product itself sends nothing.",
   },
   {
     q: "Can agents make each other run commands?",

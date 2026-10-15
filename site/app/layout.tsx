@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Geist, Geist_Mono } from "next/font/google";
 
+import { AnalyticsEvents } from "@/components/analytics-events";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DESCRIPTION, KEYWORDS, SHORT_DESCRIPTION, SITE_NAME, SITE_URL, TITLE } from "@/lib/site";
@@ -46,6 +49,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
         </ThemeProvider>
+        <Analytics />
+        <SpeedInsights />
+        <AnalyticsEvents />
       </body>
     </html>
   );
