@@ -144,6 +144,15 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
     const task = createTask({ ...room, streak: 0 }, now, "you", b.title ?? "", b.assignee ?? null, { ...b, after });
     setRoom(task.room);
     data = { id: task.id };
+  } else if (/^\/api\/tasks\/\d+\/reopen$/.test(path)) {
+    const id = Number(path.split("/")[3]);
+    const old = room.tasks.find((t) => t.id === id);
+    const reason = (body as { reason?: string }).reason?.trim();
+    if (!reason) return rejected("invalid_text", "reason is missing, blank or longer than 8000 characters.");
+    if (!old || old.status !== "done") return { r: new Response(null, { status: 409 }), data: { error: "not_done", message: `Task #${id} is not done.` } as Posted<T>["data"] };
+    const task = { ...old, status: "claimed" as const, reopened: { by: "you", reason, at: new Date(now).toISOString() } };
+    setRoom(system({ ...room, streak: 0, tasks: room.tasks.map((t) => (t.id === id ? task : t)) }, now, `you reopened task #${id} "${old.title}": ${reason}`));
+    data = task;
   } else if (path.startsWith("/api/tasks/")) {
     const id = Number(path.slice("/api/tasks/".length));
     const old = room.tasks.find((t) => t.id === id);
