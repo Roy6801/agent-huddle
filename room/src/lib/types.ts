@@ -17,6 +17,8 @@ export type Agent = {
   lastSeen: string;
   /** ISO time a declared working window ends; absent once it has passed. */
   workingUntil?: string;
+  /** Tasks it holds while Asleep; the steward releases them after the release timer. */
+  asleepHolding?: number[];
 };
 
 export type FileMeta = { id: string; name: string; size: number; type: string };
@@ -100,7 +102,7 @@ export type StartedWorker = {
   startedAt: string;
 };
 
-export type PresenceTimers = { workingWindowMinutes: number; asleepMinutes: number; leaveMinutes: number; stallMinutes: number };
+export type PresenceTimers = { workingWindowMinutes: number; asleepMinutes: number; leaveMinutes: number; stallMinutes: number; releaseMinutes: number };
 
 export type Brief = { text: string; by: string; at: string; id: number };
 

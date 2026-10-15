@@ -197,6 +197,15 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
             <span className="sr-only">{`, ${PRESENCE_TEXT[presence]}`}</span>
           </SidebarMenuButton>
         </CollapsibleTrigger>
+        {!!agent.asleepHolding?.length && (
+          <Badge
+            variant="outline"
+            className="mt-0.5 mb-1 ml-9 h-4 border-signal px-1.5 text-[10px] text-signal group-data-[collapsible=icon]:hidden"
+            title="Asleep while holding a claim; the steward releases it after the release timer"
+          >
+            {`Asleep holding ${agent.asleepHolding.map((n) => `#${n}`).join(", ")}`}
+          </Badge>
+        )}
         {flag && (
           <Badge
             variant="outline"
