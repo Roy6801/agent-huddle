@@ -6,6 +6,7 @@ import { RoundCap } from "@/components/round-cap";
 import { AssignmentMode } from "@/components/assignment-mode";
 import { SettingsAccordion } from "@/components/settings-accordion";
 import { Tasks } from "@/components/tasks";
+import { WorktreeSetting } from "@/components/worktree-setting";
 import { Sidebar, SidebarContent, SidebarHeader, SidebarRail } from "@/components/ui/sidebar";
 import { useRoom, useSource } from "@/hooks/use-room";
 import { fmtSize, fmtTime, INLINE_TYPES } from "@/lib/format";
@@ -85,6 +86,7 @@ export function Board() {
               <HeadlessBudgets />
               <PresenceTimers />
               <RoomFolder />
+              <WorktreeSetting />
             </SettingsAccordion>
           </>
         )}

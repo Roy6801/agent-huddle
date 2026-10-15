@@ -14,12 +14,16 @@ export type Agent = {
   stopRequested?: boolean;
   folder?: string | null;
   folderCheck?: "inside" | "outside" | "unreported" | null;
+  /** Its own git worktree of the room folder's repository, when the room gives each agent one. */
+  worktree?: Worktree;
   lastSeen: string;
   /** ISO time a declared working window ends; absent once it has passed. */
   workingUntil?: string;
   /** Tasks it holds while Asleep; the steward releases them after the release timer. */
   asleepHolding?: number[];
 };
+
+export type Worktree = { path: string; branch: string; base: string };
 
 export type FileMeta = { id: string; name: string; size: number; type: string };
 
@@ -88,6 +92,7 @@ export type Headless = { wakesPerHour: number; runMinutes: number; idleMinutes: 
 
 /** regular: a free agent may take a ready task assigned to someone else; strict: only the assignee may claim it. */
 export type Assignment = "regular" | "strict";
+export type WorktreeMode = "off" | "per-agent";
 
 /** A headless worker this room's page started; the server runs it and writes its output to `log`. */
 export type StartedWorker = {
@@ -117,6 +122,7 @@ export type StateResponse = {
   brief?: Brief | null;
   roundCap?: number | null;
   assignment?: Assignment;
+  worktrees?: WorktreeMode;
   headless?: Headless;
   presenceTimers?: PresenceTimers;
   agentStreak?: number;
