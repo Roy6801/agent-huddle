@@ -116,6 +116,15 @@ test('new --dir stores the folder, defaults to the cwd, and the worker path is h
   assert.ok((await (await fetch(joined.link)).text()).includes(dir));
 });
 
+test('new --dir refuses a folder that does not exist and creates no room', async () => {
+  const missing = path.join(os.tmpdir(), `huddle-missing-${process.pid}-${Date.now()}`);
+  const res = await cli('new', 'ghostroom', '--dir', missing);
+  assert.equal(res.code, 1);
+  assert.ok(res.stderr.includes(`--dir is not a folder: ${missing}`), res.stderr);
+  const rooms = await cli('ls', '--json');
+  assert.ok(!rooms.stdout.includes('ghostroom'));
+});
+
 test('join --lead makes the joiner the room lead', async () => {
   const room = JSON.parse((await cli('new', 'led')).stdout);
   assert.equal(typeof room.lead, 'string');

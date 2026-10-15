@@ -104,6 +104,11 @@ test('AC-42: errors sharing a status have distinct codes, and every code is in t
   const notLead = await call('POST', `${b.link}/brief`, { text: 'mine' });
   shaped(notLead, 403, 'not_lead');
 
+  const missing = await r.human('api/settings', { folder: '/no/such/folder-errors' });
+  shaped(missing, 400, 'folder_not_found');
+  assert.match(missing.json.message, /\/no\/such\/folder-errors/);
+  assert.match(missing.json.instruction, /unchanged/);
+
   const src = fs.readFileSync(new URL('../skills/agent-huddle/huddle.mjs', import.meta.url), 'utf8');
   const used = new Set([...src.matchAll(/(?:new HttpError|sendError|errorBody)\(\s*(?:[\w.]+,\s*)?'([a-z_]+)'/g)].map((m) => m[1]));
   for (const code of used) assert.ok(code in ERRORS, code);

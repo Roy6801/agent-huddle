@@ -105,6 +105,8 @@ export const ERRORS = {
     'Raise leaveMinutes or lower asleepMinutes so an agent sleeps before it is removed.'],
   invalid_folder: [400, 'folder must be an absolute path of at most 1024 characters.',
     'Send the full path, for example /Users/me/project, or leave folder out.'],
+  folder_not_found: [400, (p) => `${p.folder} does not exist or is not a folder.`,
+    'Create the folder first, or send the full path of an existing folder; the room folder is unchanged.'],
   unknown_mention: [400, (p) => `@${p.tok} is not anyone in this room, so nothing was posted.`,
     'Mention one of the valid handles or roles and post again; wrap code in backticks if this was not a mention.'],
   invalid_options: [400, 'options must be a list of 1-6 choices.', `Send options as an array like [${OPTION_SHAPE}].`],
@@ -138,7 +140,7 @@ export const ERRORS = {
     'Upload it first with POST files?name=<filename>, then attach the id it returns.'],
   invalid_for: [400, 'for must be "you".', 'Send "for":"you" to relay to @you, or leave it out.'],
   empty_settings: [400, 'The settings request changes nothing.',
-    'Send at least one of roundCap, wakesPerHour, runMinutes, idleMinutes, workingWindowMinutes, asleepMinutes, leaveMinutes or stallMinutes.'],
+    'Send at least one of folder, roundCap, wakesPerHour, runMinutes, idleMinutes, workingWindowMinutes, asleepMinutes, leaveMinutes or stallMinutes.'],
   unknown_agent: [404, (p) => `@${p.handle} is not a live agent in this room.`, 'Pick a live agent from the roster.'],
   not_headless: [409, (p) => `@${p.handle} is not a headless agent.`, 'Ask it in the room to stop, or stop it in its own terminal.'],
   file_too_large: [413, (p) => `The file is ${p.size ? `${megabytes(p.size)}, ` : ''}over the ${megabytes(p.limit)} limit per file.`,
@@ -928,19 +930,43 @@ export function createHuddle(opts = {}) {
     return { id: m.id };
   }
 
+  function moveFolder(s, folder) {
+    const old = s.folder;
+    s.folder = folder;
+    const to = liveAgents(s).map((a) => a.handle);
+    if (!old) {
+      system(s, `you set the room folder to ${folder}`, { to });
+      return;
+    }
+    system(s, `you moved the room folder from ${old} to ${folder}`, { to });
+    const lead = s.lead && s.agents.get(s.lead);
+    createTask(s, 'you', {
+      title: "Move the room's content to the new folder",
+      description: `Move the files the room made from ${old} to ${folder}, then post where they are.`,
+      assignee: lead && lead.status !== 'left' ? lead.handle : undefined,
+    });
+  }
+
   function setSettings(s, body) {
+    let folder;
+    if (body.folder !== undefined) {
+      if (typeof body.folder !== 'string') throw new HttpError('invalid_folder');
+      folder = parseFolder(body.folder);
+      if (!fs.statSync(folder, { throwIfNoEntry: false })?.isDirectory()) throw new HttpError('folder_not_found', { folder });
+    }
     const cap = body.roundCap === undefined ? s.roundCap : parseRoundCap(body.roundCap);
     const headless = parseHeadless(body, s.headless);
     const timers = parsePresence(body, s.timers);
     const capChanged = body.roundCap !== undefined;
     const timersChanged = Object.keys(timers).some((k) => timers[k] !== s.timers[k]);
     const budgetsChanged = Object.keys(headless).some((k) => headless[k] !== s.headless[k]);
-    if (!capChanged && ![...Object.keys(HEADLESS_LIMITS), ...Object.keys(PRESENCE_LIMITS)].some((k) => body[k] !== undefined)) {
+    if (folder === undefined && !capChanged && ![...Object.keys(HEADLESS_LIMITS), ...Object.keys(PRESENCE_LIMITS)].some((k) => body[k] !== undefined)) {
       throw new HttpError('empty_settings');
     }
     s.roundCap = cap;
     s.headless = headless;
     s.timers = timers;
+    if (folder !== undefined && folder !== s.folder) moveFolder(s, folder);
     if (capChanged) {
       system(s, cap === null ? "you turned the round cap off (agents won't pause for you)" : `you set the round cap to ${cap}`);
     }
@@ -951,7 +977,7 @@ export function createHuddle(opts = {}) {
       const p = presenceTimers(timers);
       system(s, `you set presence timers: working ${p.workingWindowMinutes} min, asleep ${p.asleepMinutes} min, leave after ${p.leaveMinutes} min, stall nudge after ${p.stallMinutes} min`);
     }
-    return { roundCap: s.roundCap };
+    return { roundCap: s.roundCap, ...(folder !== undefined && { folder: s.folder }) };
   }
 
   function stopAgent(s, handle) {
@@ -2328,6 +2354,7 @@ async function newRoom(args) {
       const value = args[i] === '--dir' ? args[++i] : args[i].slice(6);
       if (!value) throw new Error('--dir needs a folder path');
       dir = path.resolve(value);
+      if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`--dir is not a folder: ${dir}`);
       continue;
     }
     let raw;

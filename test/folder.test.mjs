@@ -18,9 +18,13 @@ async function room(body = {}) {
   running.push(huddle);
   const created = await (await post(`http://127.0.0.1:${port}/new`, { name: 'folders', ...body })).json();
   const join = async (b) => (await post(`${created.join}/join`, { harness: 'codex', ...b })).json();
+  const settings = async (body) => {
+    const res = await post(`${created.page}/api/settings`, body);
+    return { status: res.status, json: await res.json() };
+  };
   const state = async () => (await fetch(`${created.page}/api/state`)).json();
   const check = async (handle) => (await state()).agents.find((a) => a.handle === handle);
-  return { join, state, check };
+  return { join, state, check, settings, created };
 }
 
 const tmp = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-folder-')));
@@ -84,4 +88,67 @@ test('a spawned child inherits its parent folder', async () => {
   const parent = await join({ folder: dir });
   const child = await (await post(`${parent.link}/spawn`, { role: 'helper' })).json();
   assert.equal((await check(child.handle)).folder, dir);
+});
+
+const notes = (st, re) => st.messages.filter((m) => m.kind === 'system' && re.test(m.text));
+
+test('AC-72: moving the folder tells every live agent, tasks the lead, and re-checks the roster', async () => {
+  const a = tmp();
+  const b = tmp();
+  const { join, state, check, settings, created } = await room({ folder: a });
+  const lead = await join({ folder: a, lead: created.lead });
+  const inA = await join({ folder: a });
+  const inB = await join({ folder: b });
+  assert.equal((await check(inB.handle)).folderCheck, 'outside');
+
+  const res = await settings({ folder: b });
+  assert.equal(res.status, 200);
+  assert.equal(res.json.folder, b);
+  const st = await state();
+  assert.equal(st.folder, b);
+  const moved = notes(st, /moved the room folder/);
+  assert.equal(moved.length, 1);
+  assert.ok(moved[0].text.includes(a) && moved[0].text.includes(b));
+  for (const h of [lead.handle, inA.handle, inB.handle]) assert.ok(moved[0].to.includes(h));
+  assert.equal(st.tasks.length, 1);
+  assert.equal(st.tasks[0].createdBy, 'you');
+  assert.equal(st.tasks[0].assignee, lead.handle);
+  assert.ok(st.tasks[0].description.includes(a) && st.tasks[0].description.includes(b));
+  assert.equal((await check(inA.handle)).folderCheck, 'outside');
+  assert.equal((await check(inB.handle)).folderCheck, 'inside');
+  assert.equal((await join({})).folder, b);
+
+  const again = await settings({ folder: b });
+  assert.equal(again.status, 200);
+  const after = await state();
+  assert.equal(notes(after, /moved the room folder/).length, 1);
+  assert.equal(after.tasks.length, 1);
+});
+
+test('AC-72: setting a first folder posts the notice and creates no task', async () => {
+  const dir = tmp();
+  const { join, state, settings } = await room();
+  const x = await join({});
+  assert.equal((await settings({ folder: dir })).status, 200);
+  const st = await state();
+  const set = notes(st, /you set the room folder/);
+  assert.equal(set.length, 1);
+  assert.ok(set[0].text.includes(dir) && set[0].to.includes(x.handle));
+  assert.equal(st.tasks.length, 0);
+});
+
+test('AC-73: a missing or relative folder is refused and nothing changes', async () => {
+  const dir = tmp();
+  const { state, settings } = await room({ folder: dir });
+  const before = await state();
+  for (const [folder, error] of [[`${dir}-tset`, 'folder_not_found'], ['huddle-test', 'invalid_folder'], [null, 'invalid_folder']]) {
+    const res = await settings({ folder, roundCap: 7 });
+    assert.equal(res.status, 400);
+    assert.equal(res.json.error, error);
+  }
+  const st = await state();
+  assert.equal(st.folder, dir);
+  assert.equal(st.roundCap, before.roundCap);
+  assert.equal(st.messages.length, before.messages.length);
+  assert.equal(st.tasks.length, before.tasks.length);
 });
