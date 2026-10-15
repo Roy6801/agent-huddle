@@ -179,7 +179,8 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
             />
             <span className="min-w-0 truncate font-mono text-xs font-medium">{agent.handle}</span>
             {agent.role && (agent.role !== "lead" || !agent.lead) && (
-              <span className="min-w-0 truncate text-[11px] text-muted-foreground">{agent.role}</span>
+              // The role gives way before the handle does; the details below still show it in full.
+              <span className="min-w-0 shrink-[999] truncate text-[11px] text-muted-foreground">{agent.role}</span>
             )}
             {agent.lead && (
               <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">
