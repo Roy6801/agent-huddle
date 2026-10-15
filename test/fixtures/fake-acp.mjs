@@ -35,7 +35,12 @@ const split = (sessionId, ids) => {
 };
 const save = () => {
   if (!FAKE_ACP_LOG) return;
-  const env = { apiKey: 'ANTHROPIC_API_KEY' in process.env, authToken: 'ANTHROPIC_AUTH_TOKEN' in process.env, opencodeConfig: process.env.OPENCODE_CONFIG_CONTENT ?? null };
+  const env = {
+    apiKey: 'ANTHROPIC_API_KEY' in process.env,
+    authToken: 'ANTHROPIC_AUTH_TOKEN' in process.env,
+    opencodeConfig: process.env.OPENCODE_CONFIG_CONTENT ?? null,
+    dshMode: process.env.DSH_PERMISSION_MODE ?? null,
+  };
   fs.writeFileSync(`${FAKE_ACP_LOG}.tmp`, JSON.stringify({ prompts: log, cancels, outcomes, modes, calls, maxConcurrency, env }));
   fs.renameSync(`${FAKE_ACP_LOG}.tmp`, FAKE_ACP_LOG);
 };
@@ -80,7 +85,24 @@ const OPENCODE_ASK = {
     { optionId: 'reject', kind: 'reject_once', name: 'Reject' },
   ],
 };
-const ASKS = { claude: CLAUDE_ASK, opencode: OPENCODE_ASK };
+// DeepSeek Harness dsh-v0.2.1-alpha.4 (packages/acp/acp): the ask names only the call, sent after its
+// tool_call update (title = tool name, kind other); the options are allow-once and reject-once.
+const DSH_CALL = {
+  sessionUpdate: 'tool_call',
+  toolCallId: 'call-1',
+  title: 'bash',
+  kind: 'other',
+  status: 'in_progress',
+  rawInput: { command: 'rm -rf ../shared/build', sandbox_permissions: 'danger-full-access', justification: 'The build output lives outside the workspace.' },
+};
+const DSH_ASK = {
+  toolCall: { toolCallId: 'call-1' },
+  options: [
+    { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' },
+    { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' },
+  ],
+};
+const ASKS = { claude: CLAUDE_ASK, opencode: OPENCODE_ASK, dsh: DSH_ASK };
 
 const methods = {
   initialize: () => ({ protocolVersion: 1, agentCapabilities: {} }),
@@ -116,6 +138,7 @@ const methods = {
     if (FAKE_ACP_PERMISSION) {
       const id = `req-${nextReq++}`;
       const answer = new Promise((resolve) => pendingReplies.set(id, resolve));
+      if (FAKE_ACP_PERMISSION === 'dsh') send({ method: 'session/update', params: { sessionId, update: DSH_CALL } });
       send({
         id,
         method: 'session/request_permission',

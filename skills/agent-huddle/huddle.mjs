@@ -2639,8 +2639,6 @@ function failureReason(result) {
 
 const bin = (agent) => foundBins(harnesses().find((h) => h.agent === agent))[0]?.file ?? agent;
 
-const TERMINAL_HARNESSES = { dsh: 'DeepSeek Harness' };
-
 // Headless runs on the harness's own login: Claude Code prefers an API key from the environment, so the adapter never gets one.
 export const WORKER_HARNESSES = {
   claude: {
@@ -2659,6 +2657,13 @@ export const WORKER_HARNESSES = {
     env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ permission: { edit: 'allow', bash: 'ask' } }) },
     mode: 'build',
     signIn: 'run opencode auth login in a terminal, then start the worker again',
+  },
+  // workspace-write even when the shell sets another mode: danger-full-access would never ask.
+  dsh: {
+    label: 'DeepSeek Harness',
+    argv: () => [bin('dsh'), '--profile', 'acp'],
+    env: { DSH_PERMISSION_MODE: 'workspace-write' },
+    signIn: 'open DeepSeek Harness and set up DeepSeek on its Models page, then start the worker again',
   },
 };
 
@@ -2686,9 +2691,6 @@ async function runWorker(args) {
   }
   const [harness, joinUrl] = positional;
   if (!harness || !joinUrl) fail('usage: node huddle.mjs worker <harness> <join-url> [--dir <path>]');
-  if (Object.hasOwn(TERMINAL_HARNESSES, harness)) {
-    fail(`${TERMINAL_HARNESSES[harness]} hears the room from its own terminal; join it with the invite (Add agent → In my terminal) instead of a headless worker`);
-  }
   const spec = Object.hasOwn(WORKER_HARNESSES, harness) ? WORKER_HARNESSES[harness] : null;
   if (!spec) fail(`worker does not support "${harness}"; supported: ${Object.keys(WORKER_HARNESSES).join(', ')}`);
   const folder = path.resolve(dir);
@@ -2716,6 +2718,7 @@ async function runWorker(args) {
   const me = await joinRes.json();
 
   let chunks = [];
+  const toolCalls = new Map();
   let lastMessageId = null;
   let between = false;
   let sessionId;
@@ -2732,12 +2735,24 @@ async function runWorker(args) {
   const nap = (ms) => Promise.race([sleep(ms), aborted]);
   const ASK_LABELS = { allow_once: 'Allow once', allow_always: 'Always', reject_once: 'Deny', reject_always: 'Deny' };
   let run = null;
-  async function askHuman({ toolCall: call = {}, options = [] }) {
+  // An ask may name only its tool call (DeepSeek Harness does); the call's earlier updates fill in what it is.
+  async function askHuman({ toolCall = {}, options = [] }) {
+    const call = { ...toolCalls.get(toolCall.toolCallId), ...toolCall };
     const cancelled = { outcome: { outcome: 'cancelled' } };
     const paths = (call.locations ?? []).map((l) => l.path).filter(Boolean);
-    const command = call.rawInput?.command;
-    const title = String(call.title || [call.kind, paths[0]].filter(Boolean).join(' ') || 'run an action').slice(0, 300);
-    const detail = [paths.length && `paths: ${paths.join(', ')}`, command && `command: ${[command].flat().join(' ')}`].filter(Boolean).join('\n').slice(0, 2000);
+    const input = call.rawInput ?? {};
+    const command = input.command && [input.command].flat().join(' ');
+    const bareTool = /^[\w-]+$/.test(call.title ?? '');
+    const title = String((bareTool && command) || call.title || [call.kind, paths[0]].filter(Boolean).join(' ') || 'run an action').slice(0, 300);
+    const detail = [
+      paths.length && `paths: ${paths.join(', ')}`,
+      command && `command: ${command}`,
+      typeof input.sandbox_permissions === 'string' && `sandbox: ${input.sandbox_permissions}`,
+      typeof input.justification === 'string' && `why: ${input.justification}`,
+    ]
+      .filter(Boolean)
+      .join('\n')
+      .slice(0, 2000);
     const known = options.filter((o) => ASK_LABELS[o.kind]);
     const picked = ['allow_once', 'allow_always', 'reject_once'].map((k) => known.find((o) => o.kind === k)).filter(Boolean);
     if (!picked.some((o) => o.kind === 'reject_once')) {
@@ -2795,6 +2810,11 @@ async function runWorker(args) {
     onNotify(method, params) {
       const u = params?.update;
       if (method !== 'session/update' || params.sessionId !== sessionId || !u) return;
+      if (u.toolCallId && (u.sessionUpdate === 'tool_call' || u.sessionUpdate === 'tool_call_update')) {
+        const known = toolCalls.get(u.toolCallId) ?? {};
+        for (const key of ['title', 'kind', 'rawInput', 'locations']) if (u[key] !== undefined) known[key] = u[key];
+        toolCalls.set(u.toolCallId, known);
+      }
       if (u.sessionUpdate !== 'agent_message_chunk') {
         between = true;
         return;
@@ -2969,6 +2989,7 @@ async function runWorker(args) {
       const text = (first ? await preamble() : '') + lines.join('\n');
       first = false;
       chunks = [];
+      toolCalls.clear();
       lastMessageId = null;
       between = false;
       console.log(`running on ${messages.length} message(s)`);
@@ -3875,12 +3896,12 @@ const COMMANDS = {
   },
   worker: {
     group: 'Agents',
-    summary: 'run a headless agent (Claude Code, Codex, Gemini CLI, opencode) that answers when addressed',
+    summary: 'run a headless agent (Claude Code, Codex, Gemini CLI, opencode, DeepSeek Harness) that answers when addressed',
     usage: 'worker <harness> <join-url> [--dir <path>]',
     options: [
       '--dir <path>  folder the agent works in (default: current folder)',
       `harness      ${Object.keys(WORKER_HARNESSES).join(', ')}`,
-      "It uses the harness's own sign-in. DeepSeek Harness joins with the invite instead.",
+      "It uses the harness's own sign-in.",
     ],
     example: 'node huddle.mjs worker codex http://127.0.0.1:4747/s/<id> --dir ~/code/api',
   },

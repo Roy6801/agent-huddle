@@ -567,12 +567,11 @@ test('worker claude joins headless in acceptEdits, answers a mention, and its ad
   assert.deepEqual(readPrompts().modes, [{ sessionId: 'fake-1', modeId: 'acceptEdits' }]);
   const who = await (await fetch(`${room.claude.link}/who`)).json();
   assert.equal(who.agents.find((a) => a.handle === 'claude-2').role, 'headless');
-  assert.doesNotMatch(w.err, /hears the room from its own terminal/);
 
   await say(room.claude, '@claude-2 hi');
   await until(async () => (await state(room)).some((m) => m.from === 'claude-2' && m.text.includes('echo(fake-1)')));
   assert.match(readPrompts().prompts[0].text, /You are claude-2 \(headless Claude Code\)/);
-  assert.deepEqual(readPrompts().env, { apiKey: false, authToken: false, opencodeConfig: null });
+  assert.deepEqual(readPrompts().env, { apiKey: false, authToken: false, opencodeConfig: null, dshMode: null });
 });
 
 test('a Claude Code permission request becomes an Allow once / Always / Deny card with its command', async () => {
@@ -598,7 +597,6 @@ test('worker opencode joins headless, switches its mode to build, asks for shell
   assert.deepEqual(readPrompts().modes, [{ sessionId: 'fake-1', configId: 'mode', value: 'build' }]);
   const who = await (await fetch(`${room.claude.link}/who`)).json();
   assert.equal(who.agents.find((a) => a.handle === 'opencode-1').role, 'headless');
-  assert.doesNotMatch(w.err, /hears the room from its own terminal/);
 
   await say(room.claude, '@opencode-1 hi');
   await until(async () => (await state(room)).some((m) => m.from === 'opencode-1' && m.text.includes('echo(fake-1)')));
@@ -628,6 +626,51 @@ test('a failed start of worker opencode says to run opencode auth login', async 
   assert.match(w.err, /could not start the agent: auth required; if opencode is not signed in, run opencode auth login in a terminal/);
 });
 
+test('worker dsh joins headless in workspace-write even when the shell asks for full access, and answers a mention', async () => {
+  const room = await setup('dsh headless room');
+  const w = startWorker(room.created.join, { DSH_PERMISSION_MODE: 'danger-full-access' }, 'dsh');
+  await until(() => w.out.includes('dsh-1 is listening'));
+  assert.doesNotMatch(w.out, /mode/);
+  const who = await (await fetch(`${room.claude.link}/who`)).json();
+  assert.equal(who.agents.find((a) => a.handle === 'dsh-1').role, 'headless');
+
+  await say(room.claude, '@dsh-1 hi');
+  await until(async () => (await state(room)).some((m) => m.from === 'dsh-1' && m.text.includes('echo(fake-1)')));
+  assert.match(readPrompts().prompts[0].text, /You are dsh-1 \(headless DeepSeek Harness\)/);
+  assert.equal(readPrompts().env.dshMode, 'workspace-write');
+});
+
+test('a DeepSeek Harness ask that names only its call is posted at once as a card built from the call', async () => {
+  const room = await setup('dsh perm room');
+  const w = startWorker(room.created.join, { FAKE_ACP_PERMISSION: 'dsh' }, 'dsh');
+  await until(() => w.out.includes('dsh-1 is listening'));
+  await say(room.claude, '@dsh-1 clean the shared build');
+  const [ask] = await until(async () => (await asks(room)).length && asks(room), 2000);
+  assert.equal(ask.title, 'rm -rf ../shared/build');
+  assert.equal(ask.detail, 'command: rm -rf ../shared/build\nsandbox: danger-full-access\nwhy: The build output lives outside the workspace.');
+  assert.deepEqual(ask.options.map((o) => [o.optionId, o.name]), [['allow-once', 'Allow once'], ['reject-once', 'Deny']]);
+  assert.equal((await answerAsk(room, 1, 'allow-once')).status, 200);
+  await until(() => readPrompts().outcomes?.length);
+  assert.deepEqual(readPrompts().outcomes, [{ outcome: 'selected', optionId: 'allow-once' }]);
+});
+
+test('an unanswered DeepSeek Harness ask is rejected once the card expires, never left hanging', async () => {
+  const room = await setup('dsh perm timeout room');
+  const w = startWorker(room.created.join, { FAKE_ACP_PERMISSION: 'dsh' }, 'dsh');
+  await until(() => w.out.includes('dsh-1 is listening'));
+  await say(room.claude, '@dsh-1 clean the shared build');
+  await until(() => readPrompts().outcomes?.length, 15000);
+  assert.deepEqual(readPrompts().outcomes, [{ outcome: 'selected', optionId: 'reject-once' }]);
+  assert.equal((await asks(room))[0].status, 'timeout');
+});
+
+test('a failed start of worker dsh says to set up DeepSeek in DeepSeek Harness', async () => {
+  const room = await setup('dsh start-fail room');
+  const w = startWorker(room.created.join, { FAKE_ACP_NEW_FAIL: '1' }, 'dsh');
+  assert.equal(await w.exit, 1);
+  assert.match(w.err, /if DeepSeek Harness is not signed in, open DeepSeek Harness and set up DeepSeek on its Models page/);
+});
+
 test('worker gemini sends no set_mode when the agent offers no modes', async () => {
   const room = await setup('gemini mode room');
   const w = startWorker(room.created.join, {}, 'gemini');
@@ -640,18 +683,8 @@ test('an unknown harness exits 1 listing the supported ones', async () => {
   const room = await setup('unknown harness room');
   const w = startWorker(room.created.join, {}, 'foo');
   assert.equal(await w.exit, 1);
-  assert.match(w.err, /supported: claude, codex, gemini, opencode/);
+  assert.match(w.err, /supported: claude, codex, gemini, opencode, dsh/);
 });
-
-for (const harness of ['dsh']) {
-  test(`worker ${harness} is refused: it hears the room from its own terminal`, async () => {
-    const room = await setup(`${harness} refused room`);
-    const w = startWorker(room.created.join, {}, harness);
-    assert.notEqual(await w.exit, 0);
-    assert.match(w.err, /hears the room from its own terminal/);
-    assert.doesNotMatch(w.err, /supported:/);
-  });
-}
 
 const settings = (room, body) => fetch(`${room.created.page}/api/settings`, json(body));
 
@@ -786,7 +819,7 @@ test('the room state shows a requested stop and lists the supported harnesses', 
   const st = await (await fetch(`${room.created.page}/api/state`)).json();
   assert.equal(st.agents.find((a) => a.handle === 'codex-1').stopRequested, true);
   assert.equal(st.agents.find((a) => a.handle === 'claude-1').stopRequested, false);
-  assert.deepEqual(st.harnesses, [['claude', 'Claude Code'], ['codex', 'Codex'], ['gemini', 'Gemini CLI'], ['opencode', 'opencode']]);
+  assert.deepEqual(st.harnesses, [['claude', 'Claude Code'], ['codex', 'Codex'], ['gemini', 'Gemini CLI'], ['opencode', 'opencode'], ['dsh', 'DeepSeek Harness']]);
   await w.exit;
 });
 
@@ -802,7 +835,10 @@ test('each worker harness launches its pinned adapter', () => {
   assert.equal(cmd('opencode').at(-1), 'acp');
   assert.equal(WORKER_HARNESSES.opencode.mode, 'build');
   assert.deepEqual(JSON.parse(WORKER_HARNESSES.opencode.env.OPENCODE_CONFIG_CONTENT), { permission: { edit: 'allow', bash: 'ask' } });
-  assert.deepEqual(Object.keys(WORKER_HARNESSES), ['claude', 'codex', 'gemini', 'opencode']);
+  assert.deepEqual(cmd('dsh').slice(1), ['--profile', 'acp']);
+  assert.equal(WORKER_HARNESSES.dsh.env.DSH_PERMISSION_MODE, 'workspace-write');
+  assert.equal(WORKER_HARNESSES.dsh.mode, undefined);
+  assert.deepEqual(Object.keys(WORKER_HARNESSES), ['claude', 'codex', 'gemini', 'opencode', 'dsh']);
 });
 
 test('a headless worker starts with the room folder and the brief', async () => {
