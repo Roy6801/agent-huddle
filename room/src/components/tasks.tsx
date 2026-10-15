@@ -1,11 +1,13 @@
-import { CircleCheckIcon, CircleDashedIcon, CircleDotIcon, DownloadIcon, PlusIcon } from "lucide-react";
+import { CircleCheckIcon, CircleDashedIcon, CircleDotIcon, CopyIcon, DownloadIcon, PlusIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
+import { CopyButton } from "@/components/copy-button";
 import { ErrorBox, type ErrorInfo } from "@/components/error-box";
 import { Jazzicon } from "@/components/identity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
@@ -221,6 +223,38 @@ function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
   );
 }
 
+function SpecDialog({ task, spec }: { task: Task; spec: string }) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button type="button" variant="link" size="sm" className="h-auto justify-start px-0 text-[11px]" aria-label={`Read the spec for task #${task.id}`}>
+          Read spec
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-3xl">
+        <DialogHeader className="pr-8">
+          <DialogTitle className="leading-snug break-words">
+            #{task.id} {task.title}
+          </DialogTitle>
+          <DialogDescription className="text-xs">{spec.length.toLocaleString("en-US")} characters</DialogDescription>
+        </DialogHeader>
+        {task.description && <p className="text-xs leading-5 break-words whitespace-pre-wrap text-muted-foreground">{task.description}</p>}
+        <div
+          tabIndex={0}
+          role="region"
+          aria-label={`Spec for task #${task.id}`}
+          className="min-h-0 flex-1 overflow-y-auto rounded-md bg-muted px-3 py-2.5 text-sm leading-relaxed break-words whitespace-pre-wrap text-foreground/90 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          {spec}
+        </div>
+        <div className="flex justify-end">
+          <CopyButton text={spec} label="Copy spec" icon={<CopyIcon aria-hidden />} variant="outline" size="sm" />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function TaskCard({ task }: { task: Task }) {
   const [open, setOpen] = useState(false);
   const status = STATUS[task.status] ?? STATUS.open;
@@ -291,14 +325,10 @@ function TaskCard({ task }: { task: Task }) {
             )}
             {task.spec && (
               <Row label="Spec">
-                <div
-                  tabIndex={0}
-                  role="region"
-                  aria-label={`Spec for task #${task.id}`}
-                  className="max-h-64 overflow-y-auto rounded-md bg-muted px-2 py-1.5 break-words whitespace-pre-wrap text-foreground/85 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                >
-                  {task.spec}
+                <div className="rounded-md bg-muted px-2 py-1.5 text-foreground/85">
+                  <p className="line-clamp-6 break-words whitespace-pre-wrap">{task.spec}</p>
                 </div>
+                <SpecDialog task={task} spec={task.spec} />
               </Row>
             )}
             {task.specFile && (
