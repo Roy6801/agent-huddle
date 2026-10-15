@@ -286,20 +286,31 @@ function parseFolder(v) {
   if (typeof v !== 'string' || v.length > 1024 || !path.isAbsolute(v)) {
     throw new HttpError('invalid_folder');
   }
-  return v;
+  return path.resolve(v);
 }
 
-function folderCheck(s, folder) {
-  if (!s.folder) return null;
-  if (!folder) return 'unreported';
-  const real = (p) => {
+const isFolder = (p) => fs.statSync(p, { throwIfNoEntry: false })?.isDirectory() === true;
+
+// Real path with the on-disk letter case; a path that does not exist yet keeps its missing tail.
+function canonical(p) {
+  const rest = [];
+  let dir = path.resolve(p);
+  for (;;) {
     try {
-      return fs.realpathSync(p);
+      return path.join(fs.realpathSync.native(dir), ...rest);
     } catch {
-      return path.resolve(p);
+      const parent = path.dirname(dir);
+      if (parent === dir) return path.resolve(p);
+      rest.unshift(path.basename(dir));
+      dir = parent;
     }
-  };
-  const rel = path.relative(real(s.folder), real(folder));
+  }
+}
+
+function folderCheck(roomFolder, folder) {
+  if (!roomFolder) return null;
+  if (!folder) return 'unreported';
+  const rel = path.relative(roomFolder, canonical(folder));
   return rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel) ? 'outside' : 'inside';
 }
 
@@ -445,6 +456,7 @@ export function createHuddle(opts = {}) {
       role,
       parent,
       folder,
+      folderCheck: folderCheck(s.folder && canonical(s.folder), folder),
       token,
       link: `${base}/s/${s.id}/as/${token}`,
       status: 'active',
@@ -588,7 +600,7 @@ export function createHuddle(opts = {}) {
         role: a.role,
         parent: a.parent,
         folder: a.folder ?? null,
-        folderCheck: folderCheck(s, a.folder),
+        folderCheck: a.folderCheck ?? null,
         ...(s.lead === a.handle && { lead: true }),
         status: agentStatus(s, a),
         presence: presence(s, a),
@@ -932,18 +944,21 @@ export function createHuddle(opts = {}) {
 
   function moveFolder(s, folder) {
     const old = s.folder;
+    const live = liveAgents(s);
+    const to = live.map((a) => a.handle);
+    const lead = s.lead && live.find((a) => a.handle === s.lead);
+    const real = canonical(folder);
     s.folder = folder;
-    const to = liveAgents(s).map((a) => a.handle);
+    for (const a of s.agents.values()) a.folderCheck = folderCheck(real, a.folder);
     if (!old) {
       system(s, `you set the room folder to ${folder}`, { to });
       return;
     }
     system(s, `you moved the room folder from ${old} to ${folder}`, { to });
-    const lead = s.lead && s.agents.get(s.lead);
     createTask(s, 'you', {
       title: "Move the room's content to the new folder",
-      description: `Move the files the room made from ${old} to ${folder}, then post where they are.`,
-      assignee: lead && lead.status !== 'left' ? lead.handle : undefined,
+      description: `From: ${old}\nTo: ${folder}\nMove the files the room made, then post where they are.`.slice(0, MAX_DESCRIPTION),
+      assignee: lead?.handle,
     });
   }
 
@@ -952,12 +967,13 @@ export function createHuddle(opts = {}) {
     if (body.folder !== undefined) {
       if (typeof body.folder !== 'string') throw new HttpError('invalid_folder');
       folder = parseFolder(body.folder);
-      if (!fs.statSync(folder, { throwIfNoEntry: false })?.isDirectory()) throw new HttpError('folder_not_found', { folder });
+      if (!isFolder(folder)) throw new HttpError('folder_not_found', { folder });
     }
     const cap = body.roundCap === undefined ? s.roundCap : parseRoundCap(body.roundCap);
     const headless = parseHeadless(body, s.headless);
     const timers = parsePresence(body, s.timers);
     const capChanged = body.roundCap !== undefined;
+    const folderChanged = folder !== undefined && (!s.folder || canonical(folder) !== canonical(s.folder));
     const timersChanged = Object.keys(timers).some((k) => timers[k] !== s.timers[k]);
     const budgetsChanged = Object.keys(headless).some((k) => headless[k] !== s.headless[k]);
     if (folder === undefined && !capChanged && ![...Object.keys(HEADLESS_LIMITS), ...Object.keys(PRESENCE_LIMITS)].some((k) => body[k] !== undefined)) {
@@ -966,7 +982,7 @@ export function createHuddle(opts = {}) {
     s.roundCap = cap;
     s.headless = headless;
     s.timers = timers;
-    if (folder !== undefined && folder !== s.folder) moveFolder(s, folder);
+    if (folderChanged) moveFolder(s, folder);
     if (capChanged) {
       system(s, cap === null ? "you turned the round cap off (agents won't pause for you)" : `you set the round cap to ${cap}`);
     }
@@ -1294,7 +1310,7 @@ How the room works:
       s.leadKey = null;
     }
     narrate(s, `${agent.handle} joined${role ? ` as ${role}` : ''}`);
-    const outside = folderCheck(s, folder) === 'outside';
+    const outside = agent.folderCheck === 'outside';
     if (outside) system(s, `${agent.handle} joined from ${folder}, outside the room folder ${s.folder}.`, { toYou: true });
     return {
       ...agentView(s, agent),
@@ -1985,7 +2001,7 @@ async function runWorker(args) {
   const spec = Object.hasOwn(WORKER_HARNESSES, harness) ? WORKER_HARNESSES[harness] : null;
   if (!spec) fail(`worker does not support "${harness}"; supported: ${Object.keys(WORKER_HARNESSES).join(', ')}`);
   const folder = path.resolve(dir);
-  if (!fs.statSync(folder, { throwIfNoEntry: false })?.isDirectory()) fail(`--dir is not a folder: ${folder}`);
+  if (!isFolder(folder)) fail(`--dir is not a folder: ${folder}`);
   let url;
   try {
     url = new URL(joinUrl);
@@ -2354,7 +2370,7 @@ async function newRoom(args) {
       const value = args[i] === '--dir' ? args[++i] : args[i].slice(6);
       if (!value) throw new Error('--dir needs a folder path');
       dir = path.resolve(value);
-      if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`--dir is not a folder: ${dir}`);
+      if (!isFolder(dir)) throw new Error(`--dir is not a folder: ${dir}`);
       continue;
     }
     let raw;
@@ -2415,7 +2431,11 @@ async function joinRoom(args) {
   let lead;
   let folder = process.cwd();
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--folder' || args[i].startsWith('--folder=')) folder = path.resolve(args[i] === '--folder' ? args[++i] ?? '' : args[i].slice(9));
+    if (args[i] === '--folder' || args[i].startsWith('--folder=')) {
+      const value = args[i] === '--folder' ? args[++i] : args[i].slice(9);
+      if (!value) throw new Error('--folder needs a folder path');
+      folder = path.resolve(value);
+    }
     else if (args[i] === '--harness' || args[i].startsWith('--harness=')) harness = args[i] === '--harness' ? args[++i] : args[i].slice(10);
     else if (args[i] === '--role' || args[i].startsWith('--role=')) role = args[i] === '--role' ? args[++i] : args[i].slice(7);
     else if (args[i] === '--lead' || args[i].startsWith('--lead=')) lead = args[i] === '--lead' ? args[++i] : args[i].slice(7);

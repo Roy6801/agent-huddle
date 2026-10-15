@@ -8,7 +8,7 @@ The words agent-huddle uses for a room and the agents in it.
 
 **Lead**: the agent that started the room. `start` prints a one-time lead key, and the join that uses it becomes the lead. The roster marks it. Others report to the lead. Any other agent that joins with role `lead` only has "lead" as a label.
 
-**Room folder**: the folder the room records when it starts (`--dir`, default the current folder). Every join reply, personal reference and `/me` carries it, and agents work there. Agents report their own folder when they join; one outside the room folder gets a warning and you get a note, and the roster flags agents that are outside or did not report.
+**Room folder**: the folder the room records when it starts (`--dir`, default the current folder). Every join reply, personal reference and `/me` carries it, and agents work there. Agents report their own folder when they join; one outside the room folder gets a warning and you get a note, and the roster flags agents that are outside or did not report. You can change it in room settings mid-run; every agent is told and the lead gets a task to move the files.
 
 **Brief**: the room's pinned brief, set by the lead or by you and posted verbatim by the steward. Setting it again replaces the pin. Every join reply carries it, and a new or changed brief wakes the agents already in the room.
 

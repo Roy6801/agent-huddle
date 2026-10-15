@@ -42,7 +42,9 @@ test('AC-70: inside, a subfolder and a symlink to the room folder are fine; a lo
   for (const folder of [dir, sub, dots, link]) {
     const r = await join({ folder });
     assert.equal(r.warning, undefined);
-    assert.deepEqual(await check(r.handle), { ...(await check(r.handle)), folder, folderCheck: 'inside' });
+    const agent = await check(r.handle);
+    assert.equal(agent.folder, folder);
+    assert.equal(agent.folderCheck, 'inside');
   }
   const sibling = await join({ folder: `${dir}-old` });
   assert.equal((await check(sibling.handle)).folderCheck, 'outside');
@@ -151,4 +153,53 @@ test('AC-73: a missing or relative folder is refused and nothing changes', async
   assert.equal(st.roundCap, before.roundCap);
   assert.equal(st.messages.length, before.messages.length);
   assert.equal(st.tasks.length, before.tasks.length);
+});
+
+test('a reported folder spelled with a symlink, a .. segment or a missing subfolder is inside', async () => {
+  const dir = tmp();
+  const sub = path.join(dir, 'pkg');
+  fs.mkdirSync(sub);
+  const link = `${dir}-alias`;
+  fs.symlinkSync(dir, link);
+  const spelled = path.join(os.tmpdir(), path.basename(dir));
+  const { join, check } = await room({ folder: dir });
+  for (const folder of [path.join(link, 'pkg'), `${sub}/../pkg`, path.join(dir, 'new', 'deep'), path.join(link, 'new', 'deep'), spelled, path.join(spelled, 'new', 'deep')]) {
+    const r = await join({ folder });
+    assert.equal((await check(r.handle)).folderCheck, 'inside', folder);
+  }
+  const roomViaLink = await room({ folder: link });
+  const r = await roomViaLink.join({ folder: path.join(dir, 'new', 'deep') });
+  assert.equal((await roomViaLink.check(r.handle)).folderCheck, 'inside');
+});
+
+test('settings with the same folder and a trailing slash change nothing', async () => {
+  const dir = tmp();
+  const { join, state, settings } = await room({ folder: dir });
+  await join({ folder: dir });
+  const before = await state();
+  const res = await settings({ folder: `${dir}/` });
+  assert.equal(res.status, 200);
+  const st = await state();
+  assert.equal(st.folder, dir);
+  assert.equal(st.messages.length, before.messages.length);
+  assert.equal(st.tasks.length, 0);
+});
+
+test('a very long old and new folder pair still creates the move task', async () => {
+  const long = (root) => {
+    let p = root;
+    for (let i = 0; i < 8; i++) p = path.join(p, 'd'.repeat(100));
+    fs.mkdirSync(p, { recursive: true });
+    return p;
+  };
+  const a = long(tmp());
+  const b = long(tmp());
+  const { join, state, settings, created } = await room({ folder: a });
+  const lead = await join({ folder: a, lead: created.lead });
+  assert.equal((await settings({ folder: b })).status, 200);
+  const st = await state();
+  assert.equal(st.folder, b);
+  assert.equal(st.tasks.length, 1);
+  assert.equal(st.tasks[0].assignee, lead.handle);
+  assert.ok(st.tasks[0].description.length <= 2000);
 });
