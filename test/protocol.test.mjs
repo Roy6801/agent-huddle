@@ -237,6 +237,30 @@ test('mentions: handle.*, role, all, you, human default, emails ignored', async 
   assert.ok(child.handle);
 });
 
+test('mentions: a message lists each mentioned agent once', async () => {
+  const r = await room();
+  const a = await r.join('claude');
+  const b = await r.join('dsh');
+  const c = await r.join('codex');
+  await read(a);
+
+  const waiting = call('GET', `${a.link}/wait?wait=10`);
+  await new Promise((res) => setTimeout(res, 200));
+  const first = await post(b, '@claude-1 tie order changed, @claude-1 please re-run the suite');
+  assert.equal(first.status, 200);
+  const woke = await waiting;
+  const delivered = woke.json.messages.at(-1);
+  assert.deepEqual(delivered.mentions, ['claude-1']);
+  assert.deepEqual(delivered.to, ['claude-1']);
+  assert.equal(woke.json.messages.filter((m) => m.id === first.json.id).length, 1);
+
+  const second = await post(c, '@dsh-1 @claude-1 @dsh-1 review');
+  assert.equal(second.status, 200);
+  const state = await r.state();
+  assert.deepEqual(state.messages.find((m) => m.id === first.json.id).mentions, ['claude-1']);
+  assert.deepEqual(state.messages.find((m) => m.id === second.json.id).mentions, ['dsh-1', 'claude-1']);
+});
+
 test('mentions inside code are ignored; only delimited tokens count', async () => {
   const r = await room();
   const a = await r.join('claude');
