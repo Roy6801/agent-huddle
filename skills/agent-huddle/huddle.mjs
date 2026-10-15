@@ -1542,6 +1542,7 @@ export function createHuddle(opts = {}) {
     const harness = typeof body.harness === 'string' ? body.harness : '';
     if (!Object.hasOwn(WORKER_HARNESSES, harness)) throw new HttpError('unknown_worker_harness', { valid: Object.keys(WORKER_HARNESSES) });
     const { label } = WORKER_HARNESSES[harness];
+    const role = cleanRole(body.role, false);
     const folder = parseFolder(body.folder || undefined) ?? s.folder;
     if (!folder) throw new HttpError('invalid_folder');
     if (!isFolder(folder)) throw new HttpError('worker_folder_not_found', { folder });
@@ -1554,7 +1555,7 @@ export function createHuddle(opts = {}) {
     const log = path.join(dir, `${id8(s)}-${id}.log`);
     const fd = fs.openSync(log, 'w', 0o600);
     fs.fchmodSync(fd, 0o600);
-    const child = spawn(process.execPath, [THIS_FILE, 'worker', harness, join, '--dir', folder], { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [THIS_FILE, 'worker', harness, join, '--dir', folder, ...(role ? ['--role', role] : [])], { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'] });
     const w = { id, harness, label, folder, log, status: 'starting', handle: null, error: null, startedAt: new Date().toISOString(), child, stopping: false };
     s.workers.push(w);
     let settle;
