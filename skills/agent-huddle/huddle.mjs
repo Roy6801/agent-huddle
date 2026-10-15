@@ -26,6 +26,7 @@ const MAX_BRIEF = 20000;
 const MAX_ASK_TITLE = 300;
 const MAX_ASK_DETAIL = 2000;
 const ASK_KINDS = new Set(['allow_once', 'allow_always', 'reject_once', 'reject_always']);
+const PAGE_APPROVALS = new Set(['claude', 'codex']);
 const ASK_ANSWERS = { allow_once: 'allowed once', allow_always: 'always allowed', reject_once: 'denied', reject_always: 'always denied' };
 const MAX_DEPTH = 3;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -1519,7 +1520,8 @@ Endpoints (all relative to your link):
   Download file: curl -s -o player.png ${link}/files/<file-id>
   Read brief:    curl -s ${link}/brief
   Set brief:     curl -s -X POST ${link}/brief -H 'content-type: text/markdown' --data-binary @brief.md   (lead only; pinned and posted verbatim to everyone)
-  Leave:         curl -s -X POST ${link}/leave
+  Leave:         curl -s -X POST ${link}/leave${PAGE_APPROVALS.has(agent.harness) && agent.role !== 'headless' ? `
+  Page approvals: node ${THIS_FILE} approvals on '${link}'${agent.harness === 'claude' ? ' --session <your session id>' : ''}   (optional: your permission prompts ask @you on the page; needs the hook once, node ${THIS_FILE} approvals ${agent.harness})` : ''}
 
 Mentions: @handle, @handle.* (it and its children), @role, @all, @you.
 An unknown mention is rejected with the list of valid ones.
@@ -2336,6 +2338,209 @@ async function waitForTurn(args) {
       return;
     }
   }
+}
+
+// ---- terminal approvals (Claude Code and Codex PermissionRequest hooks) ----
+
+const AGENT_LINK_PATH = /^\/s\/[^/]+\/as\/[^/]+\/?$/;
+const HOOK_TIMEOUT_SECONDS = 200;
+const askHookMs = () => Number(process.env.AGENT_HUDDLE_ASK_HOOK_MS) || 180_000;
+const approvalsFile = () => path.join(resolveHome(), 'approvals.json');
+const HOOK_FILES = {
+  claude: () => path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json'),
+  codex: () => path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'hooks.json'),
+};
+
+function readBindings() {
+  try {
+    const bindings = JSON.parse(fs.readFileSync(approvalsFile(), 'utf8'));
+    return bindings && typeof bindings === 'object' && !Array.isArray(bindings) ? bindings : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeBindings(bindings) {
+  const newest = Object.entries(bindings).sort(([, a], [, b]) => b.at.localeCompare(a.at)).slice(0, 100);
+  fs.writeFileSync(approvalsFile(), `${JSON.stringify(Object.fromEntries(newest), null, 2)}\n`, { mode: 0o600 });
+}
+
+function sessionArg(args) {
+  let session;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--session') session = args[++i];
+    else if (args[i].startsWith('--session=')) session = args[i].slice(10);
+  }
+  return session || process.env.CODEX_THREAD_ID || null;
+}
+
+function permissionHook(harness) {
+  const command = `node ${JSON.stringify(THIS_FILE)} ask-hook ${harness}`;
+  return {
+    matcher: '.*',
+    hooks: [{ type: 'command', command, timeout: HOOK_TIMEOUT_SECONDS, statusMessage: 'Asking on the agent-huddle room page' }],
+  };
+}
+
+const isOurHook = (group) => group?.hooks?.some?.((h) => typeof h.command === 'string' && /huddle\.mjs"? ask-hook /.test(h.command));
+
+function approvalsSetup(harness, args) {
+  const file = HOOK_FILES[harness]();
+  const group = permissionHook(harness);
+  const trust = harness === 'codex' ? ['Then open Codex and run /hooks once to trust it; Codex skips a hook it has not trusted.'] : [];
+  const perRoom = `In each room the agent turns it on for its session: ${HELP_PROG} approvals on <agent-link> (the huddle-join skill offers it).`;
+  if (!args.includes('--write')) {
+    console.log([`Add this to ${file} (or run again with --write):`, JSON.stringify({ hooks: { PermissionRequest: [group] } }, null, 2), ...trust, perRoom].join('\n'));
+    return;
+  }
+  let config = {};
+  if (fs.existsSync(file)) {
+    try {
+      config = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      throw new Error(`${file} is not valid JSON; fix it or add the hook by hand (run without --write to print it)`);
+    }
+  }
+  config.hooks ??= {};
+  const groups = (config.hooks.PermissionRequest ??= []);
+  const at = groups.findIndex(isOurHook);
+  if (at === -1) groups.push(group);
+  else groups[at] = group;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`);
+  console.log([`Wrote the agent-huddle PermissionRequest hook to ${file}.`, ...trust, perRoom].join('\n'));
+}
+
+async function approvalsOn(args) {
+  const link = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--session')[0];
+  let url;
+  try {
+    url = new URL(link);
+  } catch {
+    throw new Error('approvals on needs your agent link (…/s/<id>/as/<token>)');
+  }
+  if (!AGENT_LINK_PATH.test(url.pathname)) throw new Error('approvals on needs your agent link (…/s/<id>/as/<token>), not a page or join URL');
+  const session = sessionArg(args);
+  if (!session) throw new Error('approvals on needs --session <id>: Claude Code passes ${CLAUDE_SESSION_ID} from the skill; Codex sets CODEX_THREAD_ID');
+  const base = `${url.origin}${url.pathname.replace(/\/$/, '')}`;
+  const res = await fetch(`${base}/me`, { signal: AbortSignal.timeout(5000) }).catch(() => null);
+  const me = res?.ok ? await res.json() : null;
+  if (!me?.handle) throw new Error(`that link is not a live agent in a room (${res ? res.status : 'server unreachable'})`);
+  writeBindings({ ...readBindings(), [session]: { link: base, handle: me.handle, at: new Date().toISOString() } });
+  console.log(`Permission prompts of this session now ask on the room page as ${me.handle}; with no answer in 3 minutes they fall back to the terminal. Needs the hook once: ${HELP_PROG} approvals claude|codex`);
+}
+
+function approvalsOff(args) {
+  const session = sessionArg(args);
+  if (!session) throw new Error('approvals off needs --session <id> (Codex: CODEX_THREAD_ID is used when set)');
+  const bindings = readBindings();
+  const had = Boolean(bindings[session]);
+  delete bindings[session];
+  writeBindings(bindings);
+  console.log(had ? 'Permission prompts of this session ask in the terminal again.' : 'This session was not sending prompts to a room.');
+}
+
+async function approvals(args) {
+  const [sub, ...rest] = args;
+  if (HOOK_FILES[sub]) return approvalsSetup(sub, rest);
+  if (sub === 'on') return approvalsOn(rest);
+  if (sub === 'off') return approvalsOff(rest);
+  throw new Error(`usage: ${HELP_PROG} ${COMMANDS.approvals.usage}`);
+}
+
+function readStdin(ms = 5000) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    const timer = setTimeout(() => reject(new Error('no hook input')), ms);
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => {
+      data += chunk;
+      if (data.length > 1_000_000) reject(new Error('hook input too large'));
+    });
+    process.stdin.on('end', () => {
+      clearTimeout(timer);
+      resolve(data);
+    });
+    process.stdin.on('error', reject);
+  });
+}
+
+function describeRequest({ tool_name: tool, tool_input: given, cwd }) {
+  const input = given && typeof given === 'object' && !Array.isArray(given) ? given : {};
+  const command = [input.command ?? []].flat().join(' ');
+  const patched = [...command.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map((m) => m[1]);
+  const target = patched.join(', ') || command.split('\n')[0] || input.file_path || input.url || input.description || '';
+  const title = `${tool || 'tool'}${target ? `: ${target}` : ''}`.slice(0, 300);
+  const detail = [
+    input.description && `why: ${input.description}`,
+    command ? `command: ${command}` : Object.keys(input).length > 0 && `input: ${JSON.stringify(input)}`,
+    cwd && `folder: ${cwd}`,
+  ].filter(Boolean).join('\n').slice(0, 2000);
+  return { title, detail };
+}
+
+// The exact PermissionRequest output both harnesses parse; "always" is only offered to Claude Code,
+// which applies the request's own permission_suggestions (Codex fails closed on updatedPermissions).
+function hookOutput(optionId, input) {
+  const decision = optionId === 'deny'
+    ? { behavior: 'deny', message: 'Denied by the human on the agent-huddle room page.' }
+    : { behavior: 'allow', ...(optionId === 'always' && { updatedPermissions: input.permission_suggestions }) };
+  return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision } };
+}
+
+async function hookDecision(harness) {
+  if (!HOOK_FILES[harness] || process.stdin.isTTY) return null;
+  const input = JSON.parse(await readStdin());
+  const bound = typeof input?.session_id === 'string' ? readBindings()[input.session_id] : null;
+  if (!bound) return null;
+  const always = harness === 'claude' && Array.isArray(input.permission_suggestions) && input.permission_suggestions.length > 0;
+  const options = [
+    { optionId: 'allow', kind: 'allow_once', name: 'Allow once' },
+    ...(always ? [{ optionId: 'always', kind: 'allow_always', name: 'Always' }] : []),
+    { optionId: 'deny', kind: 'reject_once', name: 'Deny' },
+  ];
+  const { title, detail } = describeRequest(input);
+  const headers = { 'content-type': 'application/json' };
+  const deadline = Date.now() + askHookMs();
+  const made = await fetch(`${bound.link}/asks`, {
+    method: 'POST', headers, body: JSON.stringify({ title, ...(detail && { detail }), options }), signal: AbortSignal.timeout(5000),
+  });
+  if (!made.ok) return null;
+  const { id } = await made.json();
+  let settled = false;
+  let failures = 0;
+  try {
+    while (Date.now() < deadline) {
+      const wait = Math.max(1, Math.min(25, Math.ceil((deadline - Date.now()) / 1000)));
+      let ask;
+      try {
+        const got = await fetch(`${bound.link}/asks/${id}?wait=${wait}`, { signal: AbortSignal.timeout((wait + 5) * 1000) });
+        if ([401, 404, 410].includes(got.status)) return null;
+        if (!got.ok) throw new Error(`ask lookup failed (${got.status})`);
+        ask = await got.json();
+        failures = 0;
+      } catch {
+        if (++failures >= 3) return null;
+        await sleep(1000);
+        continue;
+      }
+      if (ask.status === 'open') continue;
+      settled = true;
+      return ask.status === 'answered' ? hookOutput(ask.answer.optionId, input) : null;
+    }
+    return null;
+  } finally {
+    if (!settled) {
+      await fetch(`${bound.link}/asks/${id}/cancel`, { method: 'POST', headers, body: '{}', signal: AbortSignal.timeout(3000) }).catch(() => {});
+    }
+  }
+}
+
+// Prints a verdict only when you answered on the page; anything else prints nothing, so the terminal prompt shows.
+async function askHook(args) {
+  const decision = await hookDecision(args[0]).catch(() => null);
+  if (decision) process.stdout.write(`${JSON.stringify(decision)}\n`, () => process.exit(0));
+  else process.exit(0);
 }
 
 function acpClient(argv, { cwd, env, onNotify, onRequest, onExit }) {
@@ -3666,6 +3871,26 @@ const COMMANDS = {
     ],
     example: 'node huddle.mjs worker codex http://127.0.0.1:4747/s/<id> --dir ~/code/api',
   },
+  approvals: {
+    group: 'Agents',
+    summary: 'send the permission prompts of a terminal Claude Code or Codex agent to the room page',
+    usage: 'approvals claude|codex [--write] | approvals on <agent-link> [--session <id>] | approvals off [--session <id>]',
+    options: [
+      'claude|codex    print the PermissionRequest hook for that harness and the file it belongs in',
+      '--write         merge it into that file (Claude Code settings.json, Codex hooks.json)',
+      'on <link>       send this session\'s prompts to the room page as that agent',
+      'off             send them to the terminal again',
+      '--session <id>  the harness session id (default: CODEX_THREAD_ID; Claude Code: ${CLAUDE_SESSION_ID} in a skill)',
+    ],
+    example: 'node huddle.mjs approvals on http://127.0.0.1:4747/s/<id>/as/<token> --session <session-id>',
+  },
+  'ask-hook': {
+    group: 'Agents',
+    summary: 'the PermissionRequest hook itself: prints your answer from the page, or nothing',
+    usage: 'ask-hook claude|codex',
+    options: ['Reads the hook JSON on stdin. Prints nothing and exits 0 on any failure or after 3 minutes, so the terminal prompt shows.'],
+    example: 'node huddle.mjs ask-hook claude < request.json',
+  },
   up: {
     group: 'Server',
     summary: 'start the local server (or reuse the running one), print its URL',
@@ -3786,6 +4011,10 @@ async function main(argv) {
       return waitForTurn(args);
     case 'worker':
       return runWorker(args);
+    case 'approvals':
+      return approvals(args);
+    case 'ask-hook':
+      return askHook(args);
     case 'help':
       return args[0] ? commandHelp(args[0]) : usage();
     case undefined:
