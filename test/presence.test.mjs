@@ -92,7 +92,7 @@ test('an agent that posts once and goes quiet is working, then asleep, then leav
   assert.ok(seen.has('working'));
   assert.ok(!seen.has('listening'));
   assert.equal(await r.presence('codex-1'), 'asleep');
-  await sleep(400);
+  await sleep(600);
   r.huddle.sweep();
   assert.equal(await r.presence('codex-1'), 'left');
   const task = (await r.human('api/state')).json.tasks.find((t) => t.id === 1);
@@ -165,28 +165,28 @@ test('presence timers set in room settings show in state, post one system line a
   const pending = call('GET', `${a.link}/wait?wait=2`);
   await sleep(200);
   assert.equal(await r.presence('codex-1'), 'listening');
-  const res = await r.human('api/settings', { workingMinutes: 20 });
+  const res = await r.human('api/settings', { workingWindowMinutes: 20 });
   assert.equal(res.status, 200);
   const state = (await r.human('api/state')).json;
-  assert.equal(state.presenceTimers.workingMinutes, 20);
+  assert.equal(state.presenceTimers.workingWindowMinutes, 20);
   assert.equal(state.agentStreak, 0);
   assert.equal(state.messages.at(-1).text, 'you set presence timers: working 20 min, asleep 0 min, leave after 0 min');
   assert.equal(await r.presence('codex-1'), 'working');
-  assert.equal((await call('GET', `${a.link}/me`)).json.presenceTimers.workingMinutes, 20);
+  assert.equal((await call('GET', `${a.link}/me`)).json.presenceTimers.workingWindowMinutes, 20);
   await pending;
 });
 
 test('presence timers outside their range, or leave not longer than asleep, are refused and change nothing', async () => {
   const r = await room({});
   const before = (await r.human('api/state')).json;
-  assert.deepEqual(before.presenceTimers, { workingMinutes: 10, asleepMinutes: 10, leaveMinutes: 15 });
+  assert.deepEqual(before.presenceTimers, { workingWindowMinutes: 10, asleepMinutes: 10, leaveMinutes: 15 });
   for (const [body, message] of [
-    [{ workingMinutes: 0 }, /workingMinutes must be a whole number from 1 to 120/],
-    [{ workingMinutes: 'ten' }, /workingMinutes must be a whole number from 1 to 120/],
+    [{ workingWindowMinutes: 0 }, /workingWindowMinutes must be a whole number from 1 to 120/],
+    [{ workingWindowMinutes: 'ten' }, /workingWindowMinutes must be a whole number from 1 to 120/],
     [{ asleepMinutes: 121 }, /asleepMinutes must be a whole number from 1 to 120/],
     [{ leaveMinutes: 4 }, /leaveMinutes must be a whole number from 5 to 240/],
     [{ leaveMinutes: 10 }, /leaveMinutes must be longer than asleepMinutes/],
-    [{ workingMinutes: 30, asleepMinutes: 20 }, /leaveMinutes must be longer than asleepMinutes/],
+    [{ workingWindowMinutes: 30, asleepMinutes: 20 }, /leaveMinutes must be longer than asleepMinutes/],
   ]) {
     const res = await r.human('api/settings', body);
     assert.equal(res.status, 400);
@@ -204,4 +204,41 @@ test('the personal protocol explains presence with the room timers and how to de
   assert.match(protocol, /Working long: .*"workingMinutes":25/);
   assert.match(protocol, /Working for\s+20 min after any call other than wait/);
   assert.match(protocol, /Listening while it\s+only waits/);
+});
+
+test('a wait that returns messages makes the agent working again', async () => {
+  const r = await room();
+  const a = await r.join('codex');
+  const b = await r.join('opencode');
+  const pending = call('GET', `${a.link}/wait?wait=5`);
+  await sleep(300);
+  assert.equal(await r.presence('codex-1'), 'listening');
+  await post(b, '@codex-1 ping');
+  assert.equal((await pending).status, 200);
+  assert.equal(await r.presence('codex-1'), 'working');
+  await sleep(300);
+  await post(b, '@codex-1 again');
+  assert.equal((await call('GET', `${a.link}/wait`)).status, 200);
+  assert.equal(await r.presence('codex-1'), 'working');
+});
+
+test('auto-leave waits for the working window to end', async () => {
+  const r = await room({ activeMs: 400, asleepMs: 200, idleMs: 300 });
+  await r.join('codex');
+  await sleep(350);
+  r.huddle.sweep();
+  assert.equal(await r.presence('codex-1'), 'working');
+  await sleep(450);
+  r.huddle.sweep();
+  assert.equal(await r.presence('codex-1'), 'left');
+});
+
+test('leaving clears a declared working time from the roster', async () => {
+  const r = await room();
+  const a = await r.join('codex');
+  await call('POST', `${a.link}/post`, { text: 'long job', workingMinutes: 30 });
+  await call('POST', `${a.link}/leave`, {});
+  const entry = (await r.human('api/state')).json.agents.find((x) => x.handle === 'codex-1');
+  assert.equal(entry.presence, 'left');
+  assert.equal(entry.workingUntil, undefined);
 });

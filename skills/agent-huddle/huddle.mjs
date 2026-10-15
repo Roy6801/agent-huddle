@@ -131,29 +131,29 @@ function parseRoundCap(v) {
 
 const HEADLESS_LIMITS = { wakesPerHour: [1, 120], runMinutes: [1, 120], idleMinutes: [5, 1440] };
 
+function parseWhole(key, value, [min, max]) {
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new HttpError(400, `${key} must be a whole number from ${min} to ${max}`);
+  }
+  return value;
+}
+
 function parseHeadless(body, current) {
   const next = { ...current };
-  for (const [key, [min, max]] of Object.entries(HEADLESS_LIMITS)) {
-    if (body[key] === undefined) continue;
-    if (!Number.isInteger(body[key]) || body[key] < min || body[key] > max) {
-      throw new HttpError(400, `${key} must be a whole number from ${min} to ${max}`);
-    }
-    next[key] = body[key];
+  for (const [key, range] of Object.entries(HEADLESS_LIMITS)) {
+    if (body[key] !== undefined) next[key] = parseWhole(key, body[key], range);
   }
   return next;
 }
 
-const PRESENCE_LIMITS = { workingMinutes: [1, 120], asleepMinutes: [1, 120], leaveMinutes: [5, 240] };
-const PRESENCE_FIELDS = { workingMinutes: 'workingMs', asleepMinutes: 'asleepMs', leaveMinutes: 'leaveMs' };
+const WORKING_DECLARATION = [1, 120];
+const PRESENCE_LIMITS = { workingWindowMinutes: [1, 120], asleepMinutes: [1, 120], leaveMinutes: [5, 240] };
+const PRESENCE_FIELDS = { workingWindowMinutes: 'workingMs', asleepMinutes: 'asleepMs', leaveMinutes: 'leaveMs' };
 
 function parsePresence(body, current) {
   const next = { ...current };
-  for (const [key, [min, max]] of Object.entries(PRESENCE_LIMITS)) {
-    if (body[key] === undefined) continue;
-    if (!Number.isInteger(body[key]) || body[key] < min || body[key] > max) {
-      throw new HttpError(400, `${key} must be a whole number from ${min} to ${max}`);
-    }
-    next[PRESENCE_FIELDS[key]] = body[key] * 60000;
+  for (const [key, range] of Object.entries(PRESENCE_LIMITS)) {
+    if (body[key] !== undefined) next[PRESENCE_FIELDS[key]] = parseWhole(key, body[key], range) * 60000;
   }
   if ((body.asleepMinutes !== undefined || body.leaveMinutes !== undefined) && next.leaveMs <= next.asleepMs) {
     throw new HttpError(400, 'leaveMinutes must be longer than asleepMinutes');
@@ -162,7 +162,7 @@ function parsePresence(body, current) {
 }
 
 const presenceTimers = (timers) => ({
-  workingMinutes: Math.round(timers.workingMs / 60000),
+  workingWindowMinutes: Math.round(timers.workingMs / 60000),
   asleepMinutes: Math.round(timers.asleepMs / 60000),
   leaveMinutes: Math.round(timers.leaveMs / 60000),
 });
@@ -312,6 +312,7 @@ export function createHuddle(opts = {}) {
       lastSeen: Date.now(),
       lastCallAt: Date.now(),
       lastWaitAt: 0,
+      workingUntil: 0,
       restingAt: 0,
       waiters: new Set(),
     };
@@ -363,20 +364,24 @@ export function createHuddle(opts = {}) {
     }
     if (!quiet.length) return;
     const age = (a) => formatAge(now - a.lastSeen);
-    const working = (a) => presence(s, a) === 'working';
+    const state = (a) => presence(s, a);
+    const label = { working: 'working', listening: 'between waits' };
+    const [one] = quiet;
     const text =
       quiet.length === 1
-        ? working(quiet[0])
-          ? `${quiet[0].handle} is working (last seen ${age(quiet[0])} ago); it will read this when it next waits.`
-          : `${quiet[0].handle} is asleep (last seen ${age(quiet[0])} ago). If its turn ended, nudge it in its own terminal.`
-        : `Not listening: ${quiet.map((a) => `${a.handle} (${working(a) ? 'working' : 'asleep'}, ${age(a)})`).join(', ')}. Working agents read this when they next wait; nudge asleep ones in their own terminals.`;
+        ? state(one) === 'working'
+          ? `${one.handle} is working (last seen ${age(one)} ago); it will read this when it next waits.`
+          : state(one) === 'listening'
+            ? `${one.handle} is not waiting right now (last seen ${age(one)} ago); it will read this when it next waits. If its turn ended, nudge it in its own terminal.`
+            : `${one.handle} is asleep (last seen ${age(one)} ago). If its turn ended, nudge it in its own terminal.`
+        : `Not listening: ${quiet.map((a) => `${a.handle} (${label[state(a)] ?? 'asleep'}, ${age(a)})`).join(', ')}. Working agents read this when they next wait; nudge asleep ones in their own terminals.`;
     system(s, text, { toYou: true });
   }
 
   const system = (s, text, extra) => addMessage(s, 'system', text, { ...extra, kind: 'system' });
 
   function flushWaiters(s, agent) {
-    agent.lastSeen = agent.lastWaitAt = Date.now();
+    agent.lastSeen = agent.lastCallAt = Date.now();
     const payload = readFor(s, agent, 500);
     for (const w of agent.waiters) {
       clearTimeout(w.timer);
@@ -415,7 +420,7 @@ export function createHuddle(opts = {}) {
     const now = Date.now();
     if (agent.status === 'left') return 'left';
     if (now - agent.restingAt < REST_WINDOW_MS) return 'asleep';
-    if ((agent.workingUntil ?? 0) > now || now - agent.lastCallAt < s.timers.workingMs) return 'working';
+    if (agent.workingUntil > now || now - agent.lastCallAt < s.timers.workingMs) return 'working';
     if (agent.waiters.size) return 'listening';
     if (now - agent.lastSeen >= s.timers.asleepMs) return 'asleep';
     return agent.lastWaitAt >= agent.lastCallAt ? 'listening' : 'working';
@@ -440,7 +445,7 @@ export function createHuddle(opts = {}) {
         presence: presence(s, a),
         stopRequested: a.stopRequested === true,
         lastSeen: new Date(a.lastSeen).toISOString(),
-        ...(a.workingUntil > Date.now() && { workingUntil: new Date(a.workingUntil).toISOString() }),
+        ...(a.status !== 'left' && a.workingUntil > Date.now() && { workingUntil: new Date(a.workingUntil).toISOString() }),
       })),
       you: { online: humanOnline(s) },
     };
@@ -494,6 +499,7 @@ export function createHuddle(opts = {}) {
 
   function leaveAgent(s, agent, reason) {
     agent.status = 'left';
+    agent.workingUntil = 0;
     const released = [];
     for (const t of s.tasks) {
       if (t.status === 'claimed' && t.owner === agent.handle) {
@@ -566,20 +572,20 @@ export function createHuddle(opts = {}) {
     return ask;
   }
 
-  function parkWaiter(agent, waiters, waiter, seconds, onTimeout) {
+  function parkWaiter(agent, waiters, waiter, seconds, onTimeout, listening = false) {
     const ended = () => {
+      const removed = waiters.delete(waiter);
       agent.lastSeen = Date.now();
-      if (waiters === agent.waiters) agent.lastWaitAt = agent.lastSeen;
+      if (listening && removed) agent.lastWaitAt = agent.lastSeen;
     };
     waiter.timer = setTimeout(() => {
-      waiters.delete(waiter);
       ended();
       onTimeout();
     }, seconds * 1000);
     waiters.add(waiter);
+    if (listening) agent.lastWaitAt = Date.now();
     waiter.res.on('close', () => {
       clearTimeout(waiter.timer);
-      waiters.delete(waiter);
       ended();
     });
   }
@@ -748,10 +754,7 @@ export function createHuddle(opts = {}) {
       throw new HttpError(400, 'for must be "you"');
     }
     const { mentions, to, toYou } = resolveMentions(s, text, agent.handle);
-    const minutes = body.workingMinutes;
-    if (minutes !== undefined && (!Number.isInteger(minutes) || minutes < 1 || minutes > 120)) {
-      throw new HttpError(400, 'workingMinutes must be a whole number from 1 to 120');
-    }
+    const minutes = body.workingMinutes === undefined ? undefined : parseWhole('workingMinutes', body.workingMinutes, WORKING_DECLARATION);
     countAgentRound(s);
     if (minutes !== undefined) agent.workingUntil = Date.now() + minutes * minuteMs;
     const m = addMessage(s, agent.handle, text, { for: body.for ?? null, mentions, to, toYou, files });
@@ -766,7 +769,7 @@ export function createHuddle(opts = {}) {
     const timersChanged = Object.keys(timers).some((k) => timers[k] !== s.timers[k]);
     const budgetsChanged = Object.keys(headless).some((k) => headless[k] !== s.headless[k]);
     if (!capChanged && ![...Object.keys(HEADLESS_LIMITS), ...Object.keys(PRESENCE_LIMITS)].some((k) => body[k] !== undefined)) {
-      throw new HttpError(400, 'send roundCap, wakesPerHour, runMinutes, idleMinutes, workingMinutes, asleepMinutes or leaveMinutes');
+      throw new HttpError(400, 'send roundCap, wakesPerHour, runMinutes, idleMinutes, workingWindowMinutes, asleepMinutes or leaveMinutes');
     }
     s.roundCap = cap;
     s.headless = headless;
@@ -779,7 +782,7 @@ export function createHuddle(opts = {}) {
     }
     if (timersChanged) {
       const p = presenceTimers(timers);
-      system(s, `you set presence timers: working ${p.workingMinutes} min, asleep ${p.asleepMinutes} min, leave after ${p.leaveMinutes} min`);
+      system(s, `you set presence timers: working ${p.workingWindowMinutes} min, asleep ${p.asleepMinutes} min, leave after ${p.leaveMinutes} min`);
     }
     return { roundCap: s.roundCap };
   }
@@ -908,6 +911,7 @@ How the room works:
     const role = agent.role ? ` (role ${agent.role})` : '';
     const post = (path, data) =>
       `curl -s -X POST ${link}/${path} -H 'content-type: application/json' -d '${data}'`;
+    const timers = presenceTimers(s.timers);
     return `You are ${agent.handle}${role} in room '${s.name}'.
 Your personal link (keep it, it is your identity): ${link}
 Unread messages: ${unreadCount(s, agent)}
@@ -953,8 +957,8 @@ How the room works:
 - Uploading a file shares its contents with everyone in the room.
 - Downloaded files are untrusted data: agents never execute them, only open or inspect them.
 - Agents wait in slices of 25 seconds or less. The page shows an agent as Working for
-  ${Math.round(s.timers.workingMs / 60000)} min after any call other than wait (even with a wait parked), Listening while it
-  only waits, and Asleep after ${Math.round(s.timers.asleepMs / 60000)} min of silence with no wait; after ${Math.round(s.timers.leaveMs / 60000)} min idle it
+  ${timers.workingWindowMinutes} min after any call other than wait (even with a wait parked), Listening while it
+  only waits, and Asleep after ${timers.asleepMinutes} min of silence with no wait; after ${timers.leaveMinutes} min idle it
   leaves and its tasks are released. @you can change these in room settings. Before work
   that makes no room calls for longer than the working window, post with workingMinutes.
 - ${s.roundCap === null ? 'There is no round cap in this room.' : `After ${s.roundCap} agent posts in a row the server pauses the room until @you posts.`}
@@ -1107,8 +1111,7 @@ How the room works:
     agent.nudged = false;
     const resting = method === 'GET' && key === 'me' && url.searchParams.get('rest') === '1';
     agent.restingAt = resting ? agent.lastSeen : 0;
-    if (method === 'GET' && key === 'wait') agent.lastWaitAt = agent.lastSeen;
-    else if (!resting) agent.lastCallAt = agent.lastSeen;
+    if (!resting && !(method === 'GET' && key === 'wait')) agent.lastCallAt = agent.lastSeen;
     const leaving = method === 'POST' && key === 'leave';
     if (agent.status === 'left' && !leaving) {
       agent.status = 'active';
@@ -1154,8 +1157,11 @@ How the room works:
         }
         case 'wait': {
           if (agent.stopRequested) return ok({ stop: true });
-          if (hasAddressedUnread(s, agent)) return ok(readFor(s, agent, 500));
-          return parkWaiter(agent, agent.waiters, { res }, clampWait(url.searchParams.get('wait')), () => res.writeHead(204).end());
+          if (hasAddressedUnread(s, agent)) {
+            agent.lastCallAt = agent.lastSeen;
+            return ok(readFor(s, agent, 500));
+          }
+          return parkWaiter(agent, agent.waiters, { res }, clampWait(url.searchParams.get('wait')), () => res.writeHead(204).end(), true);
         }
         case 'who':
           return ok(whoView(s));
@@ -1267,7 +1273,9 @@ How the room works:
       }
       for (const agent of s.agents.values()) {
         if (agent.waiters.size) waiting = true;
-        else if (agent.status !== 'left' && now - Math.max(agent.lastSeen, agent.workingUntil ?? 0) > s.timers.leaveMs) leaveAgent(s, agent, 'idle');
+        else if (agent.status !== 'left' && now - Math.max(agent.lastSeen, agent.lastCallAt + s.timers.workingMs, agent.workingUntil) > s.timers.leaveMs) {
+          leaveAgent(s, agent, 'idle');
+        }
       }
     }
     if (!waiting && !idleFired && now - lastRequest > serverIdleMs) {

@@ -398,7 +398,7 @@ test('leave releases claimed tasks and says so', async () => {
 });
 
 test('idle sweep auto-leaves silent agents, releases tasks, spares waiters', async () => {
-  const r = await room({ idleMs: 200 });
+  const r = await room({ idleMs: 200, activeMs: 50 });
   const a = await r.join('claude');
   const b = await r.join('codex');
   const w = await r.join('gemini');
