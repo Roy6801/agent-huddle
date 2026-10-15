@@ -2265,9 +2265,11 @@ export function joinLines(join) {
   ];
 }
 
+const safeText = (text) => text.replace(/\s+/g, ' ').replace(/["`]/g, "'").trim();
+
 // What the starting agent shows the user, verbatim, right after `new`.
 export function announceText(name, join, page) {
-  const safeName = name.replace(/\s+/g, ' ').replace(/["`]/g, "'").trim();
+  const safeName = safeText(name);
   const lines = joinLines(join).map(([label, line]) => `${label}\n\`\`\`\n${line}\n\`\`\``);
   return [
     `Room "${safeName}" is ready.`,
@@ -2311,6 +2313,8 @@ async function newRoom(args) {
       throw new Error(`--round-cap must be a whole number from 1 to ${ROUND_CAP_MAX}, or off`);
     }
   }
+  const running = await health(currentPort()).catch(() => null);
+  const liveRooms = running ? await liveRoomNames() : null;
   const base = await up();
   const name = words.join(' ').trim();
   const res = await fetch(`${base}/new`, {
@@ -2320,7 +2324,29 @@ async function newRoom(args) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || `request failed (${res.status})`);
+  if (running) data.announce = withRunningNote(data.announce, running.version, liveRooms);
   console.log(JSON.stringify(data, null, 2));
+}
+
+async function liveRoomNames() {
+  const state = readState();
+  if (!state?.adminToken) return null;
+  try {
+    const { rooms } = await admin({ base: `http://127.0.0.1:${state.port}`, token: state.adminToken }, 'GET', 'rooms');
+    return rooms.map((r) => safeText(r.name));
+  } catch {
+    return null;
+  }
+}
+
+export function withRunningNote(announce, version, names) {
+  const versions = version === VERSION ? `version ${version}` : `version ${version}; this command is ${VERSION}, so they differ`;
+  const quoted = (names ?? []).map((n) => `"${n}"`);
+  const list = quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} and ${quoted.at(-1)}` : quoted[0];
+  const rooms = names === null ? '' : quoted.length ? ` with live room${quoted.length > 1 ? 's' : ''} ${list}` : ' with no other rooms';
+  const note = `The agent-huddle server was already running (${versions})${rooms}.`;
+  const [first, ...rest] = announce.split('\n\n');
+  return [first, note, ...rest].join('\n\n');
 }
 
 const HARNESS_IDS = ['claude', 'codex', 'agy', 'gemini', 'opencode', 'dsh'];
