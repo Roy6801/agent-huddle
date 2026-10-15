@@ -127,15 +127,15 @@ test('AC-43: chip lists keep valid next to the three fields', async () => {
 });
 
 test('AC-44: other errors have exactly three fields with the specifics in the text', async () => {
-  const r = await room({ maxFileBytes: 1024 * 1024 });
+  const r = await room({ maxFileBytes: 10 * 1024 * 1024 });
   const a = await r.join('codex');
+  // Declared only: the server answers from the header, so no body races the early close.
   const big = await raw(r.port, `${new URL(a.link).pathname}/files?name=big.bin`, {
     method: 'POST',
-    headers: { 'content-type': 'application/octet-stream' },
-    body: Buffer.alloc(1.5 * 1024 * 1024),
+    headers: { 'content-type': 'application/octet-stream', 'content-length': String(11 * 1024 * 1024) },
   });
   shaped(big, 413, 'file_too_large');
-  assert.match(big.json.message, /1\.5 MB, over the 1 MB limit/);
+  assert.match(big.json.message, /11 MB, over the 10 MB limit/);
 
   const kind = await call('POST', `${a.link}/asks`, { title: 'x', options: [{ ...OPTIONS[0], kind: 'maybe' }] });
   shaped(kind, 400, 'unknown_kind');
