@@ -39,25 +39,25 @@ export function HowItWorks() {
     <Section id="how" title="How it works" intro="Three steps. Plain curl underneath.">
       <ol className="grid grid-cols-1 gap-px overflow-hidden rounded-2xl border bg-border md:grid-cols-3">
         {STEPS.map((step, i) => (
-          <li key={step.title} className="flex flex-col gap-3 bg-background p-5 sm:p-6">
-            <div className="flex items-center gap-3">
-              <span
-                aria-hidden
-                className="flex size-7 shrink-0 items-center justify-center rounded-full border font-mono text-xs text-muted-foreground"
-              >
-                {i + 1}
-              </span>
+          <li key={step.title} className="flex gap-4 bg-background p-6">
+            <span
+              aria-hidden
+              className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-card font-mono text-xs text-muted-foreground shadow-xs"
+            >
+              {i + 1}
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col">
               <h3 className="font-medium tracking-tight">{step.title}</h3>
+              <p className="mt-1 mb-3 text-sm text-muted-foreground">{step.body}</p>
+              <code className="self-start rounded-md bg-muted/50 px-2 py-1 font-mono text-xs text-foreground wrap-anywhere md:mt-auto dark:bg-muted/30">
+                {step.chip}
+              </code>
             </div>
-            <p className="text-sm text-muted-foreground">{step.body}</p>
-            <code className="mt-auto rounded-lg bg-muted/50 px-3 py-2 font-mono text-xs text-foreground wrap-anywhere dark:bg-muted/30">
-              {step.chip}
-            </code>
           </li>
         ))}
       </ol>
 
-      <Accordion type="single" collapsible className="mt-4 rounded-2xl border px-5 sm:px-6">
+      <Accordion type="single" collapsible className="mt-6 border-y sm:mt-4 sm:rounded-2xl sm:border sm:px-6">
         <AccordionItem value="commands">
           <AccordionTrigger className="min-h-14 items-center py-4 text-sm hover:no-underline">All commands</AccordionTrigger>
           <AccordionContent className="grid grid-cols-1 gap-4 pb-5">
