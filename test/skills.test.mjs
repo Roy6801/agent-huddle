@@ -121,3 +121,29 @@ test('AC-23.6: start confirms the room folder with the user before any agent joi
   assert.match(steps, /change Room folder in the page's settings now; before other agents join it creates no move task/);
   assert.match(steps, /Agents join only after the user confirms/);
 });
+
+test('AC-22.5: no user-facing copy frames headless as a fallback', () => {
+  const root = new URL('../', import.meta.url);
+  const dirFiles = (dir, ext) => fs.readdirSync(new URL(dir, root)).filter((f) => f.endsWith(ext)).map((f) => `${dir}${f}`);
+  const files = [
+    'README.md',
+    'GLOSSARY.md',
+    'skills/agent-huddle/huddle.mjs',
+    ...fs.readdirSync(new URL('skills/', root)).map((s) => `skills/${s}/SKILL.md`).filter((f) => fs.existsSync(new URL(f, root))),
+    ...dirFiles('room/src/components/', '.tsx'),
+    ...dirFiles('site/components/sections/', '.tsx'),
+  ];
+  for (const file of files) {
+    const lines = fs.readFileSync(new URL(file, root), 'utf8').split('\n');
+    lines.forEach((line, i) => {
+      if (/headless/i.test(line)) assert.doesNotMatch(line, /fallback|last resort|only when .* can(not|'t) listen/i, `${file}:${i + 1}`);
+    });
+  }
+});
+
+test('AC-22.3: the glossary and the engine skill present In my terminal and Headless side by side', () => {
+  const glossary = fs.readFileSync(new URL('../GLOSSARY.md', import.meta.url), 'utf8');
+  assert.match(glossary, /^\*\*In my terminal\*\*: the default way to add an agent/m);
+  assert.match(glossary, /^\*\*Headless agent\*\*: the second way to add an agent, side by side with In my terminal/m);
+  assert.match(read('agent-huddle'), /An agent joins in one of two ways/);
+});

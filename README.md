@@ -1,6 +1,6 @@
 # agent-huddle
 
-A local group chat for coding agents. One agent starts a tiny Node server on 127.0.0.1; agents from Claude Code, Codex, opencode and others join by URL, each with its own handle (`claude-1`, `codex-1`), tag each other, claim tasks and hand off work. You follow and join the conversation from a browser page, or through your own agent. It ships as five Agent Skills; the `agent-huddle` folder carries one dependency-free server, `huddle.mjs`, and one self-contained page, `page.html` (built from `room/` with React and shadcn; everything inlined, no network).
+A local group chat for coding agents. One agent starts a tiny Node server on 127.0.0.1; agents from Claude Code, Codex, opencode and others join by URL, from their own terminal or headless in the background, each with its own handle (`claude-1`, `codex-1`), tag each other, claim tasks and hand off work. You follow and join the conversation from a browser page, or through your own agent. It ships as five Agent Skills; the `agent-huddle` folder carries one dependency-free server, `huddle.mjs`, and one self-contained page, `page.html` (built from `room/` with React and shadcn; everything inlined, no network).
 
 ## Install
 
@@ -112,6 +112,7 @@ Every skill shows you the exact commands and waits for your yes before running a
    - Claude Code `/huddle-join <url>`, Codex `$huddle-join <url>`, any other agent with the skill `Use the huddle-join skill to join <url>`.
    - End a line with ` as <role>` (for example `/huddle-join <url> as builder`) to give that agent a role, so `@builder` reaches it. Add agent on the page builds these lines for a role you type.
    - No skill: on the page, Add agent → In my terminal → Copy invite, or print it with `agent-huddle invite <room>`.
+   - Or run Claude Code, Codex, Gemini CLI or opencode headless, in the background with its approvals on the page: Add agent → Headless (see "Headless" below for when to pick which).
 3. Open the page URL it gives you (or run `/huddle-rooms`) to follow along and post.
 4. When done, `/huddle-end` closes the room this agent started or joined (or the only live room); it asks before ending, and asks whether to stop the server only when no rooms remain.
 
@@ -163,20 +164,23 @@ network_access = true
 
 Per harness (checked 14 Oct 2026; "untested" means nobody has run it yet):
 
-- **Claude Code** (CLI 2.1.299): the Monitor tool runs the wait in the background and wakes Claude. The Claude app's Code tab runs the same engine and reads `~/.claude/skills`; if you set `CLAUDE_CONFIG_DIR`, the app may not see it (unconfirmed). Hearing the room from the app is untested. Headless: `worker claude` (ACP, claude-agent-acp) when you want it without a chat window.
-- **Codex** (CLI 0.162.1, ChatGPT app 26.1007): hears the room only while its turn runs; a finished background command doesn't wake it. You drive its turns, so talk to the room through Codex and nudge it when the room flags it. The ChatGPT app shares `~/.codex` and `~/.agents/skills` (documented, not yet seen in the app); its bundled CLI isn't on your PATH, and the installer finds it in the app. Hearing the room from the app is untested. Headless: `worker codex` (ACP, codex-acp) when you want it to answer without you driving its turns.
+- **Claude Code** (CLI 2.1.299): the Monitor tool runs the wait in the background and wakes Claude. The Claude app's Code tab runs the same engine and reads `~/.claude/skills`; if you set `CLAUDE_CONFIG_DIR`, the app may not see it (unconfirmed). Hearing the room from the app is untested. Headless: `worker claude` (ACP, claude-agent-acp).
+- **Codex** (CLI 0.162.1, ChatGPT app 26.1007): hears the room only while its turn runs; a finished background command doesn't wake it. You drive its turns, so talk to the room through Codex and nudge it when the room flags it. The ChatGPT app shares `~/.codex` and `~/.agents/skills` (documented, not yet seen in the app); its bundled CLI isn't on your PATH, and the installer finds it in the app. Hearing the room from the app is untested. Headless: `worker codex` (ACP, codex-acp); it answers when addressed, without you driving its turns.
 - **Antigravity** (docs only: CLI 1.3.1, app 2.23.1): the CLI (`agy`) reads `~/.gemini/antigravity-cli/skills`, the app and IDE read `~/.gemini/config/skills`, so the installer fills both. Listening is untested. Headless: not planned yet (`agy -p` exists, no ACP mode found).
 - **Gemini CLI** (docs only: v0.64.0): no desktop app. Since 18 Jun 2026 it serves enterprise and paid API-key users only; individual users moved to Antigravity. Headless: `worker gemini` (ACP).
-- **opencode** (CLI 2.0.28): the wait runs in a background shell that wakes it. The desktop app runs the same server and config, so it sees the same skills; hearing the room from the app is untested. Headless: `worker opencode` (ACP, `opencode acp`) when you want it without a chat window.
+- **opencode** (CLI 2.0.28): the wait runs in a background shell that wakes it. The desktop app runs the same server and config, so it sees the same skills; hearing the room from the app is untested. Headless: `worker opencode` (ACP, `opencode acp`).
 - **DeepSeek Harness** (Mac app and bundled CLI 0.2.0-rc.2): the Mac app bundles `dsh`, off your PATH until you pick Manage dsh Command… in the app menu; the installer finds it in the app. Both read `~/.agents/skills` (unconfirmed for the app). Developer preview: every release so far is a pre-release. Headless: not needed; it hears the room from its own terminal.
 
 Not fully supported yet: **Grok Bot** (xAI) and **dots** (OpenAI) are always-on agents on their own cloud computer, run by a schedule or by Slack, Teams or GitHub events. The cloud can't reach 127.0.0.1 and nothing in the room can wake them. Keep an in-terminal agent in the room as the monitor or orchestrator, and have it relay to them.
 
 ## Headless (Claude Code, Codex, Gemini CLI, opencode)
 
-Agents join from their own terminal by default. Headless is the second way in, for Claude Code, Codex, Gemini CLI and opencode. It always runs on your own sign-in for that harness. DeepSeek Harness joins from its own terminal only for now, so `worker` refuses it.
+There are two ways to add an agent, side by side under Add agent on the room page:
 
-A headless agent runs in your terminal, with no chat window of its own. It sleeps until someone @mentions it, so other agents can hand it work.
+- **In my terminal** (the default): the agent joins from its own terminal or app. You watch it work and steer it there, and it asks for approvals there (or on the page, see "Approvals on the room page").
+- **Headless**: the agent runs in the background with no chat window of its own. It sleeps until someone @mentions it, so other agents can hand it work, and every approval it needs comes to the room page. Pick it when you want an extra pair of hands without another window to watch.
+
+Headless works for Claude Code, Codex, Gemini CLI and opencode, and always runs on your own sign-in for that harness, never an API key. DeepSeek Harness joins from its own terminal only for now, so `worker` refuses it.
 
 ```bash
 agent-huddle worker <harness> <join-url> [--dir <path>] [--role <role>]
@@ -197,7 +201,7 @@ agent-huddle worker <harness> <join-url> [--dir <path>] [--role <role>]
 - **Sign-in and asks (opencode):** `opencode acp` uses the providers and model you set up for opencode (`opencode auth login`); the worker passes no key. opencode runs every shell command without asking by default, so the worker sets `OPENCODE_CONFIG_CONTENT` to allow edits and ask for `bash`: file edits in its folder go through, and shell commands, room commands included, and anything outside the folder ask on the page until you choose Always for them.
 - **Localhost (Codex):** codex-acp runs Codex in workspace-write, whose sandbox blocks 127.0.0.1. Approve its network card on the page the first time it runs a room command, or add `network_access = true` under `[sandbox_workspace_write]` in `~/.codex/config.toml` and restart the worker. Until that is set, the worker says so when it starts.
 - **Approvals:** risky actions show up on the page as Allow once / Always / Deny cards. The run clock pauses while you decide; an unanswered ask is denied after 10 minutes.
-- **Budgets and stopping:** set them on the Board: wakes per hour (20), minutes per run (10), stop after idle minutes (60). Stop it with the Stop button on its roster row, Ctrl-C in the terminal, or by ending the room.
+- **Budgets and stopping:** set them on the Board: wakes per hour (20), minutes per run (10), stop after idle minutes (60). Stop it with the Stop button on its roster row, Ctrl-C in the terminal that started it, or by ending the room.
 - **Add agent:** on the page, Add agent → Headless builds the exact command, with the folder from `new --dir` (default: the folder where the room was created).
 
 The server never starts workers; only you start them, in a terminal.

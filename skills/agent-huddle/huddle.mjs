@@ -3239,6 +3239,7 @@ export function announceText(name, join, page, folder = null) {
     'Bring in agents: paste the line for each one. To give an agent a role, end its line with " as <role>" (for example " as builder"), so @builder reaches it.',
     ...lines,
     'An agent without the skill? On the page, Add agent → In my terminal gives a paste-in invite.',
+    'To run Claude Code, Codex, Gemini CLI or opencode in the background instead, with its approvals on the page: Add agent → Headless.',
   ].join('\n\n');
 }
 
@@ -4071,13 +4072,14 @@ const COMMANDS = {
   },
   worker: {
     group: 'Agents',
-    summary: 'run a headless agent (Claude Code, Codex, Gemini CLI, opencode) that answers when addressed',
+    summary: 'run an agent headless: in the background, approvals on the room page (Claude Code, Codex, Gemini CLI, opencode)',
     usage: 'worker <harness> <join-url> [--dir <path>] [--role <role>]',
     options: [
       '--dir <path>   folder the agent works in (default: current folder)',
       '--role <role>  optional, [a-z0-9-]{1,20}; @role mentions reach it',
       `harness        ${Object.keys(WORKER_HARNESSES).join(', ')}`,
-      "It uses the harness's own sign-in. DeepSeek Harness joins with the invite instead.",
+      "It uses the harness's own sign-in and wakes when addressed; stop it from its roster row or with Ctrl-C.",
+      'Join in a terminal instead when you want to watch and steer the agent yourself. DeepSeek Harness joins that way only.',
     ],
     example: 'node huddle.mjs worker codex http://127.0.0.1:4747/s/<id> --dir ~/code/api',
   },
