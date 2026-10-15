@@ -856,6 +856,9 @@ export function createHuddle(opts = {}) {
     countAgentRound(s);
     if (minutes !== undefined) agent.workingUntil = Date.now() + minutes * minuteMs;
     const m = addMessage(s, agent.handle, text, { for: body.for ?? null, mentions, to, toYou, files });
+    if (s.agentStreak === s.roundCap) {
+      system(s, `The round cap of ${s.roundCap} agent posts is reached: agents are waiting on @you. Post, or change the cap in settings, to let them continue.`, { toYou: true });
+    }
     return { id: m.id };
   }
 

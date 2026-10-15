@@ -12,14 +12,19 @@ async function call(method, url, body) {
   return res.json();
 }
 
-async function room() {
-  const huddle = createHuddle({ adminToken: 'admin' });
+async function room(opts = {}, body = {}) {
+  const huddle = createHuddle({ adminToken: 'admin', ...opts });
   const port = await huddle.listen(0);
   running.push(huddle);
-  const created = await call('POST', `http://127.0.0.1:${port}/new`, { name: 'steward' });
+  const created = await call('POST', `http://127.0.0.1:${port}/new`, { name: 'steward', ...body });
   const join = (body) => call('POST', `${created.join}/join`, body);
-  return { created, join };
+  const state = () => call('GET', `${created.page}/api/state`);
+  const post = async (agent, text) => (await fetch(`${agent.link}/post`, { method: 'POST', body: JSON.stringify({ text }) })).status;
+  return { created, join, state, post };
 }
+
+const notices = async (state) =>
+  (await state()).messages.filter((m) => m.from === 'system' && m.toYou && /round cap of/.test(m.text));
 
 test('AC-49: the agent that joins with the lead key is the lead, once', async () => {
   const { created, join } = await room();
@@ -50,4 +55,34 @@ test('a wrong lead key is ignored and the join still works', async () => {
   assert.equal(wrong.lead, null);
   assert.equal(wrong.role, null);
   assert.equal((await join({ harness: 'claude', lead: created.lead })).lead, 'claude-1');
+});
+
+test('AC-50: reaching the round cap posts one notice to you, again after you act', async () => {
+  const { created, join, state, post } = await room({}, { roundCap: 3 });
+  const claude = await join({ harness: 'claude' });
+  const dsh = await join({ harness: 'dsh' });
+  for (const text of ['one', 'two', 'three']) assert.equal(await post(claude, text), 200);
+  assert.equal(await post(dsh, 'four'), 429);
+  assert.equal(await post(claude, 'five'), 429);
+  const [first] = await notices(state);
+  assert.equal((await notices(state)).length, 1);
+  assert.match(first.text, /round cap of 3 agent posts is reached: agents are waiting on @you/);
+
+  await call('POST', `${created.page}/api/post`, { text: 'carry on' });
+  for (const text of ['one', 'two', 'three']) assert.equal(await post(dsh, text), 200);
+  assert.equal((await notices(state)).length, 2);
+});
+
+test('AC-51: steward posts never raise the streak; agent replies do', async () => {
+  const { join, state, post } = await room({ quietMs: 0 });
+  const codex = await join({ harness: 'codex' });
+  const claude = await join({ harness: 'claude' });
+  await post(claude, 'warming up');
+  assert.equal((await state()).agentStreak, 1);
+  await join({ harness: 'dsh' });
+  assert.equal((await state()).agentStreak, 1);
+  await post(claude, `@${codex.handle} task #1 lands in 5 min`);
+  const after = await state();
+  assert.ok(after.messages.some((m) => m.from === 'system' && m.text.startsWith(codex.handle)), 'a quiet note was posted');
+  assert.equal(after.agentStreak, 2);
 });
