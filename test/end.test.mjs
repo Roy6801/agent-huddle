@@ -19,10 +19,10 @@ function freePort() {
   });
 }
 
-async function setup() {
+async function setup(extra = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-end-'));
   const port = await freePort();
-  const env = { ...process.env, AGENT_HUDDLE_HOME: home, AGENT_HUDDLE_PORT: String(port) };
+  const env = { ...process.env, AGENT_HUDDLE_SERVER_IDLE_MS: '', AGENT_HUDDLE_HOME: home, AGENT_HUDDLE_PORT: String(port), ...extra };
   const ctx = { home, port, env };
   homes.push(ctx);
   return ctx;
@@ -119,11 +119,11 @@ test('--stop-server stops the server after the last room', async () => {
 });
 
 test('--keep-server is still accepted and leaves the server running', async () => {
-  const ctx = await setup();
+  const ctx = await setup({ AGENT_HUDDLE_SERVER_IDLE_MS: '60000' });
   await newRoom(ctx, 'solo');
   const res = await cli(ctx, 'end', 'solo', '--yes', '--keep-server');
   assert.equal(res.code, 0, res.stderr);
-  assert.match(res.stdout, /No rooms left; the server keeps running\./);
+  assert.match(res.stdout, /No rooms left; the server keeps running\. .*, or it stops after 1 idle minute\./);
   assert.ok(await serverUp(ctx));
 });
 

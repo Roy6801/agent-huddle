@@ -79,10 +79,17 @@ test('version.json matches package.json and the VERSION in huddle.mjs', () => {
 });
 
 test('docs say a record is kept and the server stops when idle', () => {
-  const sources = ['README.md', 'site/components/sections/faq.tsx', 'site/components/sections/features.tsx', 'site/components/sections/how-it-works.tsx'];
+  const sources = [
+    'README.md',
+    'GLOSSARY.md',
+    ...SKILL_FILES.filter((f) => f.endsWith('SKILL.md')),
+    'site/components/sections/faq.tsx',
+    'site/components/sections/features.tsx',
+    'site/components/sections/how-it-works.tsx',
+  ];
   for (const f of sources) {
     const text = readFileSync(join(root, f), 'utf8');
-    for (const old of ['stops with the last room', 'the server stops with the last room', 'rooms are lost when the server stops']) {
+    for (const old of ['stops with the last room', 'rooms are lost when the server stops', 'asking for it is the yes']) {
       assert.equal(text.includes(old), false, `${f}: ${old}`);
     }
   }
