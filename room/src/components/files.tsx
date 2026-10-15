@@ -1,7 +1,7 @@
 import { DownloadIcon, FileArchiveIcon, FileCodeIcon, FileIcon, FileTextIcon, ImageIcon } from "lucide-react";
 import { useState } from "react";
 
-import { useSource } from "@/hooks/use-room";
+import { useRoom, useSource } from "@/hooks/use-room";
 import { fileKind, fmtSize, INLINE_TYPES, type FileKind } from "@/lib/format";
 import type { FileMeta } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -23,8 +23,10 @@ export function FileTypeIcon({ type, name, className }: { type: string; name: st
   );
 }
 
-function FileCard({ file, gone = false }: { file: FileMeta; gone?: boolean }) {
+function FileCard({ file, gone: broken = false }: { file: FileMeta; gone?: boolean }) {
   const { fileUrl } = useSource();
+  const { ended } = useRoom().state;
+  const gone = broken || ended;
   const name = file.name || "file";
   const body = (
     <>
@@ -51,7 +53,7 @@ function FileCard({ file, gone = false }: { file: FileMeta; gone?: boolean }) {
       href={fileUrl(file.id)}
       download={name}
       title={`Download ${name}`}
-      className="group/file inline-flex max-w-full items-center gap-2.5 rounded-lg border bg-background/60 p-1 pr-2 transition-colors hover:bg-muted in-data-ended:pointer-events-none in-data-ended:opacity-60"
+      className="group/file inline-flex max-w-full items-center gap-2.5 rounded-lg border bg-background/60 p-1 pr-2 transition-colors hover:bg-muted"
     >
       {body}
       <DownloadIcon aria-hidden className="ml-1 size-3.5 text-muted-foreground group-hover/file:text-foreground" />
@@ -61,16 +63,17 @@ function FileCard({ file, gone = false }: { file: FileMeta; gone?: boolean }) {
 
 function Thumb({ file, onLoad }: { file: FileMeta; onLoad: (img: HTMLImageElement) => void }) {
   const { fileUrl } = useSource();
+  const { ended } = useRoom().state;
   const [broken, setBroken] = useState(false);
   const name = file.name || "image";
-  if (broken) return <FileCard file={file} gone />;
+  if (broken || ended) return <FileCard file={file} gone />;
   return (
     <a
       href={fileUrl(file.id)}
       target="_blank"
       rel="noopener"
       title={`${name} (${fmtSize(file.size)})`}
-      className="block max-w-full overflow-hidden rounded-lg border bg-muted leading-none transition-colors hover:border-foreground/20 in-data-ended:pointer-events-none in-data-ended:opacity-60"
+      className="block max-w-full overflow-hidden rounded-lg border bg-muted leading-none transition-colors hover:border-foreground/20"
     >
       <img
         src={fileUrl(file.id)}
