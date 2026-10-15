@@ -50,6 +50,10 @@ function shortFolder(agent: Agent, roomFolder: string | null | undefined) {
   if (!dir) return "Not reported";
   if (roomFolder && dir === roomFolder) return "Room folder";
   if (roomFolder && agent.folderCheck === "inside" && dir.startsWith(`${roomFolder}/`)) return `./${dir.slice(roomFolder.length + 1)}`;
+  return shortPath(dir);
+}
+
+function shortPath(dir: string) {
   const parts = dir.split("/").filter(Boolean);
   return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : dir;
 }
@@ -230,7 +234,19 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
                 <span className="font-mono">{agent.parent}</span>
               </Detail>
             )}
-            {agent.folderCheck != null && (
+            {agent.worktree ? (
+              <>
+                <Detail label="Worktree">
+                  <span className="font-mono" title={agent.worktree.path}>
+                    <span aria-hidden>{shortPath(agent.worktree.path)}</span>
+                    <span className="sr-only">{agent.worktree.path}</span>
+                  </span>
+                </Detail>
+                <Detail label="Branch">
+                  <span className="font-mono break-all whitespace-normal">{agent.worktree.branch}</span>
+                </Detail>
+              </>
+            ) : agent.folderCheck != null && (
               <Detail label="Folder">
                 <span className="font-mono" title={agent.folder ?? undefined}>
                   <span aria-hidden>{shortFolder(agent, roomFolder)}</span>
