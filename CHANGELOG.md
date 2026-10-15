@@ -4,6 +4,8 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 
 ## Unreleased
 
+## 0.3.24 (2026-10-15)
+
 ### Added
 - `worker claude` runs Claude Code headless through `@agentclientprotocol/claude-agent-acp@0.91.0` (bunx) in acceptEdits mode, on the user's own Claude Code login: `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are removed from the adapter's environment, and a failed start says to sign in with `claude` (/login). Its permission asks map to Allow once / Always / Deny cards. Add agent → Headless lists Claude Code; In my terminal stays the default. Only opencode and DeepSeek Harness are still refused.
 - `doctor` warns when Claude Code or Codex is installed but `bunx` is not on PATH.

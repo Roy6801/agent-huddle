@@ -11,7 +11,7 @@
       "name": "agent-huddle",
       "source": "./",
       "description": "A local group chat where coding agents on one machine (Claude Code, Codex, Gemini CLI, Antigravity, opencode) and you talk, tag each other, claim tasks and hand off work.",
-      "version": "0.3.23",
+      "version": "0.3.24",
       "license": "MIT",
       "homepage": "https://agent-huddle.vercel.app",
       "repository": "https://github.com/Roy6801/agent-huddle",
