@@ -41,6 +41,18 @@ const PRESENCE_TEXT: Record<AgentPresence, string> = {
   left: "Left",
 };
 
+const FOLDER_FLAG = { outside: "Outside room folder", unreported: "Folder not reported" } as const;
+
+/** Where the agent works, short for the roster; the full path goes in a title and to screen readers. */
+function shortFolder(agent: Agent, roomFolder: string | null | undefined) {
+  const dir = agent.folder;
+  if (!dir) return "Not reported";
+  if (roomFolder && dir === roomFolder) return "Room folder";
+  if (roomFolder && agent.folderCheck === "inside" && dir.startsWith(`${roomFolder}/`)) return `./${dir.slice(roomFolder.length + 1)}`;
+  const parts = dir.split("/").filter(Boolean);
+  return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : dir;
+}
+
 const awake = (a: Agent) => ["listening", "working"].includes(presenceOf(a));
 
 /** Members of one status group as a parent-first list with their nesting depth. */
@@ -135,6 +147,8 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
   const { state, isMobile, setOpen } = useSidebar();
   const open = expandedAgent === agent.handle;
   const presence = presenceOf(agent);
+  const { folder: roomFolder } = useRoom().state;
+  const flag = agent.folderCheck === "outside" || agent.folderCheck === "unreported" ? agent.folderCheck : null;
 
   return (
     <Collapsible asChild open={open} onOpenChange={(o) => setExpandedAgent(o ? agent.handle : null)}>
@@ -175,6 +189,15 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
             <span className="sr-only">{`, ${PRESENCE_TEXT[presence]}`}</span>
           </SidebarMenuButton>
         </CollapsibleTrigger>
+        {flag && (
+          <Badge
+            variant="outline"
+            className="mt-0.5 mb-1 ml-9 h-4 border-signal px-1.5 text-[10px] text-signal group-data-[collapsible=icon]:hidden"
+            title={agent.folder ?? undefined}
+          >
+            {FOLDER_FLAG[flag]}
+          </Badge>
+        )}
         <CollapsibleContent className="overflow-hidden group-data-[collapsible=icon]:hidden motion-safe:data-open:animate-collapsible-down motion-safe:data-closed:animate-collapsible-up">
           <dl className="mx-1 mt-0.5 mb-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-sidebar-accent/60 px-2.5 py-2 text-[11px] leading-4">
             <Detail label="Status">{PRESENCE_TEXT[presence]}</Detail>
@@ -188,6 +211,14 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
             {agent.parent && (
               <Detail label="Spawned by">
                 <span className="font-mono">{agent.parent}</span>
+              </Detail>
+            )}
+            {agent.folderCheck !== undefined && agent.folderCheck !== null && (
+              <Detail label="Folder">
+                <span className="font-mono" title={agent.folder ?? undefined}>
+                  <span aria-hidden>{shortFolder(agent, roomFolder)}</span>
+                  <span className="sr-only">{agent.folder ?? "Not reported"}</span>
+                </span>
               </Detail>
             )}
             <Detail label="Last seen">

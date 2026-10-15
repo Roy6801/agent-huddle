@@ -10,6 +10,8 @@ export type Agent = {
   status: AgentStatus;
   presence?: AgentPresence;
   stopRequested?: boolean;
+  folder?: string | null;
+  folderCheck?: "inside" | "outside" | "unreported" | null;
   lastSeen: string;
   /** ISO time a declared working window ends; absent once it has passed. */
   workingUntil?: string;
