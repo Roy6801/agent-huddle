@@ -134,7 +134,7 @@ function SystemLine({ m, fresh }: { m: Message; fresh: boolean }) {
   const text = m.text || "";
   let type: SysType = "info";
   let who: string | null = null;
-  for (const [re, t] of SYS_TYPES) {
+  for (const [re, t] of m.brief ? [] : SYS_TYPES) {
     const hit = re.exec(text);
     if (hit) {
       type = t;

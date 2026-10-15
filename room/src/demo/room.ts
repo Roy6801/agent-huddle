@@ -106,7 +106,7 @@ function useRoomState() {
 
 type Body = Partial<Headless> & Partial<PresenceTimers> & { text?: string; files?: string[]; title?: string; assignee?: string; description?: string | null; spec?: string | null; roundCap?: number | null };
 
-const LIMITS = { description: 2000, spec: 20000 } as const;
+const LIMITS = { description: 2000, spec: 20000, brief: 20000 } as const;
 
 function overLimit(b: Body) {
   for (const field of ["description", "spec"] as const) {
@@ -152,7 +152,7 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
     }
   } else if (path === "/api/brief") {
     const text = b.text ?? "";
-    if (!text.trim() || text.length > 20000) return rejected("invalid_text", "text must be 1-20000 characters");
+    if (!text.trim() || text.length > LIMITS.brief) return rejected("invalid_text", `text must be 1-${LIMITS.brief} characters`);
     const at = new Date(now).toISOString();
     const set = addMessage({ ...room, streak: 0 }, now, "system", text, { kind: "system", mentions: [], brief: true });
     const brief = { text, by: "you", at, id: set.messages.at(-1)?.id ?? 0 };
