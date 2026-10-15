@@ -296,3 +296,13 @@ test('edit: done tasks and empty bodies are refused, null removes the spec, a fi
   assert.equal(done.status, 409);
   assert.equal(done.json.error, 'task is done');
 });
+
+test('the personal protocol lists the create, read and edit task calls', async () => {
+  const r = await room();
+  const a = await r.join('claude');
+  const protocol = (await call('GET', a.link)).text;
+  assert.match(protocol, /Create task: .*"description":/);
+  assert.match(protocol, /-d @task\.json/);
+  assert.match(protocol, new RegExp(`Read task: +curl -s ${a.link}/tasks/1`));
+  assert.match(protocol, new RegExp(`Edit task: +curl -s -X POST ${a.link}/tasks/1 `));
+});
