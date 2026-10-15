@@ -2994,6 +2994,7 @@ async function approvalsOn(args) {
   } catch {
     throw new Error('approvals on needs your agent link (…/s/<id>/as/<token>)');
   }
+  if (!isLoopback(url)) throw new Error('approvals on only talks to this machine (127.0.0.1, localhost or [::1])');
   if (!AGENT_LINK_PATH.test(url.pathname)) throw new Error('approvals on needs your agent link (…/s/<id>/as/<token>), not a page or join URL');
   const session = sessionArg(args);
   if (!session) throw new Error('approvals on needs --session <id>: Claude Code passes ${CLAUDE_SESSION_ID} from the skill; Codex sets CODEX_THREAD_ID');
@@ -3068,7 +3069,8 @@ async function hookDecision(harness) {
   if (!HOOK_FILES[harness] || process.stdin.isTTY) return null;
   const input = JSON.parse(await readStdin());
   const bound = typeof input?.session_id === 'string' ? readBindings()[input.session_id] : null;
-  if (!bound) return null;
+  // Prompts carry commands and paths and the answer can allow them: only this machine may see and answer them.
+  if (!bound || !URL.canParse(bound.link) || !isLoopback(new URL(bound.link))) return null;
   const always = harness === 'claude' && Array.isArray(input.permission_suggestions) && input.permission_suggestions.length > 0;
   const options = [
     { optionId: 'allow', kind: 'allow_once', name: 'Allow once' },
@@ -3752,6 +3754,7 @@ export function withRunningNote(announce, version, names) {
 
 const HARNESS_IDS = ['claude', 'codex', 'agy', 'gemini', 'opencode', 'dsh'];
 const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '[::1]'];
+const isLoopback = (url) => LOOPBACK_HOSTS.includes(url.hostname);
 
 async function joinRoom(args) {
   const words = [];
