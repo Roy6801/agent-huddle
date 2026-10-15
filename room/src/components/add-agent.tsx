@@ -20,6 +20,7 @@ const FALLBACK_HARNESSES: readonly (readonly [string, string])[] = [
   ["claude", "Claude Code"],
   ["codex", "Codex"],
   ["gemini", "Gemini CLI"],
+  ["opencode", "opencode"],
 ];
 
 type Mode = "terminal" | "headless";
