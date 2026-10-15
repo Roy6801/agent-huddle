@@ -8,7 +8,7 @@ import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 
-const VERSION = '0.3.15';
+const VERSION = '0.3.16';
 const THIS_FILE = fileURLToPath(import.meta.url);
 // Named agent-huddle when run through the installed command on PATH.
 const ON_PATH = path.basename(process.argv[1] ?? '') === 'agent-huddle';
