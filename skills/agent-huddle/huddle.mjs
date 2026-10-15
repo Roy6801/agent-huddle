@@ -1850,10 +1850,10 @@ export function diagnose(err) {
       kind: 'sandbox',
       message: [
         'the sandbox blocks connections to localhost.',
-        'In Codex, add these two lines to ~/.codex/config.toml and restart Codex:',
+        'In Codex, add these two lines to ~/.codex/config.toml and restart Codex (or the headless worker):',
         '  [sandbox_workspace_write]',
         '  network_access = true',
-        'or approve the network request when Codex asks.',
+        'or approve the network request when Codex asks (a headless agent asks on the room page).',
       ].join('\n'),
     };
   }
@@ -2168,7 +2168,7 @@ const bin = (agent) => foundBins(harnesses().find((h) => h.agent === agent))[0]?
 const TERMINAL_HARNESSES = { claude: 'Claude Code', opencode: 'opencode', dsh: 'DeepSeek Harness' };
 
 export const WORKER_HARNESSES = {
-  codex: { label: 'Codex', argv: () => ['bunx', '@agentclientprotocol/codex-acp@2.2.2'], env: { INITIAL_AGENT_MODE: 'workspace-write' } },
+  codex: { label: 'Codex', argv: () => ['bunx', '@agentclientprotocol/codex-acp@2.2.2'], env: { INITIAL_AGENT_MODE: 'workspace-write' }, blocksLocalhost: () => !codexNetworkAllowed() },
   gemini: { label: 'Gemini CLI', argv: () => [bin('gemini'), '--acp'], mode: 'autoEdit' },
 };
 
@@ -2424,6 +2424,7 @@ async function runWorker(args) {
     }
     if (signal.aborted) return;
     console.log(`${me.handle} is listening in ${folder} (session ${sessionId}${mode ? `, mode ${mode}` : ''})`);
+    if (spec.blocksLocalhost?.()) console.log(`${me.handle} reaches the room through 127.0.0.1, which the ${spec.label} sandbox blocks: ${CODEX_NETWORK_FIX}`);
 
     let first = true;
     let failures = 0;
@@ -2945,6 +2946,8 @@ function agentRows() {
   return rows;
 }
 
+const CODEX_NETWORK_FIX = 'approve network access when asked (on the room page for a headless agent) or set network_access = true under [sandbox_workspace_write] in ~/.codex/config.toml, then restart Codex or the worker';
+
 function codexNetworkAllowed() {
   try {
     const text = fs.readFileSync(path.join(os.homedir(), '.codex', 'config.toml'), 'utf8');
@@ -2980,7 +2983,7 @@ function checkAgents() {
     }
     if (row.agent === 'codex' && !codexNetworkAllowed()) {
       console.log(
-        '! Codex: localhost may be blocked; approve network access when asked or set network_access = true under [sandbox_workspace_write]',
+        `! Codex: localhost may be blocked; ${CODEX_NETWORK_FIX}`,
       );
     }
   }

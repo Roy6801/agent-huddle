@@ -16,6 +16,8 @@ test('EPERM and EACCES are reported as a sandbox block with the Codex fix', () =
     assert.ok(result.message.includes('[sandbox_workspace_write]'));
     assert.ok(result.message.includes('network_access = true'));
     assert.ok(result.message.includes('~/.codex/config.toml'));
+    assert.ok(result.message.includes('restart Codex (or the headless worker)'));
+    assert.ok(result.message.includes('a headless agent asks on the room page'));
   }
 });
 
@@ -182,7 +184,7 @@ test('doctor: Codex network hint appears unless network_access = true is set', a
   const t = makeEnv();
   t.stub('codex');
   let out = (await t.run()).stdout;
-  assert.match(out, /! Codex: localhost may be blocked/);
+  assert.match(out, /! Codex: localhost may be blocked; approve network access when asked \(on the room page for a headless agent\)/);
   fs.mkdirSync(path.join(t.home, '.codex'), { recursive: true });
   fs.writeFileSync(path.join(t.home, '.codex', 'config.toml'), '[sandbox_workspace_write]\nnetwork_access = true\n');
   out = (await t.run()).stdout;

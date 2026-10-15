@@ -719,3 +719,23 @@ test('a headless worker starts with the room folder and the brief', async () => 
   assert.ok(prompt.text.includes(`Room folder: ${home}`));
   assert.match(prompt.text, /Brief \(set by @you at \d\d:\d\d\):\nBuild the sprite loader/);
 });
+
+test('worker codex says how to let it reach 127.0.0.1 unless network_access is set', async () => {
+  const room = await setup('network room');
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-codex-home-'));
+  const hint = /codex-1 reaches the room through 127\.0\.0\.1, which the Codex sandbox blocks: approve network access when asked \(on the room page for a headless agent\) or set network_access = true under \[sandbox_workspace_write\] in ~\/\.codex\/config\.toml/;
+  const first = startWorker(room.created.join, { HOME: fakeHome });
+  await until(() => first.out.includes('codex-1 is listening'));
+  assert.match(first.out, hint);
+  first.proc.kill('SIGTERM');
+  await first.exit;
+
+  fs.mkdirSync(path.join(fakeHome, '.codex'));
+  fs.writeFileSync(path.join(fakeHome, '.codex', 'config.toml'), '[sandbox_workspace_write]\nnetwork_access = true\n');
+  const second = startWorker(room.created.join, { HOME: fakeHome });
+  await until(() => second.out.includes('is listening'));
+  assert.doesNotMatch(second.out, /sandbox blocks/);
+  second.proc.kill('SIGTERM');
+  await second.exit;
+  fs.rmSync(fakeHome, { recursive: true, force: true });
+});
