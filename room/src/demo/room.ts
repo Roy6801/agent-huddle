@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import type { RoomSource, RoomState } from "@/hooks/use-room";
 import type { ApiError, Posted, Upload, UploadOutcome } from "@/lib/api";
-import type { FileMeta, Headless, PresenceTimers } from "@/lib/types";
+import type { Assignment, FileMeta, Headless, PresenceTimers } from "@/lib/types";
 import { addMessage, apply, atCap, counts, createTask, INITIAL_STEPS, roomAt, SCRIPT, system, type Step } from "@/demo/script";
 import { sprite } from "@/demo/sprite";
 
@@ -110,7 +110,7 @@ function useRoomState() {
   return { state, pollNow: noop, endHuddle: noop };
 }
 
-type Body = Partial<Headless> & Partial<PresenceTimers> & { text?: string; files?: string[]; title?: string; assignee?: string; after?: number[]; description?: string | null; spec?: string | null; roundCap?: number | null; folder?: string };
+type Body = Partial<Headless> & Partial<PresenceTimers> & { text?: string; files?: string[]; title?: string; assignee?: string; after?: number[]; description?: string | null; spec?: string | null; roundCap?: number | null; folder?: string; assignment?: Assignment };
 
 const LIMITS = { description: 2000, spec: 20000, brief: 20000 } as const;
 
@@ -227,6 +227,14 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
         next = system({ ...next, roundCap, streak: 0 }, now, text);
       }
       setRoom(next);
+    } else if (b.assignment !== undefined) {
+      if (b.assignment !== "regular" && b.assignment !== "strict") return rejected("invalid_assignment", 'assignment must be "regular" or "strict".');
+      const rule =
+        b.assignment === "strict"
+          ? "only its assignee may claim or finish an assigned task; unassigned tasks, and tasks whose assignee left, are open to anyone."
+          : "an agent that holds no claim may claim any ready, unclaimed task, even one assigned to someone else; the task moves to it and the previous assignee is told.";
+      setRoom(b.assignment === room.assignment ? room : system({ ...room, assignment: b.assignment, streak: 0 }, now, `you set ${b.assignment} assignment: ${rule}`));
+      data = { roundCap: room.roundCap, assignment: b.assignment };
     } else if (room.presenceTimers && (b.workingWindowMinutes !== undefined || b.asleepMinutes !== undefined || b.leaveMinutes !== undefined || b.stallMinutes !== undefined)) {
       const p = { ...room.presenceTimers, ...b };
       if (p.leaveMinutes <= p.asleepMinutes) return rejected("leave_before_asleep", "leaveMinutes must be longer than asleepMinutes.");

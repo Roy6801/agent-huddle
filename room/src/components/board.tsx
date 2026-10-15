@@ -3,6 +3,7 @@ import { HeadlessBudgets } from "@/components/headless-budgets";
 import { PresenceTimers } from "@/components/presence-timers";
 import { RoomFolder } from "@/components/room-folder";
 import { RoundCap } from "@/components/round-cap";
+import { AssignmentMode } from "@/components/assignment-mode";
 import { SettingsAccordion } from "@/components/settings-accordion";
 import { Tasks } from "@/components/tasks";
 import { Sidebar, SidebarContent, SidebarHeader, SidebarRail } from "@/components/ui/sidebar";
@@ -80,6 +81,7 @@ export function Board() {
           <>
             <RoundCap />
             <SettingsAccordion>
+              <AssignmentMode />
               <HeadlessBudgets />
               <PresenceTimers />
               <RoomFolder />

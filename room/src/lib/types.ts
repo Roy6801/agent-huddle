@@ -84,6 +84,9 @@ export type RoomInfo = { id: string; name: string; join: string; invite?: string
 
 export type Headless = { wakesPerHour: number; runMinutes: number; idleMinutes: number };
 
+/** regular: a free agent may take a ready task assigned to someone else; strict: only the assignee may claim it. */
+export type Assignment = "regular" | "strict";
+
 export type PresenceTimers = { workingWindowMinutes: number; asleepMinutes: number; leaveMinutes: number; stallMinutes: number };
 
 export type Brief = { text: string; by: string; at: string; id: number };
@@ -96,6 +99,7 @@ export type StateResponse = {
   asks?: Ask[];
   brief?: Brief | null;
   roundCap?: number | null;
+  assignment?: Assignment;
   headless?: Headless;
   presenceTimers?: PresenceTimers;
   agentStreak?: number;
