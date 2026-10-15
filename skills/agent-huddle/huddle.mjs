@@ -108,7 +108,7 @@ export const ERRORS = {
   invalid_text: [400, (p) => `${p.label} is missing, blank or longer than ${p.max} characters.`,
     (p) => `Resend with a non-empty ${p.label} within the limit; long content fits better in a file.`],
   invalid_file_name: [400, 'The upload has no file name.', 'Add ?name=<filename> to the URL, for example POST files?name=notes.md.'],
-  role_required: [400, 'A spawned agent needs a role.', 'Send a role such as {"role":"tester"}.'],
+  role_required: [400, 'A role is needed.', 'Send a role such as {"role":"tester"}.'],
   invalid_role: [400, 'The role is not allowed.', 'Use 1-20 lowercase letters, digits or dashes, other than all, you, system or headless.'],
   invalid_round_cap: [400, `roundCap must be a whole number from 1 to ${ROUND_CAP_MAX}, or "off".`,
     'Resend it in that range, or "off" to let agents post without pausing.'],
@@ -835,7 +835,9 @@ export function createHuddle(opts = {}) {
     const live = liveAgents(s);
     const valid = live.map((a) => `@${a.handle}`);
     for (const a of live) if (childrenOf(s, a.handle).length) valid.push(`@${a.handle}.*`);
-    for (const role of new Set(live.map((a) => a.role).filter(Boolean))) valid.push(`@${role}`);
+    const roles = new Set(live.map((a) => a.role).filter(Boolean));
+    if (live.some((a) => a.handle === s.lead)) roles.add('lead');
+    for (const role of roles) valid.push(`@${role}`);
     valid.push('@all', '@you');
     return valid;
   }
@@ -853,7 +855,8 @@ export function createHuddle(opts = {}) {
         const base = tok.slice(0, -2);
         live.filter((a) => a.handle === base || a.handle.startsWith(`${base}.`)).forEach((a) => to.add(a.handle));
       } else {
-        const byRole = live.filter((a) => a.role === tok);
+        // @lead also reaches the lead whatever role it holds.
+        const byRole = live.filter((a) => a.role === tok || (tok === 'lead' && a.handle === s.lead));
         if (!byRole.length) {
           throw new HttpError('unknown_mention', { tok }, { valid: validMentions(s) });
         }
@@ -1431,6 +1434,18 @@ export function createHuddle(opts = {}) {
     return { ok: true };
   }
 
+  function setRole(s, agent, body, by) {
+    if (body.role === undefined) throw new HttpError('role_required');
+    const role = body.role === null ? null : cleanRole(body.role, true);
+    if (role === agent.role) return agentView(s, agent);
+    agent.role = role;
+    historyAgent(s, agent);
+    const now = role ? `is now ${role}` : 'has no role now';
+    if (by === 'you') system(s, `@${agent.handle} ${now}, set by you`, { mentions: [agent.handle], to: [agent.handle] });
+    else system(s, `${agent.handle} ${now}`);
+    return agentView(s, agent);
+  }
+
   function postFromHuman(s, body) {
     const files = attachments(s, body.files);
     const text = postText(body, files);
@@ -1560,6 +1575,7 @@ Endpoints (all relative to your link):
   Working long:  ${post('post', '{"text":"working on #1, about 25 minutes","workingMinutes":25}')}   (1-120; you show Working until then)
   Relay human:   ${post('post', '{"text":"use 16x16 tiles","for":"you"}')}
   Spawn child:   ${post('spawn', '{"role":"tester"}')}
+  Change role:   ${post('role', '{"role":"builder"}')}   (null clears it; the room sees the change and @builder reaches you)
   List tasks:    curl -s ${link}/tasks
   Create task:   ${post('tasks', '{"title":"draw sprite","assignee":"codex-1","description":"64x64 PNG with a transparent background; done when it loads in the game"}')}
   After others:  ${post('tasks', '{"title":"review","assignee":"claude-2","after":[1,2,3]}')}   (blocked until #1-#3 are done; claim and done are refused until then)
@@ -1937,6 +1953,8 @@ How the room works:
           return ok(postFromAgent(s, agent, body));
         case 'spawn':
           return ok(spawnChild(s, agent, body, base));
+        case 'role':
+          return ok(setRole(s, agent, body, agent.handle));
         case 'tasks':
           return ok(agentTaskView(s, agent, createTask(s, agent.handle, body)));
         case 'asks':
@@ -2037,6 +2055,12 @@ How the room works:
     if (method === 'POST' && key === 'api/settings') return acted(200, setSettings(s, body));
     const stopMatch = method === 'POST' && /^api\/agents\/([\w-]+)\/stop$/.exec(key);
     if (stopMatch) return acted(200, stopAgent(s, stopMatch[1]));
+    const roleMatch = method === 'POST' && /^api\/agents\/([\w.-]+)\/role$/.exec(key);
+    if (roleMatch) {
+      const agent = s.agents.get(roleMatch[1]);
+      if (!agent || agent.status === 'left') throw new HttpError('unknown_agent', { handle: roleMatch[1] });
+      return acted(200, setRole(s, agent, body, 'you'));
+    }
     if (method === 'POST' && key === 'api/brief') return acted(200, setBrief(s, 'you', body.text));
     if (method === 'POST' && key === 'api/tasks') return acted(200, taskView(s, createTask(s, 'you', body)));
     const taskReopenMatch = method === 'POST' && /^api\/tasks\/(\d+)\/reopen$/.exec(key);
@@ -3251,6 +3275,27 @@ async function joinRoom(args) {
   console.log(JSON.stringify(data, null, 2));
 }
 
+async function setRoleCommand(args) {
+  const [link, value, ...rest] = args;
+  if (!link || !value || rest.length) throw new Error(`usage: ${HELP_PROG} role <agent-link> <role|none>`);
+  let url;
+  try {
+    url = new URL(link);
+  } catch {
+    throw new Error('role needs your agent link (…/s/<id>/as/<token>)');
+  }
+  if (!LOOPBACK_HOSTS.includes(url.hostname)) throw new Error('role only talks to this machine (127.0.0.1, localhost or [::1])');
+  if (!/^\/s\/[^/]+\/as\/[^/]+\/?$/.test(url.pathname)) throw new Error('role needs your agent link (…/s/<id>/as/<token>), not a page or join URL');
+  const res = await fetch(`${url.origin}${url.pathname.replace(/\/$/, '')}/role`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ role: value === 'none' ? null : value }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || `request failed (${res.status})`);
+  console.log(JSON.stringify(data, null, 2));
+}
+
 async function down() {
   const state = readState();
   if (!state) return console.log('not running');
@@ -3938,6 +3983,13 @@ const COMMANDS = {
     ],
     example: 'node huddle.mjs join http://127.0.0.1:4747/s/<id> --harness codex --role tester',
   },
+  role: {
+    group: 'Agents',
+    summary: 'change your role in a room; @role mentions follow it',
+    usage: 'role <agent-link> <role|none>',
+    options: ['role  [a-z0-9-]{1,20}, or none to clear it; the room sees the change'],
+    example: 'node huddle.mjs role http://127.0.0.1:4747/s/<id>/as/<token> builder',
+  },
   worker: {
     group: 'Agents',
     summary: 'run a headless agent (Claude Code, Codex, Gemini CLI, opencode) that answers when addressed',
@@ -4086,6 +4138,8 @@ async function main(argv) {
       return upgrade(args);
     case 'join':
       return joinRoom(args);
+    case 'role':
+      return setRoleCommand(args);
     case 'wait':
       return waitForTurn(args);
     case 'worker':

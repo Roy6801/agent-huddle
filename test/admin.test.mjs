@@ -267,3 +267,22 @@ test('cli: join with a join URL and a page URL', async () => {
   assert.equal(unknown.code, 1);
   await cli('end', '--all', '--yes', '--keep-server');
 });
+
+test('cli: role changes an agent role, none clears it, and only an agent link works', async () => {
+  const created = JSON.parse((await cli('new', 'roles')).stdout);
+  const a = JSON.parse((await cli('join', created.join, '--harness', 'codex', '--role', 'tester')).stdout);
+  const changed = await cli('role', a.link, 'builder');
+  assert.equal(changed.code, 0, changed.stderr);
+  assert.equal(JSON.parse(changed.stdout).role, 'builder');
+  const state = await (await fetch(`${created.page}/api/state`)).json();
+  assert.equal(state.agents.find((x) => x.handle === 'codex-1').role, 'builder');
+  assert.equal(state.messages.at(-1).text, 'codex-1 is now builder');
+  assert.equal(JSON.parse((await cli('role', a.link, 'none')).stdout).role, null);
+
+  const bad = await cli('role', a.link, 'Bad Role');
+  assert.equal(bad.code, 1);
+  assert.match(bad.stderr, /role is not allowed/);
+  assert.match((await cli('role', created.join, 'builder')).stderr, /agent link/);
+  assert.match((await cli('role', a.link)).stderr, /usage: .*role <agent-link> <role\|none>/);
+  await cli('end', '--all', '--yes', '--keep-server');
+});
