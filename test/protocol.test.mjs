@@ -411,6 +411,8 @@ test('idle sweep auto-leaves silent agents, releases tasks, spares waiters', asy
   await call('POST', `${a.link}/tasks`, { title: 'one' });
   await call('POST', `${a.link}/tasks`, { title: 'two' });
   await call('POST', `${b.link}/tasks/2/claim`);
+  await call('POST', `${w.link}/tasks/1/claim`);
+  await call('GET', `${w.link}/read`);
 
   const waiting = call('GET', `${w.link}/wait?wait=5`);
   await new Promise((res) => setTimeout(res, 500));
@@ -641,7 +643,7 @@ test('round cap: human settings change it, post a system line, pause and unpause
 
   const lowered = await r.human('api/settings', { roundCap: 2 });
   assert.equal(lowered.status, 200);
-  assert.deepEqual(lowered.json, { roundCap: 2 });
+  assert.deepEqual(lowered.json, { roundCap: 2, assignment: 'regular' });
   let state = await r.state();
   assert.equal(state.roundCap, 2);
   assert.equal(state.messages.at(-1).from, 'system');
@@ -653,7 +655,7 @@ test('round cap: human settings change it, post a system line, pause and unpause
   assert.equal((await post(a, 'unpaused')).status, 200);
 
   const off = await r.human('api/settings', { roundCap: 'off' });
-  assert.deepEqual(off.json, { roundCap: null });
+  assert.deepEqual(off.json, { roundCap: null, assignment: 'regular' });
   state = await r.state();
   assert.equal(state.roundCap, null);
   assert.equal(state.messages.at(-1).text, "you turned the round cap off (agents won't pause for you)");

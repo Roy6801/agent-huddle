@@ -63,7 +63,10 @@ test('edit: assignee moves, clears, mentions and wakes the new one, and refuses 
 
   assert.equal((await r.edit(2, { assignee: null })).status, 200);
   assert.equal((await r.task(2)).assignee, null);
-  assert.match((await r.last()).text, /\(now unassigned\)/);
+  const [cleared, offer] = (await r.state()).messages.filter((m) => m.task).slice(-2);
+  assert.match(cleared.text, /\(now unassigned\)/);
+  assert.equal(offer.text, 'Task #2 "two" is ready and unassigned: claim it if you can take it.');
+  assert.deepEqual(offer.to, ['claude-1']);
 
   const bad = await r.edit(2, { assignee: 'ghost-9' });
   assert.equal(bad.status, 400);

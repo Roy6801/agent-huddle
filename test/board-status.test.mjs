@@ -59,7 +59,8 @@ test('board done: you finish a claimed task with a note, the holder and creator 
   assert.ok(line);
   assert.deepEqual(line.mentions.sort(), ['claude-1', 'codex-1']);
   assert.deepEqual(line.to.sort(), ['claude-1', 'codex-1']);
-  assert.ok(msgs.some((m) => /^task #3 "release" is ready/.test(m.text)));
+  const ready = msgs.find((m) => /^Task #3 "release" is ready and unassigned/.test(m.text));
+  assert.deepEqual(ready.to.sort(), ['claude-1', 'codex-1', 'gemini-1']);
   assert.equal((await r.task(3)).blocked.length, 0);
 
   const woken = await parked;
@@ -71,7 +72,7 @@ test('board done: you finish a claimed task with a note, the holder and creator 
 test('board done: the note is optional and an unclaimed task tells its assignee', async () => {
   const r = await room();
   assert.equal((await r.act(1, 'done')).status, 200);
-  const line = await r.last();
+  const line = (await r.state()).messages.find((m) => /^you marked/.test(m.text));
   assert.equal(line.text, 'you marked task #1 "parser" done');
   assert.deepEqual(line.to.sort(), ['claude-1', 'codex-1']);
   assert.equal((await r.task(1)).note, null);
@@ -111,6 +112,8 @@ test('board done: finishing the last task sends the summary with the task done b
 test('board release: the holder is told and woken, the task is open again for its assignee', async () => {
   const r = await room();
   await call('POST', `${r.gemini.link}/tasks/1/claim`);
+  await call('POST', `${r.codex.link}/tasks/1`, { assignee: 'claude-1' });
+  await call('GET', `${r.gemini.link}/read`);
   const parked = call('GET', `${r.gemini.link}/wait?wait=25`);
   await sleep(100);
 
@@ -185,7 +188,9 @@ test('board reassign: an open task of an agent who left goes to another, and the
 
   assert.equal((await r.act(1, 'assign', { assignee: null })).status, 200);
   assert.equal((await r.task(1)).assignee, null);
-  assert.equal((await r.last()).text, 'you unassigned task #1 "parser"');
+  const [unassigned, offer] = (await r.state()).messages.filter((m) => m.task).slice(-2);
+  assert.equal(unassigned.text, 'you unassigned task #1 "parser"');
+  assert.deepEqual(offer.to, ['codex-1']);
 });
 
 test('board reassign: unchanged, unknown and done are refused', async () => {
