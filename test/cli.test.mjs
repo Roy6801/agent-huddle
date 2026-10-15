@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import { execFile, execFileSync } from 'node:child_process';
-import { serverDefaults } from '../skills/agent-huddle/huddle.mjs';
+import { serverDefaults, withRunningNote } from '../skills/agent-huddle/huddle.mjs';
 
 const CLI = new URL('../skills/agent-huddle/huddle.mjs', import.meta.url).pathname;
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-cli-'));
@@ -247,4 +247,29 @@ test('AGENT_HUDDLE_PORT and AGENT_HUDDLE_HOME win over the checkout defaults', a
     await run(own, 'down');
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('start says when a server was already running, with its live rooms', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-run-'));
+  const own = { ...process.env, AGENT_HUDDLE_HOME: dir, AGENT_HUDDLE_PORT: String(await freePort()) };
+  try {
+    const first = JSON.parse((await run(own, 'new', 'wordfreq')).stdout);
+    assert.doesNotMatch(first.announce, /already running/);
+    const second = JSON.parse((await run(own, 'start', 'qa room')).stdout);
+    assert.match(second.announce.split('\n\n')[1], /^The agent-huddle server was already running \(version [\d.]+\) with live room "wordfreq"\.$/);
+    const third = JSON.parse((await run(own, 'start', 'docs pass')).stdout);
+    const line = third.announce.split('\n\n')[1];
+    assert.match(line, /live rooms "qa room" and "wordfreq"/);
+    assert.doesNotMatch(line, /docs pass/);
+  } finally {
+    await run(own, 'down');
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the already-running note covers no rooms and a version mismatch', () => {
+  const note = withRunningNote('Room "x" is ready.\n\nrest', '0.0.1', []).split('\n\n');
+  assert.equal(note[0], 'Room "x" is ready.');
+  assert.match(note[1], /\(version 0\.0\.1; this command is [\d.]+, so they differ\) with no other rooms\.$/);
+  assert.equal(note[2], 'rest');
 });
