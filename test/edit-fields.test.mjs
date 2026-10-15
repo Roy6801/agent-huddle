@@ -83,7 +83,9 @@ test('edit: after sets order, blocks the task, clears, and refuses unknown tasks
 
   assert.equal((await r.edit(3, { after: [] })).status, 200);
   assert.deepEqual((await r.task(3)).blocked, []);
-  assert.match((await r.last()).text, /no longer after any task/);
+  const [edited, offered] = (await r.state()).messages.filter((m) => m.task === 3).slice(-2);
+  assert.match(edited.text, /no longer after any task/);
+  assert.match(offered.text, /^Task #3 "three" is ready and unassigned/);
 
   assert.equal((await r.edit(3, { after: [9] })).json.error, 'invalid_after');
   assert.equal((await r.edit(3, { after: 'x' })).json.error, 'invalid_after_list');
@@ -92,6 +94,22 @@ test('edit: after sets order, blocks the task, clears, and refuses unknown tasks
   await r.edit(3, { after: [2] });
   assert.equal((await r.edit(1, { after: [3] })).json.error, 'after_cycle');
   assert.deepEqual((await r.task(1)).after, []);
+});
+
+test('edit: an after change that makes an unassigned task ready offers it to the free agents', async () => {
+  const r = await seeded();
+  const offers = async () => (await r.state()).messages.filter((m) => /^Task #2 "two" is ready and unassigned/.test(m.text));
+  await r.edit(2, { after: [1] });
+  const before = (await offers()).length;
+  assert.equal((await r.edit(2, { after: [] })).status, 200);
+  const after = await offers();
+  assert.equal(after.length, before + 1);
+  assert.deepEqual(after.at(-1).to.sort(), ['claude-1', 'codex-1']);
+
+  await r.edit(3, { assignee: 'claude-1' });
+  await r.edit(3, { after: [1] });
+  await r.edit(3, { after: [] });
+  assert.equal((await r.state()).messages.filter((m) => /^Task #3 "three" is ready/.test(m.text)).length, 0, 'an assigned task is not offered');
 });
 
 test('edit: an unchanged value is not an edit, a claimed task keeps its owner as the one told, and done stays refused', async () => {
