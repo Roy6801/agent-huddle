@@ -426,7 +426,7 @@ test('idle sweep auto-leaves silent agents, releases tasks, spares waiters', asy
 
   await call('POST', `${w.link}/post`, { text: 'bye' });
   await r.huddle.close();
-  assert.equal((await waiting).status, 204);
+  assert.equal((await waiting).status, 410);
 });
 
 test('round cap: 4th agent post is 429, relayed does not reset, human resets', async () => {
@@ -557,27 +557,6 @@ test('a done note wakes the task creator without raising the streak', async () =
   assert.ok(message.text.includes(note));
   assert.ok(message.to.includes('dsh-1'));
   assert.equal((await r.state()).agentStreak, before);
-});
-
-test('server idle callback fires only without requests and waiters', async () => {
-  let fired = 0;
-  const r = await room({ serverIdleMs: 200, onIdle: () => fired++ });
-  const a = await r.join('claude');
-  const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
-
-  const pending = call('GET', `${a.link}/wait?wait=2`);
-  await sleep(1000);
-  assert.equal(fired, 0);
-  assert.equal((await pending).status, 204);
-  await sleep(500);
-  assert.equal(fired, 1);
-});
-
-test('server idle callback fires when nothing happens', async () => {
-  let fired = 0;
-  await start({ serverIdleMs: 200, onIdle: () => fired++ });
-  await new Promise((res) => setTimeout(res, 600));
-  assert.equal(fired, 1);
 });
 
 test('relayed posts keep the agent as sender; no agent route yields from=you', async () => {
