@@ -1,5 +1,6 @@
 import {
   CircleStopIcon,
+  HouseIcon,
   KeyboardIcon,
   ListChecksIcon,
   PanelLeftIcon,
@@ -110,7 +111,7 @@ export function Header({
   const { openBoard } = usePanels();
   const board = useSidebar();
   const boardOpen = board.isMobile ? board.openMobile : board.open;
-  const { name, joinUrl, conn, ended } = state;
+  const { name, joinUrl, conn, ended, home } = state;
   const keys = (key: string) => (isMac ? `Meta+${key}` : `Control+${key}`);
   let host = location.host;
   try {
@@ -160,6 +161,14 @@ export function Header({
           >
             <TriangleAlertIcon aria-hidden />
             <span className="sr-only @xl:not-sr-only">Waiting on you</span>
+          </Button>
+        )}
+        {home && (
+          <Button asChild variant="ghost" size="sm" title="All rooms">
+            <a href={home}>
+              <HouseIcon aria-hidden />
+              <span className="sr-only @xl:not-sr-only">All rooms</span>
+            </a>
           </Button>
         )}
         <Connection conn={conn} className="hidden md:inline-flex" />
