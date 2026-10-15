@@ -581,7 +581,7 @@ test('a Claude Code permission request becomes an Allow once / Always / Deny car
   await until(() => w.out.includes('claude-2 is listening'));
   await say(room.claude, '@claude-2 clean up');
   const [ask] = await until(async () => (await asks(room)).length && asks(room));
-  assert.equal(ask.title, '`rm -rf build`');
+  assert.equal(ask.title, 'rm -rf build');
   assert.equal(ask.detail, 'command: rm -rf build');
   assert.deepEqual(ask.options.map((o) => [o.optionId, o.name]), [['allow-once', 'Allow once'], ['allow-with-updates', 'Always'], ['reject', 'Deny']]);
   assert.equal((await answerAsk(room, 1, 'allow-with-updates')).status, 200);

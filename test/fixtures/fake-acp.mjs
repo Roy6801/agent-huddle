@@ -62,9 +62,9 @@ const CODEX_ASK = {
     { optionId: 'cancel', kind: 'reject_once', name: 'Cancel' },
   ],
 };
-// claude-agent-acp 0.91.0 (src/permissions/options/shared.ts): a Bash call with the decline option first.
+// claude-agent-acp 0.91.0: a Bash call titled with its command (tool-calls/reporters/bash.ts), decline first (permissions/options/shared.ts).
 const CLAUDE_ASK = {
-  toolCall: { toolCallId: 't1', title: '`rm -rf build`', kind: 'execute', rawInput: { command: 'rm -rf build' } },
+  toolCall: { toolCallId: 't1', title: 'rm -rf build', kind: 'execute', rawInput: { command: 'rm -rf build' } },
   options: [
     { optionId: 'reject', kind: 'reject_once', name: 'No' },
     { optionId: 'allow-once', kind: 'allow_once', name: 'Yes' },
