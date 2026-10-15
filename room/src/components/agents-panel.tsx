@@ -130,7 +130,7 @@ function StopButton({ handle, requested }: { handle: string; requested: boolean 
 
   if (requested) return <p className="col-span-2 text-muted-foreground">Stopping after its current run</p>;
   return (
-    <div className="col-span-2 mt-1 grid gap-1">
+    <div className="col-span-2 mt-1 grid justify-items-start gap-1">
       <Button
         variant="outline"
         size="xs"
