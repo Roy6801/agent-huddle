@@ -369,11 +369,7 @@ test('cumulative run', async (t) => {
   });
 
   await step(10, 'wrap-up', async (chk) => {
-    const summary = '@you summary: wordfreq CLI built, tested and reviewed; scratch.txt removed with your approval';
-    await handoff(chk, claude2, summary, []);
-    const stored = (await state()).messages.find((m) => m.text === summary);
-    chk(stored?.toYou === true, 'claude-2', 'the summary addressed to you', stored);
-
+    await parkAll();
     const owners = { 4: claude2, 5: winner };
     for (const [n, a] of Object.entries(owners)) {
       const res = await a.done(Number(n), `task ${n} finished`);
@@ -386,6 +382,25 @@ test('cumulative run', async (t) => {
       'all five tasks done with notes',
       s.tasks.map((x) => [x.id, x.status, x.note]),
     );
+    const summaries = s.messages.filter((m) => m.from === 'system' && /^All 5 tasks are done:/.test(m.text));
+    const lines = s.tasks.map((x) => `#${x.id} "${x.title}" by ${x.owner}: ${x.note}`);
+    chk(
+      summaries.length === 1 && summaries[0].toYou && lines.every((line) => summaries[0].text.includes(line)),
+      'server',
+      'one summary to you with a line per task',
+      summaries.map((m) => ({ toYou: m.toYou, text: m.text })),
+    );
+    for (const a of listeners) {
+      const w = await a.woken();
+      chk(
+        w.answer.body?.offShift === true && w.messages.some((m) => m.offShift && m.from === 'system'),
+        a.handle,
+        'a wake sending it off shift',
+        w.answer,
+      );
+    }
+    const lead = await codex.read();
+    chk(lead.json?.offShift === true, 'codex-1', 'off shift on its next read', lead.json);
 
     await parkAll();
     for (const a of [codex, ...listeners]) {

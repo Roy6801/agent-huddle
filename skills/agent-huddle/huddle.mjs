@@ -56,6 +56,7 @@ const QUIET_NOTES = {
   },
   asleep: { label: 'asleep', one: (h, age) => `${h} is asleep (last seen ${age} ago). If its turn ended, nudge it in its own terminal.` },
 };
+const OFF_SHIFT = 'All tasks are done; you are off shift. Stop waiting and end your turn; @you or a reopened task brings you back.';
 const ROLE_RE = /^[a-z0-9-]{1,20}$/;
 // The lookahead capture is atomic, so a token like @types/node never backs off to @types.
 const MENTION_RE = /(?<![A-Za-z0-9_.@])@(?=([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*(?:\.\*)?))\1(?![A-Za-z0-9_/@*-])/gi;
@@ -497,13 +498,14 @@ export function createHuddle(opts = {}) {
       ...(extra.ask && { ask: extra.ask }),
       ...(extra.task && { task: extra.task }),
       ...(extra.brief && { brief: true }),
+      ...(extra.offShift && { offShift: true }),
     };
     s.messages.push(m);
     while (s.messages.length > MAX_MESSAGES) s.messages.shift();
     for (const agent of s.agents.values()) {
       if (agent.waiters.size && m.to.includes(agent.handle)) flushWaiters(s, agent);
     }
-    if (m.to.length) noticeQuiet(s, m, extra.routedFor);
+    if (m.to.length && !m.offShift) noticeQuiet(s, m, extra.routedFor);
     return m;
   }
 
@@ -567,7 +569,8 @@ export function createHuddle(opts = {}) {
     messages.forEach((m, i) => m.task && m.to.includes(agent.handle) && latest.set(m.task, i));
     for (const [n, i] of latest) messages[i] = { ...messages[i], taskDetail: agentTaskView(s, agent, getTask(s, n)) };
     agent.cursor = cursor;
-    return { messages, cursor };
+    const newest = messages.findLast((m) => m.to.includes(agent.handle));
+    return { messages, cursor, ...(newest?.offShift && { offShift: true }) };
   }
 
   const unreadCount = (s, agent) =>
@@ -895,6 +898,15 @@ export function createHuddle(opts = {}) {
     }
   }
 
+  function allDone(s) {
+    if (!s.tasks.length || s.tasks.some((t) => t.status !== 'done')) return;
+    const lead = s.lead && s.agents.get(s.lead)?.status !== 'left' ? [s.lead] : [];
+    const lines = s.tasks.map((t) => `#${t.id} "${t.title}" by ${t.owner}: ${t.note ?? 'no note'}`);
+    system(s, `All ${s.tasks.length} tasks are done:\n${lines.join('\n')}`, { toYou: true, mentions: lead, to: lead });
+    const live = liveAgents(s).map((a) => a.handle);
+    if (live.length) system(s, OFF_SHIFT, { to: live, offShift: true });
+  }
+
   function reopenTask(s, by, n, body) {
     const task = getTask(s, n);
     if (task.status !== 'done') throw new HttpError('not_done', { n, status: task.status });
@@ -943,6 +955,7 @@ export function createHuddle(opts = {}) {
           task: task.id,
         });
       }
+      allDone(s);
     } else {
       if (task.status === 'done') throw new HttpError('task_done', { n });
       if (task.status !== 'claimed' || task.owner !== h) {
@@ -1920,7 +1933,9 @@ async function waitForTurn(args) {
       continue;
     }
     if (res.status === 200) {
-      console.log(JSON.stringify(await res.json()));
+      const body = await res.json();
+      console.log(JSON.stringify(body));
+      if (body.offShift) process.exit(5);
       return;
     }
     if (res.status === 410 || res.status === 401) {
@@ -2296,6 +2311,7 @@ async function runWorker(args) {
       if (res.status !== 200) return abort(1, `huddle error: ${(await res.json().catch(() => ({}))).message ?? res.status}`, false);
       const payload = await res.json();
       if (payload.stop) return stopNow();
+      if (payload.offShift) continue;
       const woken = payload.messages;
       await nap(Number(process.env.AGENT_HUDDLE_BATCH_MS) || 3000);
       if (signal.aborted) return;

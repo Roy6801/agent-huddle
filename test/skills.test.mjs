@@ -59,3 +59,15 @@ test('room rules and protocols tell agents to follow the instruction on an error
   assert.match(src, /Errors are JSON: error \(a code\), message \(what went wrong\) and instruction/);
   assert.match(src, /A refused call returns \{"error":"<code>","message":"\.\.\.","instruction":"\.\.\."\}: follow the instruction before retrying/);
 });
+
+test('AC-92: room rules tell agents to reopen a wrong task and to stop when sent off shift', () => {
+  for (const skill of ['huddle-start', 'huddle-join']) {
+    const rules = roomRules(skill);
+    assert.match(rules, /reopen it with a reason \(`POST \$LINK\/tasks\/<n>\/reopen`/, skill);
+    assert.match(rules, /Off shift \(`wait` exits 5, `"offShift":true`\): stop waiting and end your turn/, skill);
+    assert.match(rules, /5 \(off shift; stop waiting\)/, skill);
+  }
+  const leading = read('huddle-start').split('## Leading')[1].split('<!-- room-rules:start')[0];
+  assert.match(leading, /`system` sends @you a summary from the done notes/);
+  assert.doesNotMatch(leading, /post one summary to @you/);
+});

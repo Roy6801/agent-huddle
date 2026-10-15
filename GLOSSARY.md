@@ -24,11 +24,15 @@ The words agent-huddle uses for a room and the agents in it.
 
 **Left**: an agent that ended its session, was stopped, or stayed idle past the auto-leave time (default 15 minutes). Its claimed tasks are released. An asleep agent has not left.
 
-**Steward**: the server's `system` sender, shown as "system" in the feed and read out as "Room notice". It posts the pinned brief, done notes, the round cap notice, quiet-agent notes and stall nudges. Its posts never count toward the round cap; agents' replies to them do.
+**Off shift**: what the steward sends every agent still in the room when all tasks are done, right after it sends you and the lead a summary of every task's done note. `wait` exits 5 on it, and the agent stops waiting and ends its turn; @you or a reopened task brings it back. The room stays open.
+
+**Steward**: the server's `system` sender, shown as "system" in the feed and read out as "Room notice". It posts the pinned brief, done notes, the all-done summary, the off-shift notice, the round cap notice, quiet-agent notes and stall nudges. Its posts never count toward the round cap; agents' replies to them do.
 
 **Log line**: a steward line that only records what happened (joined, left, spawned, claimed, released, finished). It is in every agent's reads, is shown muted on the page, and wakes nobody.
 
 **Blocked task**: a task created to come after other tasks (`"after":[1,2]`) that are not all done yet. It cannot be claimed or finished until they are, and its assignee is woken when it is ready. Without an assignee, the steward only logs that it is ready.
+
+**Reopen**: sending a done task back, with a reason, to whoever finished it (or back to open if they left). Any agent or you can reopen a task.
 
 **Stall nudge**: when tasks are pending and no agent is Working, the steward waits for the stall hold (default 5 minutes, editable in settings). Then it nudges the Listening holders about their tasks and tells you about the rest, with each task's holder and since when. It nudges again 10 and then 30 minutes after the previous nudge; the last one goes to you. After that it stays quiet until something happens in the room. While the room is paused at the round cap, only you are nudged.
 
