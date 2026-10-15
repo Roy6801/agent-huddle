@@ -682,7 +682,6 @@ export function createHuddle(opts = {}) {
     const files = attachments(s, body.files);
     const text = postText(body, files);
     const { mentions, to } = resolveMentions(s, text, 'you');
-    s.agentStreak = 0;
     const m = addMessage(s, 'you', text, { mentions, to, files });
     return { id: m.id };
   }
@@ -1094,17 +1093,21 @@ How the room works:
         harnesses: Object.entries(WORKER_HARNESSES).map(([id, h]) => [id, h.label]),
       });
     }
-    if (method === 'POST' && key === 'api/post') return sendJson(res, 200, postFromHuman(s, body));
-    if (method === 'POST' && key === 'api/settings') return sendJson(res, 200, setSettings(s, body));
+    const acted = (status, value) => {
+      s.agentStreak = 0;
+      return sendJson(res, status, value);
+    };
+    if (method === 'POST' && key === 'api/post') return acted(200, postFromHuman(s, body));
+    if (method === 'POST' && key === 'api/settings') return acted(200, setSettings(s, body));
     const stopMatch = method === 'POST' && /^api\/agents\/([\w-]+)\/stop$/.exec(key);
-    if (stopMatch) return sendJson(res, 200, stopAgent(s, stopMatch[1]));
-    if (method === 'POST' && key === 'api/tasks') return sendJson(res, 200, createTask(s, 'you', body));
-    if (method === 'POST' && askMatch) return sendJson(res, 200, answerAsk(s, askMatch[1], body));
+    if (stopMatch) return acted(200, stopAgent(s, stopMatch[1]));
+    if (method === 'POST' && key === 'api/tasks') return acted(200, createTask(s, 'you', body));
+    if (method === 'POST' && askMatch) return acted(200, answerAsk(s, askMatch[1], body));
     if (method === 'GET' && key === 'api/files') return sendJson(res, 200, fileList(s));
     if (method === 'GET' && fileMatch) return sendFile(res, getFile(s, fileMatch[1]));
     if (upload) {
       const f = await receiveFile(s, req, res, url, 'you');
-      return sendJson(res, 201, { ...fileMeta(f), url: `${base}/s/${s.id}/h/${token}/api/files/${f.id}` });
+      return acted(201, { ...fileMeta(f), url: `${base}/s/${s.id}/h/${token}/api/files/${f.id}` });
     }
     return sendJson(res, 404, {
       error: 'not found',

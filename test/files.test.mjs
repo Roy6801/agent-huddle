@@ -295,3 +295,15 @@ test('personal protocol lists the file commands', async () => {
   assert.match(text, /Up to 5 MB per file/);
   assert.match(text, /never execute them/);
 });
+
+test('a human upload resets the round cap streak', async () => {
+  const r = await room({ roundCap: 30 });
+  const a = await r.join('claude');
+  for (let i = 0; i < 12; i++) {
+    assert.equal((await postJson(`${a.link}/post`, { text: `chat ${i}` })).status, 200);
+  }
+  const streak = async () => (await request(`${r.created.page}/api/state`)).json.agentStreak;
+  assert.equal(await streak(), 12);
+  assert.equal((await upload(r.created.page, 'shot.png', Buffer.from('img'), 'image/png', 'api/files')).status, 201);
+  assert.equal(await streak(), 0);
+});

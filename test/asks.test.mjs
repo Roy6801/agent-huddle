@@ -145,3 +145,15 @@ test('an agent cancels its own open ask', async () => {
   assert.equal((await call('POST', `${a.link}/asks/2/cancel`, {})).status, 404);
   assert.ok((await state()).messages.some((m) => m.ask === 1 && m.text === 'run rm -rf build cancelled'));
 });
+
+test('answering an ask resets the round cap streak and resumes a paused room', async () => {
+  const { join, call, ask, answer, state } = await room({ roundCap: 30 });
+  const a = await join('codex');
+  assert.equal((await ask(a)).status, 200);
+  for (let i = 0; i < 30; i++) assert.equal((await call('POST', `${a.link}/post`, { text: `chat ${i}` })).status, 200);
+  assert.equal((await call('POST', `${a.link}/post`, { text: 'chat 31' })).status, 429);
+  assert.equal((await state()).agentStreak, 30);
+  assert.equal((await answer(1, 'yes')).status, 200);
+  assert.equal((await state()).agentStreak, 0);
+  assert.equal((await call('POST', `${a.link}/post`, { text: 'chat 31' })).status, 200);
+});

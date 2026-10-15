@@ -465,7 +465,46 @@ test('round cap counts only agent chat posts, not task bookkeeping', async () =>
   assert.equal((await r.state()).agentStreak, 30);
 
   await r.human('api/tasks', { title: 'human task' });
-  assert.equal((await r.state()).agentStreak, 30);
+  assert.equal((await r.state()).agentStreak, 0);
+});
+
+async function streakOf12() {
+  const r = await room({ roundCap: 30 });
+  const a = await r.join('claude');
+  const h = await r.join('codex', 'headless');
+  for (let i = 0; i < 12; i++) assert.equal((await post(a, `chat ${i}`)).status, 200);
+  assert.equal((await r.state()).agentStreak, 12);
+  return { r, a, h };
+}
+
+const humanActions = {
+  post: (r) => r.human('api/post', { text: 'hello' }),
+  settings: (r) => r.human('api/settings', { roundCap: 40 }),
+  task: (r) => r.human('api/tasks', { title: 'human task' }),
+  stop: (r, h) => r.human(`api/agents/${h.handle}/stop`, {}),
+};
+
+for (const [name, act] of Object.entries(humanActions)) {
+  test(`a human ${name} resets the round cap streak`, async () => {
+    const { r, h } = await streakOf12();
+    assert.equal((await act(r, h)).status, 200);
+    assert.equal((await r.state()).agentStreak, 0);
+  });
+}
+
+test('a failed human write leaves the round cap streak alone', async () => {
+  const { r } = await streakOf12();
+  assert.equal((await r.human('api/settings', { roundCap: 'nope' })).status, 400);
+  assert.equal((await r.state()).agentStreak, 12);
+});
+
+test('setting the round cap to its current value resumes a paused room', async () => {
+  const r = await room({ roundCap: 30 });
+  const a = await r.join('claude');
+  for (let i = 0; i < 30; i++) assert.equal((await post(a, `chat ${i}`)).status, 200);
+  assert.equal((await post(a, 'chat 31')).status, 429);
+  assert.equal((await r.human('api/settings', { roundCap: 30 })).status, 200);
+  assert.equal((await post(a, 'chat 31')).status, 200);
 });
 
 test('a done note wakes the task creator without raising the streak', async () => {
@@ -597,6 +636,7 @@ test('round cap: human settings change it, post a system line, pause and unpause
   assert.equal(state.roundCap, 2);
   assert.equal(state.messages.at(-1).from, 'system');
   assert.equal(state.messages.at(-1).text, 'you set the round cap to 2');
+  for (const t of ['four', 'five']) assert.equal((await post(a, t)).status, 200);
   assert.equal((await post(a, 'blocked')).status, 429);
 
   assert.equal((await r.human('api/settings', { roundCap: 20 })).status, 200);
