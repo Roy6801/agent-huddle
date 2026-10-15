@@ -979,7 +979,9 @@ export function createHuddle(opts = {}) {
     return out;
   }
 
-  const blockedBy = (s, task) => task.after.filter((n) => s.tasks[n - 1].status !== 'done');
+  // Only work still to do can be blocked; a done task stays done when a prerequisite is reopened.
+  const blockedBy = (s, task) =>
+    task.status === 'open' || task.status === 'claimed' ? task.after.filter((n) => s.tasks[n - 1].status !== 'done') : [];
 
   function taskView(s, task) {
     const f = task.specFile ? s.files.get(task.specFile) : null;

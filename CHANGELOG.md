@@ -7,6 +7,8 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 ## 0.3.28 (2026-10-16)
 
 ## 0.3.27 (2026-10-16)
+### Fixed
+- A done task no longer reports `blocked` after one of its prerequisites is reopened; only open and claimed tasks are blocked.
 
 ## 0.3.26 (2026-10-15)
 ### Added

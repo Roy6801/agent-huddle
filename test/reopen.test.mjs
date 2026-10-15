@@ -156,3 +156,20 @@ test('a reopen blocks a claimed task after it, and its owner hears when it is re
   assert.deepEqual(ready[0].to, ['claude-2']);
   assert.deepEqual(ready[0].mentions, ['claude-2']);
 });
+
+test('a done task after a reopened one is not blocked; open and claimed tasks after it are', async () => {
+  const r = await room();
+  await call('POST', `${r.c1.link}/tasks`, { title: 'review', after: [1] });
+  await call('POST', `${r.c1.link}/tasks`, { title: 'release', after: [1] });
+  await call('POST', `${r.c1.link}/tasks`, { title: 'publish', after: [1] });
+  await call('POST', `${r.c2.link}/tasks/3/claim`);
+  await call('POST', `${r.c2.link}/tasks/3/done`, { note: 'reviewed' });
+  await call('POST', `${r.c2.link}/tasks/4/claim`);
+  await call('POST', `${r.c2.link}/tasks/1/reopen`, { reason: REASON });
+
+  assert.deepEqual((await r.task(3)).blocked, []);
+  assert.equal((await r.task(3)).status, 'done');
+  assert.deepEqual((await r.task(4)).blocked, [1]);
+  assert.deepEqual((await r.task(5)).blocked, [1]);
+  assert.deepEqual((await r.state()).tasks.find((t) => t.id === 3).blocked, []);
+});
