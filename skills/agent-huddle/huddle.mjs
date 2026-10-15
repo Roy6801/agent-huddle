@@ -140,7 +140,7 @@ export const ERRORS = {
   task_done: [409, (p) => `Task #${p.n} is already done.`, (p) => `Reopen it with a reason (POST tasks/${p.n}/reopen) or create a new task for follow-up work.`],
   task_cancelled: [409, (p) => `Task #${p.n} is cancelled.`, (p) => `Reopen it with a reason (POST tasks/${p.n}/reopen) or create a new task for the work.`],
   not_canceller: [403, (p) => `Task #${p.n} was created by @${p.creator}; only its creator, the lead${p.lead ? ` (@${p.lead})` : ''} or @you can cancel it.`,
-    (p) => `Ask @${p.creator === 'you' ? 'you' : `${p.creator} or @you`} to cancel it, or post why it is no longer needed.`],
+    (p) => `Ask ${[...new Set([p.creator, p.lead, 'you'])].filter(Boolean).map((h) => `@${h}`).join(', ').replace(/, (?=@you$)/, ' or ')} to cancel it, and say why it is no longer needed.`],
   not_done: [409, (p) => `Task #${p.n} is ${p.status}, not done or cancelled.`, 'Only a done or cancelled task can be reopened; claim, finish or release it instead.'],
   not_claimed: [409, (p) => `Task #${p.n} is ${p.status}, not claimed.`, 'Only a claimed task can be released; reassign or finish it instead.'],
   same_assignee: [409, (p) => (p.assignee ? `Task #${p.n} is already with @${p.assignee}.` : `Task #${p.n} is already unassigned.`),
