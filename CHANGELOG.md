@@ -4,6 +4,8 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 
 ## Unreleased
 
+## 0.3.28 (2026-10-16)
+
 ## 0.3.27 (2026-10-16)
 
 ## 0.3.26 (2026-10-15)
