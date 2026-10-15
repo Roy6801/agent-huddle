@@ -1,0 +1,134 @@
+import { test, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { createHuddle } from '../skills/agent-huddle/huddle.mjs';
+
+const running = [];
+afterEach(async () => {
+  while (running.length) await running.pop().close();
+});
+
+async function start(opts = {}) {
+  const huddle = createHuddle(opts);
+  const port = await huddle.listen(0);
+  running.push(huddle);
+  return { huddle, base: `http://127.0.0.1:${port}` };
+}
+
+async function call(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: body === undefined ? {} : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+  return { status: res.status, json, text, headers: res.headers };
+}
+
+async function room(opts) {
+  const { huddle, base } = await start(opts);
+  const { json: created } = await call('POST', `${base}/new`, { name: 'test room' });
+  const join = async (harness, role) => {
+    const { json } = await call('POST', `${created.join}/join`, { harness, ...(role ? { role } : {}) });
+    return json;
+  };
+  const human = (path, body) => call(body ? 'POST' : 'GET', `${created.page}/${path}`, body);
+  const state = async () => (await human('api/state')).json;
+  return { huddle, base, created, join, human, state };
+}
+
+const taskList = async (agent) => (await call('GET', `${agent.link}/tasks`)).json.tasks;
+
+test('task create: invalid description, spec or file is refused and nothing changes', async () => {
+  const r = await room();
+  const codex = await r.join('codex');
+  const claude = await r.join('claude');
+  const upload = await fetch(`${codex.link}/files?name=spec-wordfreq.md`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/markdown' },
+    body: '# word frequency',
+  });
+  const file = await upload.json();
+  const messagesBefore = (await r.state()).messages.length;
+
+  const cases = [
+    [{ description: 'd'.repeat(2001) }, 'description must be 1-2000 characters'],
+    [{ spec: 's'.repeat(20001) }, 'spec must be 1-20000 characters'],
+    [{ specFile: 'nope' }, 'unknown file'],
+    [{ spec: 'text', specFile: file.id }, 'send spec or specFile, not both'],
+  ];
+  for (const [fields, error] of cases) {
+    const wait = fetch(`${claude.link}/wait?wait=1`);
+    const res = await call('POST', `${codex.link}/tasks`, { title: 'bad', assignee: 'claude-1', ...fields });
+    assert.equal(res.status, 400);
+    assert.equal(res.json.error, error);
+    if (error === 'unknown file') assert.deepEqual(res.json.valid, [file.id]);
+    assert.equal((await wait).status, 204);
+    assert.equal((await taskList(codex)).length, 0);
+    assert.equal((await r.state()).messages.length, messagesBefore);
+  }
+});
+
+test('task create: a long non-Latin spec is accepted, a body over 128 KB is refused', async () => {
+  const r = await room();
+  const codex = await r.join('codex');
+  await r.join('claude');
+  const ok = await call('POST', `${codex.link}/tasks`, {
+    title: 'wide',
+    assignee: 'claude-1',
+    description: '字'.repeat(2000),
+    spec: '字'.repeat(20000),
+  });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.json.spec.length, 20000);
+
+  const tooBig = await call('POST', `${codex.link}/tasks`, { title: 'huge', spec: 'x'.repeat(129 * 1024) });
+  assert.equal(tooBig.status, 413);
+  const tooBigPage = await r.human('api/tasks', { title: 'huge', spec: 'x'.repeat(129 * 1024) });
+  assert.equal(tooBigPage.status, 413);
+  assert.equal((await taskList(codex)).length, 1);
+});
+
+test('task create: a title-only task still works', async () => {
+  const r = await room();
+  const codex = await r.join('codex');
+  await r.join('claude');
+  const res = await call('POST', `${codex.link}/tasks`, { title: 'draw sprite', assignee: 'claude-1' });
+  assert.equal(res.status, 200);
+  assert.equal(res.json.description, null);
+  assert.equal(res.json.spec, null);
+  assert.equal(res.json.specFile, null);
+  const [task] = await taskList(codex);
+  assert.equal(task.title, 'draw sprite');
+  assert.equal(task.specSize, 0);
+});
+
+test('read task: full task by id, the list carries the spec size only', async () => {
+  const r = await room();
+  const codex = await r.join('codex');
+  const claude = await r.join('claude');
+  const opencode = await r.join('opencode');
+  const spec = 'x'.repeat(4000);
+  await call('POST', `${codex.link}/tasks`, { title: 'wordfreq', description: 'count words', spec, assignee: claude.handle });
+
+  const one = await call('GET', `${opencode.link}/tasks/1`);
+  assert.equal(one.status, 200);
+  assert.equal(one.json.title, 'wordfreq');
+  assert.equal(one.json.description, 'count words');
+  assert.equal(one.json.spec, spec);
+  assert.equal(one.json.status, 'open');
+  assert.equal(one.json.owner, null);
+  assert.equal(one.json.assignee, 'claude-1');
+  assert.equal(one.json.createdBy, 'codex-1');
+
+  const [listed] = await taskList(opencode);
+  assert.equal(listed.specSize, 4000);
+  assert.equal(listed.description, 'count words');
+  assert.ok(!('spec' in listed));
+
+  assert.equal((await call('GET', `${opencode.link}/tasks/9`)).status, 404);
+  assert.equal((await r.state()).tasks[0].spec, spec);
+});
