@@ -372,6 +372,21 @@ test('a reply over the server limit is truncated with a marker', async () => {
   assert.ok(post.text.endsWith('… (truncated)'));
 });
 
+for (const [mode, how] of [['ids', 'by message id'], ['noids', 'by the tool call between them']]) {
+  test(`separate agent messages post as one reply split into paragraphs (${how}), so a mention after a period counts`, async () => {
+    const room = await setup(`split room ${mode}`);
+    const w = startWorker(room.created.join, { FAKE_ACP_SPLIT: mode });
+    await until(() => w.out.includes('codex-1 is listening'));
+    await say(room.claude, '@codex-1 check it');
+    const [post] = await until(async () => {
+      const posts = await codexPosts(room);
+      return posts.length ? posts : null;
+    });
+    assert.equal(post.text, 'I will look at it.\n\n@you it is done.');
+    assert.equal(post.toYou, true);
+  });
+}
+
 const asks = async (room) => (await (await fetch(`${room.created.page}/api/state`)).json()).asks;
 const answerAsk = (room, n, optionId) => fetch(`${room.created.page}/api/asks/${n}`, json({ optionId }));
 
