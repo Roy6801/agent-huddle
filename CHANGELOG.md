@@ -24,77 +24,101 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 
 ## 0.3.30 (2026-10-16)
 
-## 0.3.29 (2026-10-16)
-
-## 0.3.28 (2026-10-16)
 ### Added
+
 - Roles stick: a join line can end with `as <role>` (`/huddle-join <url> as builder`), huddle-join joins with it, huddle-start hands out lines with the roles the user gave, and Add agent on the page has an optional Role field for the skill lines and the headless command (`worker --role`).
 - Role change: `POST <link>/role {"role":…}` (null clears) and CLI `role <agent-link> <role|none>`, with the steward line "codex-1 is now builder"; `POST <page>/api/agents/<handle>/role` lets @you set any agent's role, and its line mentions and wakes the agent. Changes are written to history; the personal protocol and room rules document them.
 - The `new` reply carries `folder`, and the announce names the room folder and asks to confirm it before agents join; huddle-start confirms it with the user.
 
 ### Changed
+
 - Headless is a flag (`headless: true` in who, state and history), not a role, so a headless agent can hold a real role. Joins with role `headless` still set the flag; `headless` is no longer a valid role.
 - `@lead` reaches the lead whatever role it holds; the roster shows the role next to the handle with lead and headless badges.
 - A room folder change before any agent but the lead has joined and before any task creates no move task.
 
-## 0.3.27 (2026-10-16)
+## 0.3.29 (2026-10-16)
+
 ### Added
+
 - Tasks can be cancelled (`POST <link>/tasks/<n>/cancel` for the creator or the lead, `POST <page>/api/tasks/<n>/cancel` for you; optional `reason`). The task keeps its number with status `cancelled` and `cancelled: {by, reason, at}`; it counts as finished, so tasks waiting only on it are announced ready and woken, and the all-done summary fires and lists it as `cancelled: #n "title" by <who>: <reason>`. One steward line mentions and wakes the holder or assignee, the creator and the owners of tasks after it. Reopen takes a cancelled task back to open for its assignee. New errors `not_canceller` (403) and `task_cancelled` (409); `not_done` now reads "not done or cancelled". The personal reference, skills room rules, history lines and transcript show the status and reason.
 - The room page's Status menu has Cancel task…, which asks for an optional reason in a dialog. A cancelled card is muted and struck through like a done one, shows Cancelled by with the reason, and offers Reopen. The board count leaves cancelled tasks out of the total and names them apart ("3/3 done · 1 cancelled").
 
 ### Fixed
+
 - A done task no longer reports `blocked` after one of its prerequisites is reopened; only open and claimed tasks are blocked.
 
-## 0.3.26 (2026-10-15)
+## 0.3.28 (2026-10-16)
+
 ### Added
-- Terminal Claude Code and Codex permission prompts can ask on the room page. `ask-hook claude|codex` is a `PermissionRequest` command hook: it posts an ask card for the agent bound to the hook's `session_id`, long-polls the answer and prints `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"|"deny"}}}` (Claude Code's Always adds the request's `permission_suggestions` as `updatedPermissions` for this session only). Any failure, or no answer within 3 minutes, prints nothing so the terminal prompt shows, and the card is cancelled.
-- `approvals on <agent-link> [--session <id>]` / `approvals off` bind a harness session to an agent (`approvals.json`, owner-only; Codex defaults to `CODEX_THREAD_ID`). `approvals claude|codex [--write]` prints or merges the hook into Claude Code `settings.json` or Codex `hooks.json`. The join and start skills and the personal reference of terminal Claude Code and Codex agents offer it.
-### Added
+
 - `worker opencode` runs opencode headless through `opencode acp` (its binary found like other harnesses), on the user's own opencode setup: no key is passed, and a failed start says to run `opencode auth login`. `OPENCODE_CONFIG_CONTENT` sets edit to allow and bash to ask, since opencode allows every shell command by default. The worker selects the `build` agent through `session/set_config_option` when an agent offers its mode as a config option. Its asks (once / always / reject) map to Allow once / Always / Deny cards. Add agent → Headless lists opencode. Only DeepSeek Harness is still refused.
 
+## 0.3.27 (2026-10-16)
+
+### Added
+
+- Terminal Claude Code and Codex permission prompts can ask on the room page. `ask-hook claude|codex` is a `PermissionRequest` command hook: it posts an ask card for the agent bound to the hook's `session_id`, long-polls the answer and prints `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"|"deny"}}}` (Claude Code's Always adds the request's `permission_suggestions` as `updatedPermissions` for this session only). Any failure, or no answer within 3 minutes, prints nothing so the terminal prompt shows, and the card is cancelled.
+- `approvals on <agent-link> [--session <id>]` / `approvals off` bind a harness session to an agent (`approvals.json`, owner-only; Codex defaults to `CODEX_THREAD_ID`). `approvals claude|codex [--write]` prints or merges the hook into Claude Code `settings.json` or Codex `hooks.json`. The join and start skills and the personal reference of terminal Claude Code and Codex agents offer it.
+
+## 0.3.26 (2026-10-15)
+
+### Added
+
+- The room page can mark a task done (`POST <page>/api/tasks/<n>/done`, note optional, refused while blocked), unclaim it (`/release`; the task stays with its assignee) and reassign it (`/assign` with an agent or null; a different holder is released). Each posts one steward line that mentions and wakes the holder, assignee or creator it affects. A task you finish is owned by `you`, so the all-done summary reads "by you". New errors `not_claimed` and `same_assignee`.
+- Each open or claimed task card on the room page has a Status menu (Mark done…, Unclaim, Reassign…); Mark done asks for an optional note and Reassign offers the agents in the room or nobody, each in a dialog. A blocked task says which tasks it waits on instead of offering Mark done.
+
 ## 0.3.25 (2026-10-15)
+
+### Added
+
+- A home page lists your live rooms (name, agents, started; each opens its page) and past rooms from history (started, when and why it ended, transcript path with Copy; each opens read-only, also history from before page hashes), newest first. `agent-huddle home [--print]` opens it; its link `/home/<key>` holds a home key kept in `<home>/home-key` (0600, stable across restarts), and a wrong key gets 401 `wrong_home_link`. `GET /` shows only a hint. Lead and agent keys are never listed.
 
 ## 0.3.24 (2026-10-15)
 
 ### Added
+
 - `worker claude` runs Claude Code headless through `@agentclientprotocol/claude-agent-acp@0.91.0` (bunx) in acceptEdits mode, on the user's own Claude Code login: `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are removed from the adapter's environment, and a failed start says to sign in with `claude` (/login). Its permission asks map to Allow once / Always / Deny cards. Add agent → Headless lists Claude Code; In my terminal stays the default. Only opencode and DeepSeek Harness are still refused.
 - `doctor` warns when Claude Code or Codex is installed but `bunx` is not on PATH.
-### Added
-- The room page can mark a task done (`POST <page>/api/tasks/<n>/done`, note optional, refused while blocked), unclaim it (`/release`; the task stays with its assignee) and reassign it (`/assign` with an agent or null; a different holder is released). Each posts one steward line that mentions and wakes the holder, assignee or creator it affects. A task you finish is owned by `you`, so the all-done summary reads "by you". New errors `not_claimed` and `same_assignee`.
-- Each open or claimed task card on the room page has a Status menu (Mark done…, Unclaim, Reassign…); Mark done asks for an optional note and Reassign offers the agents in the room or nobody, each in a dialog. A blocked task says which tasks it waits on instead of offering Mark done.
 
 ## 0.3.23 (2026-10-15)
 
 ### Added
+
 - Task edit accepts `title`, `assignee` and `after` as well as description and spec, with create's validation; a change that would make a task wait on itself (directly or through others) is refused with `after_cycle`. The steward line names what changed and mentions the new assignee (and the previous one while the task is unclaimed).
 
 ### Changed
+
 - On the room page, Edit and Reopen open in a dialog. Edit covers title, assignee, after, description and spec; a done task says it cannot be edited and offers Reopen with its reason field.
-### Added
-- A home page lists your live rooms (name, agents, started; each opens its page) and past rooms from history (started, when and why it ended, transcript path with Copy; each opens read-only, also history from before page hashes), newest first. `agent-huddle home [--print]` opens it; its link `/home/<key>` holds a home key kept in `<home>/home-key` (0600, stable across restarts), and a wrong key gets 401 `wrong_home_link`. `GET /` shows only a hint. Lead and agent keys are never listed.
 
 ## 0.3.22 (2026-10-15)
+
+### Added
+
+- An ended room's page shows the room read-only from its history (messages, tasks with final status and notes, file names, brief) with when and why it ended and the transcript path, also after a server restart. `GET <page>/api/history` serves it; the history room line keeps a hash of the page link to check it, and a `brief` line records who set the brief.
 
 ## 0.3.21 (2026-10-15)
 
 ### Added
+
 - The landing site counts anonymous page views and web vitals with Vercel Web Analytics and Speed Insights (cookieless), plus three click events (install copy, zip download, GitHub link). The product sends nothing; a test guards that skills/, room/ and the installer reference no analytics package.
 - A headless agent gets its personal protocol in its first prompt (without wait, read, spawn and leave, which its worker makes), so it claims, finishes, releases and reopens tasks, reads tasks, uploads files and posts with mentions through its own link.
 - `worker codex` says at start how to let Codex reach 127.0.0.1 (approve the network card, or `network_access = true` and restart the worker); doctor's sandbox diagnosis names the headless case.
 
 ### Fixed
+
 - Separate agent messages in a headless reply are kept as paragraphs instead of glued together ("it.@you"), so a mention after a period counts.
 
 ## 0.3.20 (2026-10-15)
 
 ### Fixed
+
 - `--help` or `-h` after any command prints that command's usage instead of running it, and `new` rejects an unknown option instead of using it as the room name.
-### Added
-- An ended room's page shows the room read-only from its history (messages, tasks with final status and notes, file names, brief) with when and why it ended and the transcript path, also after a server restart. `GET <page>/api/history` serves it; the history room line keeps a hash of the page link to check it, and a `brief` line records who set the brief.
 
 ## 0.3.19 (2026-10-15)
 
 ### Added
+
+- The room page's settings sit in a collapsed accordion below the round cap.
 - A changelog (this file) and a changelog page on the site.
 
 ## 0.3.18 (2026-10-15)
