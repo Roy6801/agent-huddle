@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
-import { spawn, spawnSync } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
 
 const VERSION = '0.3.37';
 const THIS_FILE = fileURLToPath(import.meta.url);
@@ -173,9 +173,15 @@ export const ERRORS = {
     'Upload it first with POST files?name=<filename>, then attach the id it returns.'],
   invalid_for: [400, 'for must be "you".', 'Send "for":"you" to relay to @you, or leave it out.'],
   empty_settings: [400, 'The settings request changes nothing.',
-    'Send at least one of folder, roundCap, assignment, wakesPerHour, runMinutes, idleMinutes, workingWindowMinutes, asleepMinutes, leaveMinutes, stallMinutes or releaseMinutes.'],
+    'Send at least one of folder, roundCap, assignment, worktrees, wakesPerHour, runMinutes, idleMinutes, workingWindowMinutes, asleepMinutes, leaveMinutes, stallMinutes or releaseMinutes.'],
   invalid_assignment: [400, 'assignment must be "regular" or "strict".',
     'Send {"assignment":"regular"} (a free agent may take any ready, unclaimed task) or {"assignment":"strict"} (only the assignee may claim an assigned task).'],
+  invalid_worktrees: [400, 'worktrees must be "off" or "per-agent".',
+    'Send {"worktrees":"per-agent"} to give each agent that joins its own git worktree, or {"worktrees":"off"}.'],
+  worktrees_need_folder: [400, 'A worktree per agent needs a room folder, and this room has none.',
+    'Set the room folder to a folder inside a git repository first, then turn worktrees on.'],
+  worktrees_need_git: [400, (p) => `${p.folder} is not inside a git repository (or git is not installed), so agents cannot get worktrees of it.`,
+    (p) => (p.moving ? 'Turn worktrees off first, or pick a folder inside a git repository.' : 'Run git init there, or pick a room folder inside a git repository, then turn worktrees on.')],
   unknown_agent: [404, (p) => `@${p.handle} is not a live agent in this room.`, 'Pick a live agent from the roster.'],
   not_headless: [409, (p) => `@${p.handle} is not a headless agent.`, 'Ask it in the room to stop, or stop it in its own terminal.'],
   unknown_worker_harness: [400, (p) => `harness must be one of ${p.valid.join(', ')}.`,
@@ -320,8 +326,8 @@ function historyView(lines, full) {
       files: files.map((f, i) => ({ id: `${m.id}-${i}`, type: '', ...f })),
     })),
     tasks: latest('task', (l) => l.task.id).map((l) => l.task),
-    agents: latest('agent', (l) => l.handle).map(({ handle, harness, role, headless, status, folder, at }) =>
-      ({ handle, harness, role, ...(headless && { headless }), status, folder, parent: null, lastSeen: at })),
+    agents: latest('agent', (l) => l.handle).map(({ handle, harness, role, headless, status, folder, worktree, at }) =>
+      ({ handle, harness, role, ...(headless && { headless }), status, folder, ...(worktree && { worktree }), parent: null, lastSeen: at })),
     asks: latest('ask', (l) => l.ask.id).map((l) => l.ask),
     brief: brief ? { text: brief.text, by: brief.by, at: brief.at, id: brief.id } : null,
   };
@@ -422,6 +428,7 @@ const ASSIGNMENT_RULES = {
   regular: 'an agent that holds no claim may claim any ready, unclaimed task, even one assigned to someone else; the task moves to it and the previous assignee is told.',
   strict: 'only its assignee may claim or finish an assigned task; unassigned tasks, and tasks whose assignee left, are open to anyone.',
 };
+const WORKTREE_MODES = ['off', 'per-agent'];
 const PRESENCE_LIMITS = { workingWindowMinutes: [1, 120], asleepMinutes: [1, 120], leaveMinutes: [5, 240], stallMinutes: [1, 60], releaseMinutes: [1, 240] };
 const PRESENCE_FIELDS = { workingWindowMinutes: 'workingMs', asleepMinutes: 'asleepMs', leaveMinutes: 'leaveMs', stallMinutes: 'stallMs', releaseMinutes: 'releaseMs' };
 
@@ -470,12 +477,42 @@ function canonical(p) {
   }
 }
 
-function folderCheck(roomFolder, folder) {
+const within = (dir, p) => {
+  const rel = path.relative(dir, p);
+  return !(rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel));
+};
+
+// The room's own worktrees count as inside: an agent there works on the room's repo.
+function folderCheck(roomFolder, folder, worktrees = null) {
   if (!roomFolder) return null;
   if (!folder) return 'unreported';
-  const rel = path.relative(roomFolder, canonical(folder));
-  return rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel) ? 'outside' : 'inside';
+  const real = canonical(folder);
+  return within(roomFolder, real) || (worktrees && within(worktrees, real)) ? 'inside' : 'outside';
 }
+
+// git through execFile with argv, never a shell; rejects with git's last stderr line.
+const git = (cwd, args) =>
+  new Promise((resolve, reject) =>
+    execFile('git', ['-C', cwd, ...args], { timeout: 60000 }, (err, stdout, stderr) =>
+      err ? reject(new Error((stderr.trim() || err.message).split('\n').at(-1))) : resolve(stdout.trim())));
+
+export const gitRepo = (folder) => git(folder, ['rev-parse', '--show-toplevel']).catch(() => null);
+
+// Idempotent: a folder already checked out on the branch is reused, and an existing branch is checked out, not recreated.
+export async function addWorktree(repo, dir, branch) {
+  if (isFolder(dir)) {
+    const top = await git(dir, ['rev-parse', '--show-toplevel']).catch(() => null);
+    const at = top === fs.realpathSync(dir) && (await git(dir, ['rev-parse', '--abbrev-ref', 'HEAD']));
+    if (at !== branch) throw new Error(`${dir} already exists and is not a worktree on ${branch}`);
+  } else {
+    fs.mkdirSync(path.dirname(dir), { recursive: true, mode: 0o700 });
+    const exists = await git(repo, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]).then(() => true, () => false);
+    await git(repo, ['worktree', 'add', ...(exists ? [dir, branch] : ['-b', branch, dir, 'HEAD'])]);
+  }
+  return { base: await git(dir, ['rev-parse', 'HEAD']) };
+}
+
+const worktreeView = ({ path: p, branch, base }) => ({ path: p, branch, base });
 
 export function createHuddle(opts = {}) {
   const {
@@ -500,6 +537,7 @@ export function createHuddle(opts = {}) {
     maxRoomBytes = MAX_ROOM_BYTES,
     historyDir,
     workerDir,
+    worktreeDir,
     workerStartMs = 20000,
   } = opts;
   const rooms = new Map();
@@ -585,6 +623,7 @@ export function createHuddle(opts = {}) {
       brief: null,
       roundCap: cap,
       assignment: 'regular',
+      worktrees: 'off',
       headless: { wakesPerHour: 20, runMinutes: 10, idleMinutes: 60 },
       workers: [],
       timers: { workingMs: activeMs, asleepMs, leaveMs: idleMs, stallMs, releaseMs },
@@ -637,7 +676,7 @@ export function createHuddle(opts = {}) {
 
   const historyTask = (s, task) => historyLine(s, { type: 'task', task: listView(s, task) });
   const historyAgent = (s, a) =>
-    historyLine(s, { type: 'agent', handle: a.handle, harness: a.harness, role: a.role, ...(a.headless && { headless: true }), status: a.status, folder: a.folder });
+    historyLine(s, { type: 'agent', handle: a.handle, harness: a.harness, role: a.role, ...(a.headless && { headless: true }), status: a.status, folder: a.folder, ...(a.worktree && { worktree: worktreeView(a.worktree) }) });
   const historyAsk = (s, ask) => historyLine(s, { type: 'ask', ask });
 
   function writeTranscript(s, reason) {
@@ -688,7 +727,7 @@ export function createHuddle(opts = {}) {
       headless,
       parent,
       folder,
-      folderCheck: folderCheck(s.folder && canonical(s.folder), folder),
+      folderCheck: folderCheck(s.folder && canonical(s.folder), folder, ownTrees(s)),
       token,
       link: `${base}/s/${s.id}/as/${token}`,
       status: 'active',
@@ -706,6 +745,34 @@ export function createHuddle(opts = {}) {
     s.byToken.set(agent.token, agent);
     return agent;
   }
+
+  // ---- worktrees ----
+
+  // Outside every repo: under the huddle home, one folder per room.
+  const worktreeRoot = (s) => path.join(worktreeDir ?? path.join(resolveHome(), 'worktrees'), id8(s));
+  const ownTrees = (s) => (worktreeDir ? canonical(worktreeRoot(s)) : null);
+
+  // On failure the agent still joins and works in the room folder; it and @you are told why.
+  async function giveWorktree(s, agent) {
+    try {
+      const repo = await gitRepo(s.folder);
+      if (!repo) throw new Error(`${s.folder} is not inside a git repository`);
+      const root = path.join(worktreeRoot(s), agent.handle);
+      const branch = `huddle/${id8(s)}/${agent.handle}`;
+      const { base } = await addWorktree(repo, root, branch);
+      const dir = path.join(root, path.relative(repo, canonical(s.folder)));
+      fs.mkdirSync(dir, { recursive: true });
+      agent.worktree = { path: dir, branch, base, root, repo };
+      return null;
+    } catch (err) {
+      system(s, `${agent.handle} has no worktree and works in the room folder: ${err.message}`, { toYou: true });
+      return `Your own worktree could not be made (${err.message}); work in the room folder ${s.folder}.`;
+    }
+  }
+
+  // Ending a room never removes them: a branch may hold unmerged work.
+  const keptWorktrees = (s) =>
+    [...s.agents.values()].filter((a) => a.worktree && !a.parent).map(({ handle, worktree: w }) => ({ handle, path: w.root, branch: w.branch, repo: w.repo }));
 
   function addMessage(s, from, text, extra = {}) {
     const m = {
@@ -840,7 +907,9 @@ export function createHuddle(opts = {}) {
         ...(a.headless && { headless: true }),
         parent: a.parent,
         folder: a.folder ?? null,
-        folderCheck: a.folderCheck ?? null,
+        // An agent with its own worktree works there, which counts as inside the room folder.
+        folderCheck: a.worktree && a.folderCheck ? 'inside' : a.folderCheck ?? null,
+        ...(a.worktree && { worktree: worktreeView(a.worktree) }),
         ...(s.lead === a.handle && { lead: true }),
         status: agentStatus(s, a),
         presence: presence(s, a),
@@ -1462,7 +1531,7 @@ export function createHuddle(opts = {}) {
     const lead = s.lead && live.find((a) => a.handle === s.lead);
     const real = canonical(folder);
     s.folder = folder;
-    for (const a of s.agents.values()) a.folderCheck = folderCheck(real, a.folder);
+    for (const a of s.agents.values()) a.folderCheck = folderCheck(real, a.folder, ownTrees(s));
     // Before any agent but the lead joined and before any task, the room has made nothing to move.
     const started = s.tasks.length > 0 || [...s.agents.values()].some((a) => a.handle !== s.lead);
     if (!old || !started) {
@@ -1477,7 +1546,7 @@ export function createHuddle(opts = {}) {
     });
   }
 
-  function setSettings(s, body) {
+  async function setSettings(s, body) {
     let folder;
     if (body.folder !== undefined) {
       if (typeof body.folder !== 'string') throw new HttpError('invalid_folder');
@@ -1487,6 +1556,8 @@ export function createHuddle(opts = {}) {
     const cap = body.roundCap === undefined ? s.roundCap : parseRoundCap(body.roundCap);
     if (body.assignment !== undefined && !ASSIGNMENT_MODES.includes(body.assignment)) throw new HttpError('invalid_assignment');
     const assignment = body.assignment ?? s.assignment;
+    if (body.worktrees !== undefined && !WORKTREE_MODES.includes(body.worktrees)) throw new HttpError('invalid_worktrees');
+    const worktrees = body.worktrees ?? s.worktrees;
     const headless = parseHeadless(body, s.headless);
     const timers = parsePresence(body, s.timers);
     const capChanged = body.roundCap !== undefined;
@@ -1494,11 +1565,18 @@ export function createHuddle(opts = {}) {
     const timersChanged = Object.keys(timers).some((k) => timers[k] !== s.timers[k]);
     const budgetsChanged = Object.keys(headless).some((k) => headless[k] !== s.headless[k]);
     const assignmentChanged = assignment !== s.assignment;
-    if (folder === undefined && !capChanged && body.assignment === undefined && ![...Object.keys(HEADLESS_LIMITS), ...Object.keys(PRESENCE_LIMITS)].some((k) => body[k] !== undefined)) {
+    const worktreesChanged = worktrees !== s.worktrees;
+    if (folder === undefined && !capChanged && body.assignment === undefined && body.worktrees === undefined && ![...Object.keys(HEADLESS_LIMITS), ...Object.keys(PRESENCE_LIMITS)].some((k) => body[k] !== undefined)) {
       throw new HttpError('empty_settings');
+    }
+    if (worktrees === 'per-agent' && (worktreesChanged || folderChanged)) {
+      const target = folder ?? s.folder;
+      if (!target) throw new HttpError('worktrees_need_folder');
+      if (!(await gitRepo(target))) throw new HttpError('worktrees_need_git', { folder: target, moving: !worktreesChanged });
     }
     s.roundCap = cap;
     s.assignment = assignment;
+    s.worktrees = worktrees;
     s.headless = headless;
     s.timers = timers;
     if (folderChanged) moveFolder(s, folder);
@@ -1508,6 +1586,11 @@ export function createHuddle(opts = {}) {
     if (assignmentChanged) {
       system(s, `you set ${assignment} assignment: ${ASSIGNMENT_RULES[assignment]}`);
     }
+    if (worktreesChanged) {
+      system(s, worktrees === 'per-agent'
+        ? `you turned on a worktree per agent: each agent that joins from now on works in its own git worktree of the room folder's repository, on a huddle/${id8(s)}/<handle> branch`
+        : 'you turned worktrees off: agents that join from now on work in the room folder; existing worktrees and branches are kept');
+    }
     if (budgetsChanged) {
       system(s, `you set headless budgets: ${headless.wakesPerHour} wakes/h, ${headless.runMinutes} min/run, stop after ${headless.idleMinutes} min idle`);
     }
@@ -1515,7 +1598,7 @@ export function createHuddle(opts = {}) {
       const p = presenceTimers(timers);
       system(s, `you set presence timers: working ${p.workingWindowMinutes} min, asleep ${p.asleepMinutes} min, leave after ${p.leaveMinutes} min, stall nudge after ${p.stallMinutes} min, release claims after ${p.releaseMinutes} min silent`);
     }
-    return { roundCap: s.roundCap, assignment: s.assignment, ...(folder !== undefined && { folder: s.folder }) };
+    return { roundCap: s.roundCap, assignment: s.assignment, ...(body.worktrees !== undefined && { worktrees: s.worktrees }), ...(folder !== undefined && { folder: s.folder }) };
   }
 
   function stopAgent(s, handle) {
@@ -1587,9 +1670,10 @@ export function createHuddle(opts = {}) {
     child.stdout.on('data', (d) => {
       fs.writeSync(fd, d);
       out = (out + d).slice(-4096);
-      const listening = /^(\S+) is listening in /m.exec(out);
+      const listening = /^(\S+) is listening in (.+) \(session /m.exec(out);
       if (listening && w.status === 'starting') {
         w.handle = listening[1];
+        w.folder = listening[2];
         w.status = 'running';
         settle();
       }
@@ -1729,6 +1813,11 @@ How the room works:
 `;
   }
 
+  function worktreeLine({ worktree: w }) {
+    if (!w) return '';
+    return `Your worktree: ${w.path} on branch ${w.branch} (from ${w.base.slice(0, 7)}). Work and commit there, not in the room folder, so other agents' edits never meet yours; the room folder stays the shared source of truth. Say in your done note which branch has the work. Merge into the room folder's branch only with @you's OK.\n`;
+  }
+
   function agentProtocol(s, agent) {
     const link = agent.link;
     const role = agent.role ? ` (role ${agent.role})` : '';
@@ -1738,7 +1827,7 @@ How the room works:
     const text = `You are ${agent.handle}${role} in room '${s.name}'.
 Your personal link (keep it, it is your identity): ${link}
 Room folder: ${s.folder ?? 'none set; ask @you'}
-${s.brief ? `Brief (set by @${s.brief.by} at ${clock(s.brief.at)}):\n${s.brief.text}\n` : 'Brief: not set yet'}
+${worktreeLine(agent)}${s.brief ? `Brief (set by @${s.brief.by} at ${clock(s.brief.at)}):\n${s.brief.text}\n` : 'Brief: not set yet'}
 Unread messages: ${unreadCount(s, agent)}
 
 Endpoints (all relative to your link):
@@ -1847,7 +1936,7 @@ How the room works:
       const s = rooms.get(parts[2]);
       if (!s || s.ended) throw new HttpError('unknown_room');
       endRoom(s);
-      return sendJson(res, 200, { id: s.id, name: s.name, ended: true, transcript: s.transcript, history: s.history?.file ?? null, historyError: s.historyError });
+      return sendJson(res, 200, { id: s.id, name: s.name, ended: true, transcript: s.transcript, history: s.history?.file ?? null, historyError: s.historyError, worktrees: keptWorktrees(s) });
     }
     if (method === 'POST' && parts.length === 2 && parts[1] === 'stop-if-empty') {
       const live = liveRooms().length;
@@ -1974,7 +2063,7 @@ How the room works:
       if (method !== 'POST') return notFound();
       if (s.ended) throw roomEnded(s);
       const body = await readBody(req);
-      return sendJson(res, 200, joinAgent(s, body, base));
+      return sendJson(res, 200, await joinAgent(s, body, base));
     }
     if (rest[0] === 'as' && rest.length >= 2) {
       return agentRoute(s, req, res, method, url, base, rest[1], rest.slice(2).join('/'));
@@ -1985,7 +2074,7 @@ How the room works:
     return notFound();
   }
 
-  function joinAgent(s, body, base) {
+  async function joinAgent(s, body, base) {
     const harness = sanitizeHarness(body.harness);
     if (!harness) throw new HttpError('harness_required');
     if (RESERVED_ROLES.has(harness)) throw new HttpError('reserved_harness');
@@ -2001,15 +2090,22 @@ How the room works:
       s.lead = agent.handle;
       s.leadKey = null;
     }
+    const noWorktree = s.worktrees === 'per-agent' && s.folder ? await giveWorktree(s, agent) : null;
+    if (s.ended) throw roomEnded(s);
     historyAgent(s, agent);
-    narrate(s, `${agent.handle} joined${headless ? ' headless' : ''}${role ? ` as ${role}` : ''}`);
-    const outside = agent.folderCheck === 'outside';
+    narrate(s, `${agent.handle} joined${headless ? ' headless' : ''}${role ? ` as ${role}` : ''}${agent.worktree ? ` in worktree ${agent.worktree.branch}` : ''}`);
+    const outside = !agent.worktree && agent.folderCheck === 'outside';
     if (outside) system(s, `${agent.handle} joined from ${folder}, outside the room folder ${s.folder}.`, { toYou: true });
+    const warning = [
+      outside && `You are outside the room folder ${s.folder}. Write in ${s.folder} using full paths; if your harness blocks writing there, ask @you once.`,
+      noWorktree,
+    ].filter(Boolean).join(' ');
     return {
       ...agentView(s, agent),
       lead: s.lead,
       ...briefView(s, agent),
-      ...(outside && { warning: `You are outside the room folder ${s.folder}. Write in ${s.folder} using full paths; if your harness blocks writing there, ask @you once.` }),
+      ...(agent.worktree && { worktree: worktreeView(agent.worktree) }),
+      ...(warning && { warning }),
     };
   }
 
@@ -2034,9 +2130,10 @@ How the room works:
     let handle = `${parent.handle}.${role}`;
     for (let i = 2; s.agents.has(handle); i++) handle = `${parent.handle}.${role}-${i}`;
     const child = addAgent(s, handle, parent.harness, role, parent.handle, base, parent.folder);
+    child.worktree = parent.worktree;
     historyAgent(s, child);
     narrate(s, `${parent.handle} spawned ${handle}`);
-    return { ...agentView(s, child), parent: parent.handle, ...briefView(s, child) };
+    return { ...agentView(s, child), parent: parent.handle, ...briefView(s, child), ...(child.worktree && { worktree: worktreeView(child.worktree) }) };
   }
 
   function setBrief(s, by, text) {
@@ -2104,6 +2201,8 @@ How the room works:
             assignment: s.assignment,
             headless: s.headless,
             folder: s.folder,
+            worktrees: s.worktrees,
+            ...(agent.worktree && { worktree: worktreeView(agent.worktree) }),
             presenceTimers: presenceTimers(s.timers),
             stopRequested: agent.stopRequested === true,
             addressed: hasAddressedUnread(s, agent),
@@ -2238,6 +2337,7 @@ How the room works:
         asks: s.asks,
         roundCap: s.roundCap,
         assignment: s.assignment,
+        worktrees: s.worktrees,
         headless: s.headless,
         presenceTimers: presenceTimers(s.timers),
         agentStreak: s.agentStreak,
@@ -2254,7 +2354,7 @@ How the room works:
       return sendJson(res, status, value);
     };
     if (method === 'POST' && key === 'api/post') return acted(200, postFromHuman(s, body));
-    if (method === 'POST' && key === 'api/settings') return acted(200, setSettings(s, body));
+    if (method === 'POST' && key === 'api/settings') return acted(200, await setSettings(s, body));
     const stopMatch = method === 'POST' && /^api\/agents\/([\w-]+)\/stop$/.exec(key);
     if (stopMatch) return acted(200, stopAgent(s, stopMatch[1]));
     const roleMatch = method === 'POST' && /^api\/agents\/([\w.-]+)\/role$/.exec(key);
@@ -2587,6 +2687,7 @@ async function serve() {
     maxFileBytes: num('AGENT_HUDDLE_MAX_FILE', MAX_FILE_BYTES),
     historyDir: path.join(resolveHome(), 'history'),
     workerDir: path.join(resolveHome(), 'workers'),
+    worktreeDir: path.join(resolveHome(), 'worktrees'),
     workerStartMs: num('AGENT_HUDDLE_WORKER_START_MS', 20000),
     adminToken,
     homeKey: readHomeKey(resolveHome()),
@@ -3113,6 +3214,8 @@ async function runWorker(args) {
   });
   if (!joinRes.ok) fail(`could not join: ${(await joinRes.json().catch(() => ({}))).message ?? joinRes.status}`);
   const me = await joinRes.json();
+  // With a worktree per agent the harness runs in this agent's own worktree.
+  const cwd = me.worktree?.path ?? folder;
 
   let chunks = [];
   let lastMessageId = null;
@@ -3186,7 +3289,7 @@ async function runWorker(args) {
     }
   }
   const acp = acpClient(argv, {
-    cwd: folder,
+    cwd,
     env: spec.env,
     onExit: (msg) => abort(1, msg),
     // A message streams as deltas of one messageId; a new id, or for agents that send none any other update
@@ -3303,7 +3406,7 @@ async function runWorker(args) {
     let mode = '';
     try {
       await acp.request('initialize', { protocolVersion: 1, clientCapabilities: CLIENT_CAPABILITIES, clientInfo: { name: 'agent-huddle', version: VERSION } });
-      const created = await acp.request('session/new', { cwd: folder, mcpServers: [] });
+      const created = await acp.request('session/new', { cwd, mcpServers: [] });
       sessionId = created.sessionId;
       const setMode = (method, params) =>
         acp.request(method, { sessionId, ...params }).then(
@@ -3319,7 +3422,7 @@ async function runWorker(args) {
       return abort(1, `could not start the agent: ${err.message}${spec.signIn ? `; if ${spec.label} is not signed in, ${spec.signIn}` : ''}`);
     }
     if (signal.aborted) return;
-    console.log(`${me.handle} is listening in ${folder} (session ${sessionId}${mode ? `, mode ${mode}` : ''})`);
+    console.log(`${me.handle} is listening in ${cwd} (session ${sessionId}${mode ? `, mode ${mode}` : ''})`);
     if (spec.blocksLocalhost?.()) console.log(`${me.handle} reaches the room through 127.0.0.1, which the ${spec.label} sandbox blocks: ${CODEX_NETWORK_FIX}`);
 
     let first = true;
@@ -4165,6 +4268,17 @@ async function inviteRoom(args) {
   console.log(inviteText(room.name, room.join));
 }
 
+const shellArg = (v) => (/^[\w@%+=:,./-]+$/.test(v) ? v : `'${v.replace(/'/g, `'\\''`)}'`);
+
+// branch -d refuses a branch that is not merged, so pasting these never loses work.
+export function worktreeCleanup(worktrees) {
+  return [
+    `Worktrees kept (${worktrees.length}); after merging a branch you want, remove its worktree and branch:`,
+    ...worktrees.map(({ path: p, branch, repo }) =>
+      `  git -C ${shellArg(repo)} worktree remove ${shellArg(p)} && git -C ${shellArg(repo)} branch -d ${shellArg(branch)}`),
+  ].join('\n');
+}
+
 async function confirmEnd(question) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
@@ -4207,10 +4321,11 @@ async function endRoom(args) {
     }
   }
   for (const s of targets) {
-    const { transcript, history, historyError } = await admin(ctx, 'POST', `rooms/${s.id}/end`);
+    const { transcript, history, historyError, worktrees = [] } = await admin(ctx, 'POST', `rooms/${s.id}/end`);
     console.log(`Ended "${s.name}" (${id8(s)})`);
     const why = history ? `${historyError}; history is at ${history}` : `history is not being saved${historyError ? ` (${historyError})` : ''}.`;
     console.log(transcript ? `Transcript: ${transcript}` : `No transcript written: ${why}`);
+    if (worktrees.length) console.log(worktreeCleanup(worktrees));
   }
   let left;
   if (args.includes('--stop-server')) {
