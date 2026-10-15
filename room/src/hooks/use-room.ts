@@ -103,7 +103,7 @@ export function useRoomState() {
           const invite = data.room?.invite ?? s.invite;
           const roundCap = data.roundCap === null || typeof data.roundCap === "number" ? data.roundCap : s.roundCap;
           const brief = "brief" in data ? (data.brief ?? null) : s.brief;
-          const briefSame = (brief ? `${brief.id}:${brief.text}` : "") === (s.brief ? `${s.brief.id}:${s.brief.text}` : "");
+          const briefSame = brief?.id === s.brief?.id;
           const folder = data.folder ?? s.folder;
           const worker = data.worker ?? s.worker;
           const harnesses = data.harnesses ?? s.harnesses;

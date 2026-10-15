@@ -2,26 +2,30 @@ import { PencilIcon, PinIcon } from "lucide-react";
 import { useId, useState } from "react";
 
 import { ErrorBox, type ErrorInfo } from "@/components/error-box";
+import { Count } from "@/components/tasks";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useRoom, useSource } from "@/hooks/use-room";
 import { errMain } from "@/lib/api";
 import { fmtTime, fullTime } from "@/lib/format";
+import type { Brief } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const MAX_BRIEF = 20000;
 const LONG = 300;
 
-function BriefDialog({ open, onOpenChange, current }: { open: boolean; onOpenChange: (open: boolean) => void; current: string }) {
+function BriefDialog({ open, onOpenChange, brief }: { open: boolean; onOpenChange: (open: boolean) => void; brief: Brief | null }) {
   const { pollNow, endHuddle } = useRoom();
   const { post } = useSource();
   const id = useId();
+  const [openedWith] = useState(brief);
+  const current = openedWith?.text ?? "";
+  const changed = brief?.id !== openedWith?.id;
   const [text, setText] = useState(current);
   const [error, setError] = useState<ErrorInfo | null>(null);
   const [saving, setSaving] = useState(false);
-  const length = text.trim().length;
-  const blocked = saving || !length || text === current;
+  const blocked = saving || !text.trim() || text === current;
 
   async function save() {
     if (blocked) return;
@@ -71,9 +75,10 @@ function BriefDialog({ open, onOpenChange, current }: { open: boolean; onOpenCha
               onChange={(e) => setText(e.target.value)}
               className="max-h-[50svh] font-normal text-foreground"
             />
-            <span id={`${id}-count`} className="text-right text-[11px] text-muted-foreground tabular-nums">
-              {length.toLocaleString("en-US")} / {MAX_BRIEF.toLocaleString("en-US")}
-            </span>
+            <Count id={`${id}-count`} text={text} max={MAX_BRIEF} raw />
+            {changed && (
+              <p className="text-xs text-muted-foreground">The brief changed while you were editing. Saving replaces it.</p>
+            )}
           </div>
           {error && <ErrorBox id={`${id}-error`} error={error} />}
           <div className="flex justify-end gap-2">
@@ -153,7 +158,7 @@ export function PinnedBrief() {
           </Button>
         </section>
       )}
-      {open && <BriefDialog key={brief?.id ?? 0} open onOpenChange={setOpen} current={brief?.text ?? ""} />}
+      {open && <BriefDialog open onOpenChange={setOpen} brief={brief} />}
     </>
   );
 }

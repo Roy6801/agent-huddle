@@ -73,8 +73,8 @@ function SpecFile({ file }: { file: TaskSpecFile }) {
 const MAX_DESCRIPTION = 2000;
 const MAX_SPEC = 20000;
 
-function Count({ id, text, max }: { id: string; text: string; max: number }) {
-  const length = text.trim().length;
+export function Count({ id, text, max, raw }: { id: string; text: string; max: number; raw?: boolean }) {
+  const length = raw ? text.length : text.trim().length;
   return (
     <span
       id={id}
