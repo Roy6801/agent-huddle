@@ -7,6 +7,8 @@ export type Agent = {
   role: string | null;
   parent: string | null;
   lead?: boolean;
+  /** Runs through a headless worker; it can also hold any role. */
+  headless?: boolean;
   status: AgentStatus;
   presence?: AgentPresence;
   stopRequested?: boolean;
