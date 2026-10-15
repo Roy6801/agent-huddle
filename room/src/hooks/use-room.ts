@@ -31,7 +31,7 @@ export type RoomState = {
   notice: string;
   loaded: boolean;
   ended: boolean;
-  /** What the server said beyond "This room has ended.", such as where its transcript is. */
+  /** The ended banner's line saying where the transcript is, when one was written. */
   endedNote?: string;
 };
 
@@ -79,8 +79,8 @@ export function useRoomState() {
     try {
       const r = await fetch(`${base}/api/state?since=${lastId.current}`, { cache: "no-store" });
       if (r.status === 410) {
-        const body: ApiError | null = await r.json().catch(() => null);
-        endHuddle(body?.message?.replace(/^This room has ended\.\s*/, ""));
+        const body: (ApiError & { transcript?: string }) | null = await r.json().catch(() => null);
+        endHuddle(body?.transcript && `Transcript: ${body.transcript}`);
       } else if (r.status === 401 || r.status === 404) {
         setState((s) => ({ ...s, notice: GONE, conn: "gone" }));
         delay = 5000;

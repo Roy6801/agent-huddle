@@ -1,13 +1,10 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
 import { createHuddle } from '../skills/agent-huddle/huddle.mjs';
 
-const CLI = new URL('../skills/agent-huddle/huddle.mjs', import.meta.url).pathname;
 const running = [];
 const dirs = [];
 afterEach(async () => {
@@ -70,7 +67,7 @@ test('AC-93: a live room is appended to one dated file, starting with the room l
   assert.equal(first.name, 'cumulative test');
   assert.equal(first.id, id8);
   assert.equal(first.folder, null);
-  assert.equal(first.createdAt.slice(0, 10), files[0].slice(0, 10));
+  assert.equal(new Date(first.createdAt).toLocaleDateString('sv'), files[0].slice(0, 10));
 
   const messages = lines.filter((l) => l.type === 'message');
   const ids = messages.map((m) => m.id);
@@ -125,8 +122,10 @@ test('AC-93: asks are recorded as they are created and settled', async () => {
   const options = [{ optionId: 'y', kind: 'allow_once', name: 'Yes' }];
   await call('POST', `${codex.link}/asks`, { title: 'Run tests?', options });
   await call('POST', `${r.created.page}/api/asks/1`, { optionId: 'y' });
+  await call('POST', `${codex.link}/asks`, { title: 'Ship it?', options });
+  await r.end();
   const asks = r.lines().filter((l) => l.type === 'ask').map((l) => l.ask.status);
-  assert.deepEqual(asks, ['open', 'answered']);
+  assert.deepEqual(asks, ['open', 'answered', 'open', 'cancelled']);
 });
 
 test('AC-94: history keeps every message past the 2000 the room holds', async () => {
@@ -170,21 +169,25 @@ test('AC-97: an unwritable history folder tells you once and the room still work
 test('AC-95: ending a room writes a readable transcript next to its history', async () => {
   const r = await room('transcript test');
   const agents = [];
-  for (const harness of ['claude', 'codex', 'opencode', 'dsh', 'claude']) agents.push(await r.join({ harness }));
+  for (const [harness, role] of [['claude'], ['codex'], ['opencode'], ['dsh'], ['claude', 'tester']]) agents.push(await r.join({ harness, role }));
   for (const [i, a] of agents.entries()) {
     assert.equal((await call('POST', `${a.link}/tasks`, { title: `task ${i + 1}` })).status, 200);
     assert.equal((await call('POST', `${a.link}/tasks/${i + 1}/claim`)).status, 200);
     assert.equal((await call('POST', `${a.link}/post`, { text: `working on ${i + 1}\nsecond line` })).status, 200);
     assert.equal((await call('POST', `${a.link}/tasks/${i + 1}/done`, { note: `note ${i + 1}` })).status, 200);
   }
+  const folder = tmpDir();
+  assert.equal((await call('POST', `${r.created.page}/api/settings`, { folder })).status, 200);
   const ended = await r.end();
   const jsonl = path.join(r.historyDir, r.files()[0]);
   assert.equal(ended.transcript, jsonl.replace(/\.jsonl$/, '.md'));
   assert.equal(fs.statSync(ended.transcript).mode & 0o777, 0o600);
   const md = fs.readFileSync(ended.transcript, 'utf8');
   assert.ok(md.startsWith('# transcript test\n'));
+  const header = md.split('\n')[2].match(/^Folder: (.+) · Started \d{4}-\d\d-\d\d \d\d:\d\d · Ended \d{4}-\d\d-\d\d \d\d:\d\d$/);
+  assert.equal(header?.[1], folder);
   const section = (h) => md.split(`## ${h}\n\n`)[1].split('\n\n')[0].split('\n');
-  assert.deepEqual(section('Agents'), ['- claude-1 (claude)', '- codex-1 (codex)', '- opencode-1 (opencode)', '- dsh-1 (dsh)', '- claude-2 (claude)']);
+  assert.deepEqual(section('Agents'), ['- claude-1 (claude)', '- codex-1 (codex)', '- opencode-1 (opencode)', '- dsh-1 (dsh)', '- claude-2 (claude, tester)']);
   assert.deepEqual(section('Tasks'), agents.map((a, i) => `- #${i + 1} task ${i + 1} (done by ${a.handle}): note ${i + 1}`));
   const lines = r.lines();
   const messages = lines.filter((l) => l.type === 'message');
@@ -195,6 +198,7 @@ test('AC-95: ending a room writes a readable transcript next to its history', as
   const gone = await call('POST', `${agents[0].link}/post`, { text: 'late' });
   assert.equal(gone.status, 410);
   assert.equal(gone.json.message, `This room has ended. Its transcript is at ${ended.transcript}.`);
+  assert.equal(gone.json.transcript, ended.transcript);
 });
 
 test('history holds no page token, agent link, lead key or full room id', async () => {
@@ -213,42 +217,4 @@ test('history holds no page token, agent link, lead key or full room id', async 
     assert.ok(!text.includes(secret), `history leaks ${secret}`);
   }
   assert.ok(text.includes('"name":"spec.md"'));
-});
-
-function freePort() {
-  return new Promise((resolve) => {
-    const srv = net.createServer().listen(0, '127.0.0.1', () => {
-      const { port } = srv.address();
-      srv.close(() => resolve(port));
-    });
-  });
-}
-
-const run = (env, ...args) =>
-  new Promise((resolve) => {
-    execFile(process.execPath, [CLI, ...args], { env }, (error, stdout, stderr) => resolve({ code: error ? error.code : 0, stdout, stderr }));
-  });
-
-test('the server writes history under AGENT_HUDDLE_HOME', async () => {
-  const home = tmpDir();
-  const env = { ...process.env, AGENT_HUDDLE_HOME: home, AGENT_HUDDLE_PORT: String(await freePort()) };
-  try {
-    const made = await run(env, 'new', 'home room');
-    assert.equal(made.code, 0, made.stderr);
-    const { id } = JSON.parse(made.stdout);
-    const files = fs.readdirSync(path.join(home, 'history'));
-    assert.deepEqual(files.map((f) => f.slice(11)), [`home-room-${id.slice(0, 8)}.jsonl`]);
-    assert.equal(fs.statSync(path.join(home, 'history')).mode & 0o777, 0o700);
-    const ended = await run(env, 'end', id, '--yes', '--keep-server');
-    assert.match(ended.stdout, new RegExp(`\nTranscript: ${path.join(home, 'history')}/.*-${id.slice(0, 8)}\\.md\n`));
-    if (process.getuid?.() !== 0) {
-      fs.chmodSync(path.join(home, 'history'), 0o500);
-      const second = JSON.parse((await run(env, 'new', 'off room')).stdout);
-      const off = await run(env, 'end', second.id, '--yes', '--keep-server');
-      assert.match(off.stdout, /\nNo transcript written: history is not being saved \(EACCES\)\.\n/);
-    }
-  } finally {
-    if (fs.existsSync(path.join(home, 'history'))) fs.chmodSync(path.join(home, 'history'), 0o700);
-    await run(env, 'down');
-  }
 });

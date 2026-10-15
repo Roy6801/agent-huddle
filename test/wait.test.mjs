@@ -78,7 +78,7 @@ test('wait exits 3 after the room is ended', async () => {
   const r = await cli('wait', a.link, '--minutes', '1');
   assert.equal(r.code, 3);
   const out = JSON.parse(r.stdout);
-  assert.deepEqual(Object.keys(out), ['error', 'message', 'instruction']);
+  assert.deepEqual(Object.keys(out), ['error', 'message', 'instruction', 'transcript']);
   assert.equal(out.error, 'room_ended');
 });
 

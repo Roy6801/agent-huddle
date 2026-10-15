@@ -92,3 +92,37 @@ test('AC-96: a killed server leaves every line written, and history lists the ro
   assert.equal(out.code, 0, out.stderr);
   assert.match(out.stdout, new RegExp(`^ {2}killed room .* not ended +${path.join(dir, name)}\\n$`));
 });
+
+test('the server writes history under AGENT_HUDDLE_HOME, and a transcript that cannot be written still ends the room', async () => {
+  const home = tmpHome();
+  const dir = path.join(home, 'history');
+  const env = { ...process.env, AGENT_HUDDLE_HOME: home, AGENT_HUDDLE_PORT: String(await freePort()) };
+  try {
+    const made = await run(env, 'new', 'home room');
+    assert.equal(made.code, 0, made.stderr);
+    const { id } = JSON.parse(made.stdout);
+    assert.deepEqual(fs.readdirSync(dir).map((f) => f.slice(11)), [`home-room-${id.slice(0, 8)}.jsonl`]);
+    assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
+    const ended = await run(env, 'end', id, '--yes', '--keep-server');
+    const transcript = ended.stdout.match(new RegExp(`\nTranscript: (${dir}/.*-${id.slice(0, 8)}\\.md)\n`))?.[1];
+    assert.ok(transcript && fs.existsSync(transcript), ended.stdout);
+
+    const broken = JSON.parse((await run(env, 'new', 'broken room')).stdout);
+    const jsonl = path.join(dir, fs.readdirSync(dir).find((f) => f.endsWith(`-${broken.id.slice(0, 8)}.jsonl`)));
+    fs.mkdirSync(jsonl.replace(/\.jsonl$/, '.md'));
+    const failed = await run(env, 'end', broken.id, '--yes', '--keep-server');
+    assert.match(failed.stdout, new RegExp(`\nNo transcript written: EISDIR; history is at ${jsonl}\n`));
+    assert.match(fs.readFileSync(jsonl, 'utf8'), /"type":"end","transcript":null}\n$/);
+    assert.match((await run(env, 'history')).stdout, new RegExp(`^ {2}broken room .* ended .* ${jsonl}$`, 'm'));
+
+    if (process.getuid?.() !== 0) {
+      fs.chmodSync(dir, 0o500);
+      const second = JSON.parse((await run(env, 'new', 'off room')).stdout);
+      const off = await run(env, 'end', second.id, '--yes', '--keep-server');
+      assert.match(off.stdout, /\nNo transcript written: history is not being saved \(EACCES\)\.\n/);
+    }
+  } finally {
+    if (fs.existsSync(dir)) fs.chmodSync(dir, 0o700);
+    await run(env, 'down');
+  }
+});
