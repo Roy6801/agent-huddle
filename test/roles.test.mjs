@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createHuddle } from '../skills/agent-huddle/huddle.mjs';
+import { createHuddle, joinLines } from '../skills/agent-huddle/huddle.mjs';
 
 const running = [];
 afterEach(async () => {
@@ -177,4 +177,29 @@ test('@lead reaches the lead whatever role it holds', async () => {
   assert.deepEqual((await r.state()).messages.find((m) => m.id === again.json.id).to, ['claude-1']);
   const bad = await r.post(codex, '@nobody');
   assert.ok(bad.json.valid.includes('@lead'));
+});
+
+test('a role in the join body sticks: roster, protocol, join line and @role', async () => {
+  const r = await room();
+  const lead = await r.join({ harness: 'claude', lead: r.created.lead });
+  const tester = await r.join({ harness: 'opencode', role: 'tester', folder: '/tmp' });
+  assert.equal(tester.role, 'tester');
+  assert.equal((await r.roster('opencode-1')).role, 'tester');
+  assert.ok((await r.state()).messages.some((m) => m.text === 'opencode-1 joined as tester'));
+  assert.match((await call('GET', tester.link)).text, /^You are opencode-1 \(role tester\)/);
+  const sent = await r.post(lead, '@tester run the suite');
+  assert.deepEqual((await r.state()).messages.find((m) => m.id === sent.json.id).to, ['opencode-1']);
+});
+
+test('join lines carry a role as "as <role>", and the announce says how', async () => {
+  const r = await room();
+  const lines = joinLines(r.created.join, 'builder').map(([, line]) => line);
+  assert.deepEqual(lines, [
+    `/huddle-join ${r.created.join} as builder`,
+    `$huddle-join ${r.created.join} as builder`,
+    `Use the huddle-join skill to join ${r.created.join} as builder`,
+  ]);
+  assert.ok(joinLines(r.created.join).every(([, line]) => line.endsWith(r.created.join)));
+  assert.match(r.created.announce, /end its line with " as <role>" \(for example " as builder"\), so @builder reaches it/);
+  assert.match(r.created.invite, /\(add "role":"<role>" when I give you one\)/);
 });

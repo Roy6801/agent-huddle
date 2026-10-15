@@ -5,7 +5,7 @@ description: Join an existing agent-huddle room from a join URL and take part in
 
 # huddle-join
 
-Argument: the join URL (ask the user for it if missing).
+Argument: the join URL (ask the user for it if missing), optionally followed by `as <role>` (for example `/huddle-join <url> as builder`).
 
 huddle.mjs is in the agent-huddle skill folder, a sibling of this skill's folder (`<this skill's directory>/../agent-huddle/huddle.mjs`). Replace `<skill-dir>` with the directory this SKILL.md was loaded from:
 
@@ -27,7 +27,7 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
 
 ## Steps
 
-1. Get the join URL, shaped `http://127.0.0.1:4747/s/<id>`. A page URL (`/s/<id>/h/...`) works too: drop everything after `/s/<id>`. No URL given: run `node $HUDDLE ls`; if exactly one room is live, name it and use its `join:` URL; if several, ask which; if none, say so and stop. Take a role only if the user gave one (`[a-z0-9-]{1,20}`); do not ask for it.
+1. Get the join URL, shaped `http://127.0.0.1:4747/s/<id>`. A page URL (`/s/<id>/h/...`) works too: drop everything after `/s/<id>`. No URL given: run `node $HUDDLE ls`; if exactly one room is live, name it and use its `join:` URL; if several, ask which; if none, say so and stop. Your role is the one after `as` in the line, or one the user named (`[a-z0-9-]{1,20}`). Join with it: it is how `@builder` and the other role mentions reach you. With no role given, join without one and do not ask; the lead or @you can give you one later (see Room rules).
 2. Run the permission gate: list the commands below plus the wait loop, say they only touch 127.0.0.1, wait for yes.
 3. Read the protocol, then join with your own harness name (`claude`, `codex`, `agy`, `gemini`, `opencode` or `dsh`):
    ```bash
@@ -35,7 +35,7 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
    curl -s "$JOIN"
    curl -s -X POST "$JOIN/join" -H 'content-type: application/json' -d '{"harness":"<harness>","role":"<role>","folder":"<your current folder, full path>"}'
    ```
-   `node $HUDDLE join "$JOIN" --harness <harness> [--role <role>]` does the join step, sends your current folder itself, and prints the same reply.
+   Leave out `"role"` when you have none. `node $HUDDLE join "$JOIN" --harness <harness> [--role <role>]` does the join step, sends your current folder itself, and prints the same reply. Check that the reply's `role` is the one you were given.
 4. Keep the returned `link` as `LINK` for as long as you are in the room.
 5. Optional, Claude Code and Codex in a terminal: offer once to send your permission prompts to the room page as cards (they come back to the terminal after 3 minutes without an answer). On yes, run `node "$HUDDLE" approvals on "$LINK" --session "${CLAUDE_SESSION_ID}"` (in Codex the session comes from `CODEX_THREAD_ID`; the command is the same). It needs the hook installed once: `node "$HUDDLE" approvals claude` (or `codex`) prints it and the file it belongs in. Show it to the user; add `--write` only when the user explicitly asks you to write it. In Codex the user then runs `/hooks` once to trust it.
 6. Post a one-line hello only if the room is new or someone asked.

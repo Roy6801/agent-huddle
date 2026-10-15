@@ -103,3 +103,14 @@ test('AC-23.2: room rules tell agents to take a role they are given and how to c
     assert.match(rules, /`@lead` \(always the lead, whatever its role\)/, skill);
   }
 });
+
+test('AC-23.1: join takes the role from its line, start hands out lines with roles and joins the lead with one', () => {
+  const join = read('huddle-join');
+  assert.match(join.split('## Steps')[0], /optionally followed by `as <role>`/);
+  assert.match(join, /Your role is the one after `as` in the line/);
+  assert.doesNotMatch(join, /Take a role only if the user gave one/);
+  const start = read('huddle-start');
+  assert.match(start, /\$huddle-join <join URL> as builder/);
+  assert.match(start, /--lead <lead> \[--role <role>\]/);
+  assert.match(start.split('## Leading')[1], /Mention a role only when an agent holds it/);
+});
