@@ -138,6 +138,9 @@ export const ERRORS = {
     (p) => `Ask @${p.creator}${p.creator === 'you' ? '' : ' or @you'} to make the change.`],
   task_done: [409, (p) => `Task #${p.n} is already done.`, (p) => `Reopen it with a reason (POST tasks/${p.n}/reopen) or create a new task for follow-up work.`],
   not_done: [409, (p) => `Task #${p.n} is ${p.status}, not done.`, 'Only a done task can be reopened; claim, finish or release it instead.'],
+  not_claimed: [409, (p) => `Task #${p.n} is ${p.status}, not claimed.`, 'Only a claimed task can be released; reassign or finish it instead.'],
+  same_assignee: [409, (p) => (p.assignee ? `Task #${p.n} is already with @${p.assignee}.` : `Task #${p.n} is already unassigned.`),
+    'Pick a different agent, or leave the task as it is.'],
   invalid_after: [400, (p) => `There is no task #${p.n}; a task can only come after tasks that already exist.`,
     'Use task numbers from GET tasks, or leave after out.'],
   invalid_after_list: [400, 'after must be a list of task numbers, like [1,2].', 'Send after as [1,2] using task numbers from GET tasks.'],
@@ -1202,6 +1205,56 @@ export function createHuddle(opts = {}) {
     return task;
   }
 
+  // You moving a task from the board: whoever it affects is mentioned and woken, unless they left.
+  function boardNotice(s, task, text, handles) {
+    const notified = [...new Set(handles)].filter((h) => h && h !== 'you' && s.agents.has(h) && s.agents.get(h).status !== 'left');
+    system(s, text, { mentions: notified, to: notified, task: task.id });
+  }
+
+  function finishAsYou(s, n, body) {
+    const task = getTask(s, n);
+    if (task.status === 'done') throw new HttpError('task_done', { n });
+    assertUnblocked(s, task);
+    const note = body.note === undefined || body.note === null ? null : cleanText(body.note, MAX_TEXT, 'note');
+    const holder = task.owner ?? task.assignee;
+    const held = task.owner ? ` (held by @${task.owner})` : '';
+    moveTask(task, 'done', 'you');
+    task.note = note;
+    historyTask(s, task);
+    boardNotice(s, task, `you marked task #${task.id} "${task.title}" done${held}${note ? `: ${note}` : ''}`, [holder, task.createdBy]);
+    announceReady(s, task, 'you');
+    allDone(s);
+    return task;
+  }
+
+  function releaseAsYou(s, n) {
+    const task = getTask(s, n);
+    if (task.status !== 'claimed') throw new HttpError('not_claimed', { n, status: task.status });
+    const holder = task.owner;
+    moveTask(task, 'open', null);
+    historyTask(s, task);
+    const back = task.assignee ? ` for @${task.assignee}` : '';
+    boardNotice(s, task, `you released task #${task.id} "${task.title}" from @${holder}; it is open again${back}`, [holder, task.assignee]);
+    return task;
+  }
+
+  function reassignAsYou(s, n, body) {
+    const task = getTask(s, n);
+    if (task.status === 'done') throw new HttpError('task_done', { n });
+    const assignee = taskAssignee(s, body.assignee);
+    if (task.assignee === assignee && (!task.owner || task.owner === assignee)) {
+      throw new HttpError('same_assignee', { n, assignee });
+    }
+    const was = task.owner ?? task.assignee;
+    const released = task.owner && task.owner !== assignee ? task.owner : null;
+    if (released) moveTask(task, 'open', null);
+    task.assignee = assignee;
+    historyTask(s, task);
+    const to = assignee ? `reassigned task #${task.id} "${task.title}" to @${assignee}` : `unassigned task #${task.id} "${task.title}"`;
+    boardNotice(s, task, `you ${to}${released ? ` (released from @${released})` : ''}`, [assignee, was]);
+    return task;
+  }
+
   // ---- posting ----
 
   const fileMeta = (f) => ({ id: f.id, name: f.name, size: f.size, type: f.type });
@@ -1926,6 +1979,12 @@ How the room works:
     if (method === 'POST' && key === 'api/tasks') return acted(200, taskView(s, createTask(s, 'you', body)));
     const taskReopenMatch = method === 'POST' && /^api\/tasks\/(\d+)\/reopen$/.exec(key);
     if (taskReopenMatch) return acted(200, taskView(s, reopenTask(s, 'you', taskReopenMatch[1], body)));
+    const boardMatch = method === 'POST' && /^api\/tasks\/(\d+)\/(done|release|assign)$/.exec(key);
+    if (boardMatch) {
+      const [, n, action] = boardMatch;
+      const task = action === 'done' ? finishAsYou(s, n, body) : action === 'release' ? releaseAsYou(s, n) : reassignAsYou(s, n, body);
+      return acted(200, taskView(s, task));
+    }
     const taskEditMatch = method === 'POST' && /^api\/tasks\/(\d+)$/.exec(key);
     if (taskEditMatch) return acted(200, taskView(s, editTask(s, 'you', taskEditMatch[1], body)));
     if (method === 'POST' && askMatch) return acted(200, answerAsk(s, askMatch[1], body));
