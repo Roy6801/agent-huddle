@@ -22,6 +22,7 @@ const MAX_NAME = 200;
 const MAX_TITLE = 200;
 const MAX_DESCRIPTION = 2000;
 const MAX_SPEC = 20000;
+const MAX_BRIEF = 20000;
 const MAX_ASK_TITLE = 300;
 const MAX_ASK_DETAIL = 2000;
 const ASK_KINDS = new Set(['allow_once', 'allow_always', 'reject_once', 'reject_always']);
@@ -127,6 +128,8 @@ export const ERRORS = {
   empty_edit: [400, 'The edit has nothing to change.', 'Send description, spec or specFile.'],
   already_claimed: [409, (p) => `Task #${p.n} is claimed by @${p.owner}.`,
     (p) => `Pick another open task from GET tasks, or ask @${p.owner} to release #${p.n}.`],
+  not_lead: [403, (p) => (p.lead ? `Only the lead (@${p.lead}) or @you can set the brief.` : 'This room has no lead, so only @you can set the brief.'),
+    (p) => `Post your suggested change to @${p.lead ?? 'you'} instead; the pinned brief is unchanged.`],
   not_owner: [409, (p) => (p.owner ? `Task #${p.n} is held by @${p.owner}, not you.` : `Task #${p.n} is not claimed by you.`),
     (p) => (p.owner ? `Leave it to @${p.owner}, or ask them to release #${p.n}.` : 'GET tasks to see which tasks you hold.')],
   invalid_files: [400, 'files must be an array of file ids.', 'Send files as ["<id>"] using ids from POST files or GET files.'],
@@ -331,7 +334,7 @@ export function createHuddle(opts = {}) {
     res.end(text);
   }
 
-  async function readBody(req, limit = BODY_LIMIT) {
+  async function readBody(req, limit = BODY_LIMIT, rawText = false) {
     const declared = Number(req.headers['content-length'] || 0);
     if (declared > limit) throw new HttpError('body_too_large', { kb: limit / 1024 });
     const chunks = [];
@@ -344,9 +347,11 @@ export function createHuddle(opts = {}) {
     }
     if (tooBig) throw new HttpError('body_too_large', { kb: limit / 1024 });
     if (size === 0) return {};
+    const raw = Buffer.concat(chunks).toString('utf8');
+    if (rawText && /^text\/(plain|markdown)\b/i.test(req.headers['content-type'] || '')) return { text: raw };
     let parsed;
     try {
-      parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      parsed = JSON.parse(raw);
     } catch {
       throw new HttpError('invalid_json');
     }
@@ -381,6 +386,7 @@ export function createHuddle(opts = {}) {
       files: new Map(),
       fileBytes: 0,
       agentStreak: 0,
+      brief: null,
       roundCap: cap,
       headless: { wakesPerHour: 20, runMinutes: 10, idleMinutes: 60 },
       timers: { workingMs: activeMs, asleepMs, leaveMs: idleMs, stallMs },
@@ -453,6 +459,7 @@ export function createHuddle(opts = {}) {
       files: extra.files ?? [],
       ...(extra.ask && { ask: extra.ask }),
       ...(extra.task && { task: extra.task }),
+      ...(extra.brief && { brief: true }),
     };
     s.messages.push(m);
     while (s.messages.length > MAX_MESSAGES) s.messages.shift();
@@ -1255,12 +1262,20 @@ How the room works:
     return { ...agentView(s, child), parent: parent.handle };
   }
 
+  function setBrief(s, by, text) {
+    cleanText(text, MAX_BRIEF, 'brief');
+    const to = [...s.agents.values()].filter((a) => a.status !== 'left' && a.handle !== by).map((a) => a.handle);
+    const m = system(s, text, { brief: true, to });
+    s.brief = { text, by, at: m.at, id: m.id };
+    return s.brief;
+  }
+
   async function agentRoute(s, req, res, method, url, base, token, key) {
     if (s.ended) throw new HttpError('room_ended');
     const agent = s.byToken.get(token);
     if (!agent) throw new HttpError('unknown_token', { join: `${base}/s/${s.id}` });
     const upload = method === 'POST' && key === 'files';
-    const body = method === 'POST' && !upload ? await readBody(req, /^tasks(\/\d+)?$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
+    const body = method === 'POST' && !upload ? await readBody(req, /^(tasks(\/\d+)?|brief)$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT, key === 'brief') : {};
     agent.lastSeen = Date.now();
     agent.nudgedAt = 0;
     if (method === 'POST') markActivity(s);
@@ -1321,6 +1336,8 @@ How the room works:
         }
         case 'who':
           return ok(whoView(s));
+        case 'brief':
+          return ok({ brief: s.brief });
         case 'tasks':
           return ok({ tasks: s.tasks.map((t) => listView(s, t)) });
         case 'files':
@@ -1345,6 +1362,9 @@ How the room works:
           return ok(agentTaskView(s, agent, createTask(s, agent.handle, body)));
         case 'asks':
           return ok(createAsk(s, agent, body));
+        case 'brief':
+          if (agent.handle !== s.lead) throw new HttpError('not_lead', { lead: s.lead });
+          return ok(setBrief(s, agent.handle, body.text));
         case 'leave': {
           const released = agent.status === 'left' ? [] : leaveAgent(s, agent);
           return ok({ ok: true, released });
@@ -1358,7 +1378,7 @@ How the room works:
     if (token !== s.humanToken) throw new HttpError('wrong_page_link');
     if (s.ended && !(method === 'GET' && key === '')) throw new HttpError('room_ended');
     const upload = method === 'POST' && key === 'api/files';
-    const body = method === 'POST' && !upload ? await readBody(req, /^api\/tasks(\/\d+)?$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
+    const body = method === 'POST' && !upload ? await readBody(req, /^api\/(tasks(\/\d+)?|brief)$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT, key === 'api/brief') : {};
     s.humanSeen = Date.now();
     const fileMatch = /^api\/files\/([\w-]+)$/.exec(key);
     const askMatch = /^api\/asks\/(\d+)$/.exec(key);
@@ -1385,6 +1405,7 @@ How the room works:
         headless: s.headless,
         presenceTimers: presenceTimers(s.timers),
         agentStreak: s.agentStreak,
+        brief: s.brief,
         folder: s.folder,
         worker: THIS_FILE,
         harnesses: Object.entries(WORKER_HARNESSES).map(([id, h]) => [id, h.label]),
@@ -1399,6 +1420,7 @@ How the room works:
     if (method === 'POST' && key === 'api/settings') return acted(200, setSettings(s, body));
     const stopMatch = method === 'POST' && /^api\/agents\/([\w-]+)\/stop$/.exec(key);
     if (stopMatch) return acted(200, stopAgent(s, stopMatch[1]));
+    if (method === 'POST' && key === 'api/brief') return acted(200, setBrief(s, 'you', body.text));
     if (method === 'POST' && key === 'api/tasks') return acted(200, taskView(s, createTask(s, 'you', body)));
     const taskEditMatch = method === 'POST' && /^api\/tasks\/(\d+)$/.exec(key);
     if (taskEditMatch) return acted(200, taskView(s, editTask(s, 'you', taskEditMatch[1], body)));
