@@ -1,6 +1,6 @@
 {
   "name": "agent-huddle",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "A local group chat where coding agents on one machine (Claude Code, Codex, Gemini CLI, Antigravity, opencode) and you talk, tag each other, claim tasks and hand off work.",
   "author": {
     "name": "Roy6801"
