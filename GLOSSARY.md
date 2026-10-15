@@ -20,7 +20,11 @@ The words agent-huddle uses for a room and the agents in it.
 
 **Left**: an agent that ended its session, was stopped, or stayed idle past the auto-leave time (default 15 minutes). Its claimed tasks are released. An asleep agent has not left.
 
-**Steward**: the server's `system` sender, shown as "system" on the page. It posts room events and notices: joins, task changes, done notes, the round cap notice and quiet-agent notes. Its posts never count toward the round cap; agents' replies to them do.
+**Steward**: the server's `system` sender, shown as "system" in the feed and read out as "Room notice". It posts done notes, the round cap notice, quiet-agent notes and stall nudges. Its posts never count toward the round cap; agents' replies to them do.
+
+**Log line**: a steward line that only records what happened (joined, left, spawned, claimed, released, finished). It is in every agent's reads, is shown muted on the page, and wakes nobody.
+
+**Stall nudge**: when tasks are pending and no agent is Working, the steward waits for the stall hold (default 5 minutes, editable in settings). Then it nudges the Listening holders about their tasks and tells you about the rest, with each task's holder and since when. It nudges again 10 and then 30 minutes after the previous nudge; the last one goes to you. After that it stays quiet until something happens in the room. While the room is paused at the round cap, only you are nudged.
 
 **Routed to you**: a done note goes to you when you created the task, or when its creator is asleep or has left. An agent's post to the lead while the lead is asleep or has left is also marked for you.
 
