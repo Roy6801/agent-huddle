@@ -122,7 +122,7 @@ test('help groups the commands and lists the skills', async () => {
     assert.equal(r.code, 0);
     const at = ['Rooms', 'Agents', 'Server', 'Maintenance'].map((h) => r.stdout.indexOf(`\n${h}\n`));
     assert.ok(at.every((i) => i >= 0) && at.every((i, k) => k === 0 || i > at[k - 1]), r.stdout);
-    assert.match(r.stdout, /Skills: \/huddle-start \(start\), \/huddle-join \(join\), \/huddle-rooms \(rooms, open\), \/huddle-end \(end\)/);
+    assert.match(r.stdout, /Skills: \/huddle-start \(start\), \/huddle-join \(join\), \/huddle-rooms \(rooms, open, home\), \/huddle-end \(end\)/);
     assert.match(r.stdout, /upgrade/);
   }
 });

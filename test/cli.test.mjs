@@ -338,3 +338,16 @@ test('new rejects an unknown option instead of naming a room after it', async ()
   assert.match(r.stderr, /Unknown option "--bogus"/);
   assert.equal(fs.existsSync(path.join(dir, 'server.json')), false);
 });
+
+test('AC-30.4: home --print starts the server and prints the same owner-only home link every run', async () => {
+  const first = await cli('home', '--print');
+  assert.equal(first.code, 0, first.stderr);
+  const keyFile = path.join(home, 'home-key');
+  const key = fs.readFileSync(keyFile, 'utf8').trim();
+  assert.equal(first.stdout.trim(), `http://127.0.0.1:${serverJson().port}/home/${key}`);
+  assert.equal(fs.statSync(keyFile).mode & 0o777, 0o600);
+  assert.equal((await cli('home', '--print')).stdout, first.stdout);
+  const rooms = await fetch(`${first.stdout.trim()}/api/rooms`);
+  assert.equal(rooms.status, 200);
+  assert.ok(Array.isArray((await rooms.json()).past));
+});

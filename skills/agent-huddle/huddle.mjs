@@ -100,6 +100,7 @@ export const ERRORS = {
     (p) => `Join again with POST ${p.join}/join and use the link it returns.`],
   wrong_page_link: [401, 'This human page link is not the one for this room.',
     `Get the current page link with \`${PROG} open <room>\`.`],
+  wrong_home_link: [401, 'This home page link is wrong.', `Get the current one with \`${PROG} home\`.`],
   room_ended: [410, (p) => `This room has ended.${p.transcript ? ` Its transcript is at ${p.transcript}.` : ''}`, 'Stop calling and waiting on this room, and tell your user it has ended.'],
   invalid_text: [400, (p) => `${p.label} is missing, blank or longer than ${p.max} characters.`,
     (p) => `Resend with a non-empty ${p.label} within the limit; long content fits better in a file.`],
@@ -189,6 +190,59 @@ const historyLines = (file) =>
       return [];
     }
   });
+
+function roomSummary(file) {
+  const lines = historyLines(file);
+  const room = lines.find((l) => l?.type === 'room' && l.createdAt);
+  if (!room) return null;
+  const end = lines.findLast((l) => l?.type === 'end');
+  return { room, end, transcript: end?.transcript && fs.existsSync(end.transcript) ? end.transcript : file };
+}
+
+// Every room in a history folder, newest first: its room line, its end line once it ended, and the file to read.
+// Summaries are kept in cache until a file changes, so a page polling the list does not reread every history.
+function pastRooms(dir, cache = new Map()) {
+  let names = [];
+  try {
+    names = fs.readdirSync(dir).filter((n) => n.endsWith('.jsonl'));
+  } catch {}
+  const rooms = [];
+  for (const name of names) {
+    const file = path.join(dir, name);
+    let st;
+    try {
+      st = fs.statSync(file);
+    } catch {
+      continue;
+    }
+    let hit = cache.get(name);
+    if (hit?.mtimeMs !== st.mtimeMs || hit.size !== st.size) cache.set(name, (hit = { mtimeMs: st.mtimeMs, size: st.size, summary: roomSummary(file) }));
+    if (hit.summary) rooms.push({ name, file, ...hit.summary });
+  }
+  return rooms.sort((a, b) => b.room.createdAt.localeCompare(a.room.createdAt));
+}
+
+// The home page's key, kept in <home>/home-key so its link outlives server restarts. Only you can read it, like server.json.
+export function readHomeKey(home) {
+  const file = path.join(home, 'home-key');
+  if (!fs.existsSync(file)) {
+    const tmp = `${file}.${process.pid}`;
+    fs.writeFileSync(tmp, newToken(), { mode: 0o600 });
+    try {
+      fs.linkSync(tmp, file);
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+    } finally {
+      fs.rmSync(tmp, { force: true });
+    }
+  }
+  return fs.readFileSync(file, 'utf8').trim();
+}
+
+const sameSecret = (given, secret) => {
+  const digest = (v) => crypto.createHash('sha256').update(v).digest();
+  return crypto.timingSafeEqual(digest(given ?? ''), digest(secret));
+};
 
 // The readable end-of-room transcript: the room's final state, and every message from history, even those the room dropped.
 function transcriptMarkdown(s, lines, endedAt, reason) {
@@ -406,12 +460,14 @@ export function createHuddle(opts = {}) {
     onIdle,
     onStop,
     adminToken,
+    homeKey,
     tombstoneMs = TOMBSTONE_MS,
     maxFileBytes = MAX_FILE_BYTES,
     maxRoomBytes = MAX_ROOM_BYTES,
     historyDir,
   } = opts;
   const rooms = new Map();
+  const summaries = new Map();
   let lastActivity = Date.now();
   let idleFired = false;
 
@@ -1443,21 +1499,21 @@ How the room works:
 
   // ---- admin ----
 
-  function isAdmin(req) {
-    if (!adminToken) return false;
-    const digest = (v) => crypto.createHash('sha256').update(v).digest();
-    return crypto.timingSafeEqual(digest(req.headers.authorization ?? ''), digest(`Bearer ${adminToken}`));
-  }
+  const isAdmin = (req) => Boolean(adminToken) && sameSecret(req.headers.authorization, `Bearer ${adminToken}`);
 
   const liveRooms = () => [...rooms.values()].filter((s) => !s.ended);
 
-  function adminView(s, base) {
+  function agentCounts(s) {
     const agents = [...s.agents.values()];
+    return { active: agents.filter((a) => agentStatus(s, a) === 'active').length, total: agents.length };
+  }
+
+  function adminView(s, base) {
     return {
       id: s.id,
       name: s.name,
       createdAt: s.createdAt,
-      agents: { active: agents.filter((a) => agentStatus(s, a) === 'active').length, total: agents.length },
+      agents: agentCounts(s),
       messages: s.messages.length,
       join: `${base}/s/${s.id}`,
       page: `${base}/s/${s.id}/h/${s.humanToken}`,
@@ -1485,11 +1541,54 @@ How the room works:
     throw new HttpError('not_found');
   }
 
+  // ---- home page ----
+
+  // Rooms with a history file that are not live: ended, or gone from memory.
+  function homePast() {
+    if (!historyDir) return [];
+    const live = new Set(liveRooms().map((s) => s.history?.file));
+    return pastRooms(historyDir, summaries).filter((r) => !live.has(r.file));
+  }
+
+  function homeView(key) {
+    return {
+      live: liveRooms().reverse().map((s) => ({
+        id: id8(s), name: s.name, createdAt: s.createdAt, agents: agentCounts(s), page: `/s/${s.id}/h/${s.humanToken}`,
+      })),
+      past: homePast().map(({ name, room, end, transcript }) => ({
+        id: room.id,
+        name: room.name,
+        createdAt: room.createdAt,
+        ended: end ? { at: end.at, reason: end.reason ?? null } : null,
+        transcript,
+        page: `/home/${key}/rooms/${name.replace(/\.jsonl$/, '')}`,
+      })),
+    };
+  }
+
+  // Your rooms behind the home key: live ones link to their own page; past ones open here read-only from history,
+  // so no page key is ever stored. Only history file names the server lists itself are served.
+  async function homeRoute(res, method, [key, ...rest]) {
+    if (!homeKey) throw new HttpError('not_found');
+    if (!sameSecret(key, homeKey)) throw new HttpError('wrong_home_link');
+    const sub = rest.join('/');
+    if (method === 'GET' && sub === '') return sendPage(res);
+    if (method === 'GET' && sub === 'api/rooms') return sendJson(res, 200, homeView(key));
+    const past = rest[0] === 'rooms' && rest.length >= 2 && homePast().find((r) => r.name === `${rest[1]}.jsonl`);
+    if (!past) throw new HttpError('not_found');
+    const page = rest.slice(2).join('/');
+    if (method === 'GET' && page === '') return sendPage(res);
+    const view = historyView(historyLines(past.file), true);
+    if (method === 'GET' && page === 'api/history') return sendJson(res, 200, view);
+    throw roomEnded(view.ended);
+  }
+
   // ---- routing ----
 
   // Waits, rest checks, page polls and admin listings are not activity.
   function isActivity(method, parts, url) {
     if (method === 'POST') return true;
+    if (method === 'GET' && parts[0] === 'home') return parts.slice(2).join('/') !== 'api/rooms';
     if (method !== 'GET' || parts[0] !== 's' || parts.length < 4) return false;
     const key = parts.slice(4).join('/');
     if (parts[2] === 'as') return key !== 'wait' && !(key === 'me' && url.searchParams.get('rest') === '1');
@@ -1534,7 +1633,11 @@ How the room works:
         announce: announceText(s.name, `${base}/s/${s.id}`, `${base}/s/${s.id}/h/${s.humanToken}`),
       });
     }
+    if (method === 'GET' && parts.length === 0) {
+      return sendText(res, 200, `agent-huddle ${VERSION} is running on this machine.\nOpen your rooms with: ${PROG} home\n`);
+    }
     if (parts[0] === 'admin') return adminRoute(req, res, method, parts, base);
+    if (parts[0] === 'home') return homeRoute(res, method, parts.slice(1));
     if (parts[0] !== 's' || parts.length < 2) return notFound();
 
     const s = rooms.get(parts[1]);
@@ -2048,6 +2151,7 @@ async function serve() {
     maxFileBytes: num('AGENT_HUDDLE_MAX_FILE', MAX_FILE_BYTES),
     historyDir: path.join(resolveHome(), 'history'),
     adminToken,
+    homeKey: readHomeKey(resolveHome()),
     onIdle: shutdown,
     onStop: shutdown,
   });
@@ -3298,24 +3402,15 @@ const tilde = (p) => (p.startsWith(os.homedir() + path.sep) ? `~${p.slice(os.hom
 
 // Past rooms from <home>/history, newest first.
 function listHistory() {
-  const dir = path.join(resolveHome(), 'history');
-  const rooms = [];
-  for (const name of fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')) : []) {
-    const file = path.join(dir, name);
-    const lines = historyLines(file);
-    const room = lines.find((l) => l?.type === 'room' && l.createdAt);
-    const end = lines.findLast((l) => l?.type === 'end');
-    if (room) rooms.push({ room, end, file: end?.transcript && fs.existsSync(end.transcript) ? end.transcript : file });
-  }
+  const rooms = pastRooms(path.join(resolveHome(), 'history'));
   if (!rooms.length) return console.log('No room history yet.');
-  rooms.sort((a, b) => b.room.createdAt.localeCompare(a.room.createdAt));
   const day = (iso) => stamp(iso).slice(0, 10);
-  const rows = rooms.map(({ room, end, file }) => [
+  const rows = rooms.map(({ room, end, transcript }) => [
     String(room.name),
     String(room.id),
     stamp(room.createdAt),
     end ? `ended ${day(end.at) === day(room.createdAt) ? clock(end.at) : stamp(end.at)}${end.reason ? ` (${end.reason})` : ''}` : 'not ended',
-    tilde(file),
+    tilde(transcript),
   ]);
   console.log(columns(rows).map((l) => `  ${l}`).join('\n'));
 }
@@ -3346,6 +3441,13 @@ async function openRoom(args) {
   console.log(room.page);
   if (args.includes('--print')) return;
   if (!(await openBrowser(room.page))) console.log(`Open this URL in your browser: ${room.page}`);
+}
+
+async function openHome(args) {
+  const url = `${await up()}/home/${readHomeKey(resolveHome())}`;
+  console.log(url);
+  if (args.includes('--print')) return;
+  if (!(await openBrowser(url))) console.log(`Open this URL in your browser: ${url}`);
 }
 
 async function inviteRoom(args) {
@@ -3452,6 +3554,13 @@ const COMMANDS = {
     usage: 'open [room] [--print]',
     options: ['--print  only print the URL'],
     example: 'node huddle.mjs open "api redesign"',
+  },
+  home: {
+    group: 'Rooms',
+    summary: 'open your home page: live rooms and past rooms to read (starts the server if needed)',
+    usage: 'home [--print]',
+    options: ['--print  only print the URL'],
+    example: 'node huddle.mjs home',
   },
   invite: {
     group: 'Rooms',
@@ -3560,7 +3669,7 @@ function usage() {
   }
   lines.push(
     '',
-    'Skills: /huddle-start (start), /huddle-join (join), /huddle-rooms (rooms, open), /huddle-end (end)',
+    'Skills: /huddle-start (start), /huddle-join (join), /huddle-rooms (rooms, open, home), /huddle-end (end)',
     '',
     `Run "${HELP_PROG} help <command>" for options and an example.`,
   );
@@ -3600,6 +3709,8 @@ async function main(argv) {
       return listHistory();
     case 'open':
       return openRoom(args);
+    case 'home':
+      return openHome(args);
     case 'invite':
       return inviteRoom(args);
     case 'end':
