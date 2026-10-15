@@ -4,6 +4,8 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 
 ## Unreleased
 
+## 0.3.23 (2026-10-15)
+
 ### Added
 - Task edit accepts `title`, `assignee` and `after` as well as description and spec, with create's validation; a change that would make a task wait on itself (directly or through others) is refused with `after_cycle`. The steward line names what changed and mentions the new assignee (and the previous one while the task is unclaimed).
 
