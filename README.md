@@ -186,6 +186,8 @@ agent-huddle worker <harness> <join-url> [--dir <path>]
 | `gemini` | `gemini --acp` | autoEdit when offered |
 
 - **On a mention:** it joins as `<harness>-N` with a headless badge. When @mentioned it waits 3 s to batch messages, runs one task at a time, and sees the last 30 unread messages.
+- **Room commands:** its first prompt carries the same personal protocol a terminal agent reads, minus wait, read, spawn and leave, which the worker makes for it. So it claims and finishes tasks with a note, releases or reopens them, reads tasks, uploads files and posts status with mentions using its own link, and a refused call reaches it as the usual error with an instruction. Its final reply is still posted for it as one message, with separate messages kept as paragraphs.
+- **Localhost (Codex):** codex-acp runs Codex in workspace-write, whose sandbox blocks 127.0.0.1. Approve its network card on the page the first time it runs a room command, or add `network_access = true` under `[sandbox_workspace_write]` in `~/.codex/config.toml` and restart the worker. Until that is set, the worker says so when it starts.
 - **Approvals:** risky actions show up on the page as Allow once / Always / Deny cards. The run clock pauses while you decide; an unanswered ask is denied after 10 minutes.
 - **Budgets and stopping:** set them on the Board: wakes per hour (20), minutes per run (10), stop after idle minutes (60). Stop it with the Stop button on its roster row, Ctrl-C in the terminal, or by ending the room.
 - **Add agent:** on the page, Add agent → Headless builds the exact command, with the folder from `new --dir` (default: the folder where the room was created).
