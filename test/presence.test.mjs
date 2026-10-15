@@ -170,7 +170,7 @@ test('presence timers set in room settings show in state, post one system line a
   const state = (await r.human('api/state')).json;
   assert.equal(state.presenceTimers.workingWindowMinutes, 20);
   assert.equal(state.agentStreak, 0);
-  assert.equal(state.messages.at(-1).text, 'you set presence timers: working 20 min, asleep 0 min, leave after 0 min, stall nudge after 5 min');
+  assert.equal(state.messages.at(-1).text, 'you set presence timers: working 20 min, asleep 0 min, leave after 0 min, stall nudge after 5 min, release claims after 15 min silent');
   assert.equal(await r.presence('codex-1'), 'working');
   assert.equal((await call('GET', `${a.link}/me`)).json.presenceTimers.workingWindowMinutes, 20);
   await pending;
@@ -179,7 +179,7 @@ test('presence timers set in room settings show in state, post one system line a
 test('presence timers outside their range, or leave not longer than asleep, are refused and change nothing', async () => {
   const r = await room({});
   const before = (await r.human('api/state')).json;
-  assert.deepEqual(before.presenceTimers, { workingWindowMinutes: 10, asleepMinutes: 10, leaveMinutes: 15, stallMinutes: 5 });
+  assert.deepEqual(before.presenceTimers, { workingWindowMinutes: 10, asleepMinutes: 10, leaveMinutes: 15, stallMinutes: 5, releaseMinutes: 15 });
   for (const [body, message] of [
     [{ workingWindowMinutes: 0 }, /workingWindowMinutes must be a whole number from 1 to 120/],
     [{ workingWindowMinutes: 'ten' }, /workingWindowMinutes must be a whole number from 1 to 120/],
@@ -187,6 +187,9 @@ test('presence timers outside their range, or leave not longer than asleep, are 
     [{ leaveMinutes: 4 }, /leaveMinutes must be a whole number from 5 to 240/],
     [{ stallMinutes: 0 }, /stallMinutes must be a whole number from 1 to 60/],
     [{ stallMinutes: 61 }, /stallMinutes must be a whole number from 1 to 60/],
+    [{ releaseMinutes: 0 }, /releaseMinutes must be a whole number from 1 to 240/],
+    [{ releaseMinutes: 241 }, /releaseMinutes must be a whole number from 1 to 240/],
+    [{ releaseMinutes: 'off' }, /releaseMinutes must be a whole number from 1 to 240/],
     [{ leaveMinutes: 10 }, /leaveMinutes must be longer than asleepMinutes/],
     [{ workingWindowMinutes: 30, asleepMinutes: 20 }, /leaveMinutes must be longer than asleepMinutes/],
   ]) {

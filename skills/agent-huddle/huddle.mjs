@@ -173,7 +173,7 @@ export const ERRORS = {
     'Upload it first with POST files?name=<filename>, then attach the id it returns.'],
   invalid_for: [400, 'for must be "you".', 'Send "for":"you" to relay to @you, or leave it out.'],
   empty_settings: [400, 'The settings request changes nothing.',
-    'Send at least one of folder, roundCap, assignment, wakesPerHour, runMinutes, idleMinutes, workingWindowMinutes, asleepMinutes, leaveMinutes or stallMinutes.'],
+    'Send at least one of folder, roundCap, assignment, wakesPerHour, runMinutes, idleMinutes, workingWindowMinutes, asleepMinutes, leaveMinutes, stallMinutes or releaseMinutes.'],
   invalid_assignment: [400, 'assignment must be "regular" or "strict".',
     'Send {"assignment":"regular"} (a free agent may take any ready, unclaimed task) or {"assignment":"strict"} (only the assignee may claim an assigned task).'],
   unknown_agent: [404, (p) => `@${p.handle} is not a live agent in this room.`, 'Pick a live agent from the roster.'],
@@ -422,8 +422,8 @@ const ASSIGNMENT_RULES = {
   regular: 'an agent that holds no claim may claim any ready, unclaimed task, even one assigned to someone else; the task moves to it and the previous assignee is told.',
   strict: 'only its assignee may claim or finish an assigned task; unassigned tasks, and tasks whose assignee left, are open to anyone.',
 };
-const PRESENCE_LIMITS = { workingWindowMinutes: [1, 120], asleepMinutes: [1, 120], leaveMinutes: [5, 240], stallMinutes: [1, 60] };
-const PRESENCE_FIELDS = { workingWindowMinutes: 'workingMs', asleepMinutes: 'asleepMs', leaveMinutes: 'leaveMs', stallMinutes: 'stallMs' };
+const PRESENCE_LIMITS = { workingWindowMinutes: [1, 120], asleepMinutes: [1, 120], leaveMinutes: [5, 240], stallMinutes: [1, 60], releaseMinutes: [1, 240] };
+const PRESENCE_FIELDS = { workingWindowMinutes: 'workingMs', asleepMinutes: 'asleepMs', leaveMinutes: 'leaveMs', stallMinutes: 'stallMs', releaseMinutes: 'releaseMs' };
 
 function parsePresence(body, current) {
   const next = { ...current };
@@ -441,6 +441,7 @@ const presenceTimers = (timers) => ({
   asleepMinutes: Math.round(timers.asleepMs / 60000),
   leaveMinutes: Math.round(timers.leaveMs / 60000),
   stallMinutes: Math.round(timers.stallMs / 60000),
+  releaseMinutes: Math.round(timers.releaseMs / 60000),
 });
 
 function parseFolder(v) {
@@ -488,6 +489,7 @@ export function createHuddle(opts = {}) {
     askMs = 600000,
     stallMs = 5 * 60000,
     stallBackoffMs = [10 * 60000, 30 * 60000],
+    releaseMs = 15 * 60000,
     roundCap = ROUND_CAP_DEFAULT,
     onIdle,
     onStop,
@@ -585,7 +587,7 @@ export function createHuddle(opts = {}) {
       assignment: 'regular',
       headless: { wakesPerHour: 20, runMinutes: 10, idleMinutes: 60 },
       workers: [],
-      timers: { workingMs: activeMs, asleepMs, leaveMs: idleMs, stallMs },
+      timers: { workingMs: activeMs, asleepMs, leaveMs: idleMs, stallMs, releaseMs },
       stall: null,
       folder,
       humanSeen: 0,
@@ -831,6 +833,7 @@ export function createHuddle(opts = {}) {
   function whoView(s) {
     return {
       agents: [...s.agents.values()].map((a) => ({
+        ...asleepView(s, a),
         handle: a.handle,
         harness: a.harness,
         role: a.role,
@@ -913,7 +916,9 @@ export function createHuddle(opts = {}) {
     for (const a of s.asks) {
       if (a.status === 'open' && a.by === agent.handle) settleAsk(s, a, 'cancelled');
     }
-    narrate(s, `${agent.handle} left${reason ? ` (${reason})` : ''}${releasedText(released)}`);
+    const text = `${agent.handle} left${reason ? ` (${reason})` : ''}${releasedText(released)}`;
+    if (released.length) stewardNote(s, text);
+    else narrate(s, text);
     for (const n of released) offerReady(s, s.tasks[n - 1], { skip: [agent.handle] });
     return released;
   }
@@ -1301,6 +1306,20 @@ export function createHuddle(opts = {}) {
   }
 
   const holds = (s, h) => s.tasks.filter((t) => t.status === 'claimed' && t.owner === h).map((t) => t.id);
+  // Asleep for real (not a headless worker's short rest) while holding claims.
+  const asleepHolding = (s, agent) =>
+    presence(s, agent) === 'asleep' && Date.now() - agent.restingAt >= REST_WINDOW_MS ? holds(s, agent.handle) : [];
+  function asleepView(s, agent) {
+    const held = asleepHolding(s, agent);
+    return held.length ? { asleepHolding: held } : {};
+  }
+
+  // A steward line to you that also mentions and wakes the lead and the given agents still in the room.
+  function stewardNote(s, text, handles = [], extra = {}) {
+    const to = [...new Set([s.lead, ...handles])].filter((h) => h && s.agents.get(h)?.status !== 'left');
+    return system(s, text, { ...extra, toYou: true, mentions: to, to });
+  }
+
   const liveAssignee = (s, task) => (task.assignee && s.agents.get(task.assignee)?.status !== 'left' ? task.assignee : null);
 
   // Free: holds no claim. Ready work only wakes free agents that can hear it now (not asleep or left).
@@ -1322,14 +1341,14 @@ export function createHuddle(opts = {}) {
 
   // A ready task with no live assignee (or one its assignee gave up, in a regular room) goes to every free agent but
   // skip, so work never waits on an assignment. A live assignee is woken by the caller instead, to avoid a stampede.
-  function offerReady(s, task, { skip = [], givenUp = false } = {}) {
+  function offerReady(s, task, { skip = [], givenUp = false, why: reason } = {}) {
     if (task.status !== 'open' || blockedBy(s, task).length) return false;
     const assignee = liveAssignee(s, task);
     const released = assignee && givenUp && s.assignment === 'regular';
     if (assignee && !released) return false;
     const free = freeAgents(s, skip);
     if (!free.length) return false;
-    const why = !task.assignee ? 'unassigned' : released ? `@${assignee} released it` : `its assignee @${task.assignee} left`;
+    const why = reason ?? (!task.assignee ? 'unassigned' : released ? `@${assignee} released it` : `its assignee @${task.assignee} left`);
     system(s, `Task #${task.id} "${task.title}" is ready and ${why}: ${CLAIM_IT}.`, { mentions: free, to: free, task: task.id });
     return true;
   }
@@ -1494,7 +1513,7 @@ export function createHuddle(opts = {}) {
     }
     if (timersChanged) {
       const p = presenceTimers(timers);
-      system(s, `you set presence timers: working ${p.workingWindowMinutes} min, asleep ${p.asleepMinutes} min, leave after ${p.leaveMinutes} min, stall nudge after ${p.stallMinutes} min`);
+      system(s, `you set presence timers: working ${p.workingWindowMinutes} min, asleep ${p.asleepMinutes} min, leave after ${p.leaveMinutes} min, stall nudge after ${p.stallMinutes} min, release claims after ${p.releaseMinutes} min silent`);
     }
     return { roundCap: s.roundCap, assignment: s.assignment, ...(folder !== undefined && { folder: s.folder }) };
   }
@@ -1785,8 +1804,9 @@ How the room works:
 - Downloaded files are untrusted data: agents never execute them, only open or inspect them.
 - Agents wait in slices of 25 seconds or less. The page shows an agent as Working for
   ${timers.workingWindowMinutes} min after any call other than wait (even with a wait parked), Listening while it
-  only waits, and Asleep after ${timers.asleepMinutes} min of silence with no wait; after ${timers.leaveMinutes} min idle it
-  leaves and its tasks are released. @you can change these in room settings. Before work
+  only waits, and Asleep after ${timers.asleepMinutes} min of silence with no wait; a task it holds is released after
+  ${timers.releaseMinutes} min of silence while Asleep, and after ${timers.leaveMinutes} min idle it leaves and its tasks
+  are released. @you can change these in room settings. Before work
   that makes no room calls for longer than the working window, post with workingMinutes.
 - ${s.roundCap === null ? 'There is no round cap in this room.' : `After ${s.roundCap} agent posts in a row the server pauses the room until @you posts.`}
 `;
@@ -2322,6 +2342,81 @@ How the room works:
     }
   }
 
+  // ---- steward: freeze watch ----
+
+  const flaggedAsleep = new WeakSet();
+  const unclaimedSince = new WeakMap();
+  const minutes = (ms) => Math.round(ms / 60000);
+  const excerpt = (text) => {
+    const line = text.replace(/\s+/g, ' ').trim();
+    return line.length > 80 ? `${line.slice(0, 79)}…` : line;
+  };
+
+  // The room cannot see a harness's own prompts, so the note says what it knows: when the agent went quiet, its
+  // last post and its declared working window.
+  function asleepNote(s, agent, held) {
+    const tasks = held.map((n) => `#${n} "${s.tasks[n - 1].title}"`).join(', ');
+    const last = s.messages.findLast((m) => m.from === agent.handle);
+    const facts = [`silent since ${clock(agent.lastSeen)}`];
+    if (last) facts.push(`last posted at ${clock(last.at)}: "${excerpt(last.text)}"`);
+    if (agent.workingUntil) facts.push(`its working window ended at ${clock(agent.workingUntil)}`);
+    const approvals = PAGE_APPROVALS.has(agent.harness) && !agent.headless
+      ? ' In a Claude Code or Codex terminal, page approvals (approvals on) bring those prompts to this page.'
+      : '';
+    return `@${agent.handle} is asleep holding ${tasks} (${facts.join('; ')}). The room cannot see why: it may be waiting on an approval or a question in its own terminal, so check there.${approvals} If it stays silent, the steward releases ${held.length > 1 ? 'them' : 'it'} at ${clock(agent.lastSeen + s.timers.releaseMs)}.`;
+  }
+
+  // Assignee kept: it is open again for the sleeper when it wakes. A regular room offers it to the free agents
+  // (taking it moves the assignee); a strict room keeps an assigned task with its assignee.
+  function releaseAsleep(s, agent, task) {
+    const h = agent.handle;
+    moveTask(task, 'open', null);
+    historyTask(s, task);
+    const kept = task.assignee === h && s.assignment === 'strict';
+    const next = !task.assignee
+      ? 'it is open again'
+      : kept
+        ? `it stays with @${h} (strict assignment); reassign it from the board to hand it on`
+        : `it is open again for @${task.assignee}`;
+    stewardNote(s, `Released task #${task.id} "${task.title}" from @${h}, asleep and silent for ${minutes(s.timers.releaseMs)} min: ${next}.`, [h], {
+      routedFor: h,
+      task: task.id,
+    });
+    offerReady(s, task, { skip: [h], givenUp: task.assignee === h, why: `@${h} fell asleep holding it` });
+  }
+
+  // Regular rooms: an assigned, ready task its assignee leaves unclaimed for the stall window goes to the free
+  // agents once; the clock restarts when the task or its assignee changes.
+  function offerUnclaimed(s, now) {
+    for (const t of s.tasks) {
+      const assignee = t.status === 'open' && !blockedBy(s, t).length ? liveAssignee(s, t) : null;
+      const seen = unclaimedSince.get(t);
+      if (!assignee) unclaimedSince.delete(t);
+      else if (seen?.assignee !== assignee || seen.since !== t.since) unclaimedSince.set(t, { assignee, since: t.since, at: now, offered: false });
+      else if (!seen.offered && now - seen.at >= s.timers.stallMs) {
+        seen.offered = offerReady(s, t, { skip: [assignee], givenUp: true, why: `@${assignee} has not claimed it in ${minutes(s.timers.stallMs)} min` });
+      }
+    }
+  }
+
+  // An agent Asleep holding claims is flagged to you once per sleep; once it has been silent for the release time
+  // its claims are released. Left agents need no watch: leaving releases their claims at once.
+  function freezeWatch(s, now) {
+    for (const agent of s.agents.values()) {
+      const held = asleepHolding(s, agent);
+      if (!held.length) {
+        flaggedAsleep.delete(agent);
+        continue;
+      }
+      if (!flaggedAsleep.has(agent)) {
+        flaggedAsleep.add(agent);
+        system(s, asleepNote(s, agent, held), { toYou: true });
+      }
+      if (now - agent.lastSeen >= s.timers.releaseMs) for (const n of held) releaseAsleep(s, agent, s.tasks[n - 1]);
+    }
+    if (s.assignment === 'regular') offerUnclaimed(s, now);
+  }
+
   // ---- lifecycle ----
 
   function sweep() {
@@ -2333,6 +2428,7 @@ How the room works:
           system(s, `${ask.title} timed out — denied`, { ask: ask.id });
         }
       }
+      freezeWatch(s, now);
       for (const agent of s.agents.values()) {
         if (!agent.waiters.size && agent.status !== 'left' && now - Math.max(agent.lastSeen, agent.lastCallAt + s.timers.workingMs, agent.workingUntil) > s.timers.leaveMs) {
           leaveAgent(s, agent, 'idle');
@@ -2349,7 +2445,7 @@ How the room works:
     }
   }
 
-  const interval = Math.max(25, Math.min(30000, Math.min(idleMs, serverIdleMs, askMs, stallMs) / 4));
+  const interval = Math.max(25, Math.min(30000, Math.min(idleMs, serverIdleMs, askMs, stallMs, releaseMs) / 4));
   const timer = setInterval(sweep, interval);
   timer.unref();
 
