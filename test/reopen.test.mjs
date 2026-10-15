@@ -137,6 +137,19 @@ test('the page reopens as you and resets the agent streak', async () => {
   assert.deepEqual(msg.to, ['claude-1']);
 });
 
+test('a task you marked done reopens as open for its assignee, who is told', async () => {
+  const r = await room();
+  await call('POST', `${r.created.page}/api/tasks/2/assign`, { assignee: 'claude-2' });
+  assert.equal((await r.task(2)).assignee, 'claude-2');
+  await call('POST', `${r.created.page}/api/tasks/2/done`, { note: 'done by hand' });
+  const res = await call('POST', `${r.created.page}/api/tasks/2/reopen`, { reason: REASON });
+  assert.equal(res.status, 200, JSON.stringify(res.json));
+  assert.deepEqual([res.json.status, res.json.owner, res.json.assignee], ['open', null, 'claude-2']);
+  const msg = (await r.state()).messages.find((m) => /reopened task #2/.test(m.text));
+  assert.deepEqual(msg.to, ['claude-2']);
+  assert.deepEqual(msg.mentions, ['claude-2']);
+});
+
 test('a reopen blocks a claimed task after it, and its owner hears when it is ready again', async () => {
   const r = await room();
   await call('POST', `${r.c1.link}/tasks`, { title: 'review', after: [1] });

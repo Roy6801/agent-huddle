@@ -1319,7 +1319,7 @@ export function createHuddle(opts = {}) {
     const task = getTask(s, n);
     if (!finished(task)) throw new HttpError('not_done', { n, status: task.status });
     const reason = cleanText(body.reason, MAX_TEXT, 'reason');
-    // A done task goes back to whoever finished it; a cancelled one is open again for its assignee.
+    // A done task goes back to whoever finished it; a cancelled one, or one you finished, is open again for its assignee.
     const wasCancelled = task.status === 'cancelled';
     const owner = wasCancelled ? null : s.agents.get(task.owner);
     const back = owner && owner.status !== 'left' ? owner.handle : null;
@@ -1327,7 +1327,7 @@ export function createHuddle(opts = {}) {
     task.reopened = { by, reason, at: new Date().toISOString() };
     task.cancelled = null;
     historyTask(s, task);
-    const told = wasCancelled ? task.assignee : back;
+    const told = back ?? liveAssignee(s, task);
     const notify = told && told !== by && s.agents.get(told)?.status !== 'left';
     system(s, `${by} reopened task #${task.id} "${task.title}": ${reason}`, {
       mentions: notify ? [told] : [],
