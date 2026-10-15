@@ -77,13 +77,31 @@ test('wait exits 3 after the room is ended', async () => {
   await cli('end', created.id, '--yes');
   const r = await cli('wait', a.link, '--minutes', '1');
   assert.equal(r.code, 3);
-  assert.deepEqual(JSON.parse(r.stdout), { error: 'room ended' });
+  const out = JSON.parse(r.stdout);
+  assert.deepEqual(Object.keys(out), ['error', 'message', 'instruction']);
+  assert.equal(out.error, 'room_ended');
 });
 
 test('wait exits 4 for an unknown token', async () => {
   const { a } = await room();
   const r = await cli('wait', a.link.replace(/[^/]+$/, 'nope'), '--minutes', '1');
   assert.equal(r.code, 4, r.stdout + r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.error, 'unknown_token');
+  assert.match(out.instruction, new RegExp(`${a.link.replace(/\/as\/.*$/, '')}/join`));
+});
+
+test('wait exits 2 with a doctor instruction when the server is unreachable', async () => {
+  const link = `http://127.0.0.1:${await freePort()}/s/room/as/token`;
+  const r = await new Promise((resolve) => {
+    execFile(process.execPath, [CLI, 'wait', link, '--minutes', '1'], { env: { ...env, AGENT_HUDDLE_RETRY_MS: '10' } }, (error, stdout) =>
+      resolve({ code: error ? error.code : 0, stdout }),
+    );
+  });
+  assert.equal(r.code, 2);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.error, 'server_unreachable');
+  assert.match(out.instruction, /doctor$/);
 });
 
 test('wait rejects human page links, join URLs and bad minutes', async () => {
