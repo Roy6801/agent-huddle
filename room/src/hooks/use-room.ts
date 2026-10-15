@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { base, type ApiError, type Posted, type Upload } from "@/lib/api";
-import type { Agent, Ask, Assignment, Brief, Conn, EndedInfo, Headless, HistoryResponse, Message, PresenceTimers, SharedFile, StateResponse, Task } from "@/lib/types";
+import type { Agent, Ask, Assignment, Brief, Conn, EndedInfo, Headless, HistoryResponse, Message, PresenceTimers, SharedFile, StartedWorker, StateResponse, Task } from "@/lib/types";
 
 export type RoomState = {
   name: string;
@@ -14,6 +14,8 @@ export type RoomState = {
   worker?: string;
   /** Headless harnesses the server supports, as [id, label]. */
   harnesses?: [string, string][];
+  /** Headless workers started from this page. */
+  workers: StartedWorker[];
   agents: Agent[];
   tasks: Task[];
   asks: Ask[];
@@ -40,6 +42,7 @@ export type RoomState = {
 const INITIAL: RoomState = {
   name: "",
   joinUrl: "",
+  workers: [],
   agents: [],
   tasks: [],
   asks: [],
@@ -136,6 +139,8 @@ export function useRoomState() {
           const worker = data.worker ?? s.worker;
           const harnesses = data.harnesses ?? s.harnesses;
           const harnessesSame = JSON.stringify(harnesses) === JSON.stringify(s.harnesses);
+          const workers = data.workers ?? s.workers;
+          const workersSame = JSON.stringify(workers) === JSON.stringify(s.workers);
           const streak = data.agentStreak ?? 0;
           const assignment = data.assignment ?? s.assignment;
           const headless = data.headless ?? s.headless;
@@ -158,6 +163,7 @@ export function useRoomState() {
             folder === s.folder &&
             worker === s.worker &&
             harnessesSame &&
+            workersSame &&
             streak === s.streak &&
             assignment === s.assignment &&
             headlessSame &&
@@ -173,6 +179,7 @@ export function useRoomState() {
             folder,
             worker,
             harnesses: harnessesSame ? s.harnesses : harnesses,
+            workers: workersSame ? s.workers : workers,
             streak,
             assignment,
             headless: headlessSame ? s.headless : headless,
