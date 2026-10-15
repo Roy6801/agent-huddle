@@ -613,7 +613,7 @@ test('worker opencode joins headless, switches its mode to build, asks for shell
   assert.match(w.out, /mode build/);
   assert.deepEqual(readPrompts().modes, [{ sessionId: 'fake-1', configId: 'mode', value: 'build' }]);
   const who = await (await fetch(`${room.claude.link}/who`)).json();
-  assert.equal(who.agents.find((a) => a.handle === 'opencode-1').role, 'headless');
+  assert.equal(who.agents.find((a) => a.handle === 'opencode-1').headless, true);
   assert.doesNotMatch(w.err, /hears the room from its own terminal/);
 
   await say(room.claude, '@opencode-1 hi');
