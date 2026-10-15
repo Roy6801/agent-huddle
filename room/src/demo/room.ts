@@ -235,10 +235,10 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
           : "an agent that holds no claim may claim any ready, unclaimed task, even one assigned to someone else; the task moves to it and the previous assignee is told.";
       setRoom(b.assignment === room.assignment ? room : system({ ...room, assignment: b.assignment, streak: 0 }, now, `you set ${b.assignment} assignment: ${rule}`));
       data = { roundCap: room.roundCap, assignment: b.assignment };
-    } else if (room.presenceTimers && (b.workingWindowMinutes !== undefined || b.asleepMinutes !== undefined || b.leaveMinutes !== undefined || b.stallMinutes !== undefined)) {
+    } else if (room.presenceTimers && (b.workingWindowMinutes !== undefined || b.asleepMinutes !== undefined || b.leaveMinutes !== undefined || b.stallMinutes !== undefined || b.releaseMinutes !== undefined)) {
       const p = { ...room.presenceTimers, ...b };
       if (p.leaveMinutes <= p.asleepMinutes) return rejected("leave_before_asleep", "leaveMinutes must be longer than asleepMinutes.");
-      setRoom(system({ ...room, presenceTimers: p, streak: 0 }, now, `you set presence timers: working ${p.workingWindowMinutes} min, asleep ${p.asleepMinutes} min, leave after ${p.leaveMinutes} min, stall nudge after ${p.stallMinutes} min`));
+      setRoom(system({ ...room, presenceTimers: p, streak: 0 }, now, `you set presence timers: working ${p.workingWindowMinutes} min, asleep ${p.asleepMinutes} min, leave after ${p.leaveMinutes} min, stall nudge after ${p.stallMinutes} min, release claims after ${p.releaseMinutes} min silent`));
     } else if (room.headless) {
       const h = { ...room.headless, ...b };
       setRoom(system({ ...room, headless: h, streak: 0 }, now, `you set headless budgets: ${h.wakesPerHour} wakes/h, ${h.runMinutes} min/run, stop after ${h.idleMinutes} min idle`));

@@ -689,8 +689,9 @@ function TaskCard({ task }: { task: Task }) {
   const status = STATUS[viewOf(task)] ?? STATUS.open;
   const Icon = status.icon;
   const done = finished(task);
-  const { ended } = useRoom().state;
+  const { ended, agents } = useRoom().state;
   const trigger = useRef<HTMLButtonElement>(null);
+  const ownerAsleep = !!task.owner && !!agents.find((a) => a.handle === task.owner)?.asleepHolding?.includes(task.id);
 
   return (
     <Collapsible
@@ -717,8 +718,13 @@ function TaskCard({ task }: { task: Task }) {
           {task.owner && (
             <>
               <Jazzicon handle={task.owner} size={16} />
-              <span className="sr-only">{`, owned by ${who(task.owner)}, `}</span>
+              <span className="sr-only">{`, owned by ${who(task.owner)}${ownerAsleep ? ", asleep" : ""}, `}</span>
             </>
+          )}
+          {ownerAsleep && (
+            <Badge aria-hidden variant="outline" className="h-[18px] border-signal px-1.5 text-[10.5px] font-medium text-signal">
+              asleep
+            </Badge>
           )}
           <Badge variant="outline" className={cn("h-[18px] px-1.5 text-[10.5px] font-medium", status.badge)}>
             {status.label}
@@ -752,7 +758,16 @@ function TaskCard({ task }: { task: Task }) {
                 {task.after.map((n) => `#${n}${task.blocked.includes(n) ? " (not done)" : ""}`).join(", ")}
               </Row>
             )}
-            <Row label="Owner">{task.owner ? <Person handle={task.owner} /> : "Unclaimed"}</Row>
+            <Row label="Owner">
+              {task.owner ? (
+                <span className="inline-flex min-w-0 items-center gap-1.5">
+                  <Person handle={task.owner} />
+                  {ownerAsleep && <span className="shrink-0 text-signal">asleep</span>}
+                </span>
+              ) : (
+                "Unclaimed"
+              )}
+            </Row>
             {task.assignee && (
               <Row label="Assigned to">
                 <Person handle={task.assignee} />
