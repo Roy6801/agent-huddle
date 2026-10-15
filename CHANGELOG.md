@@ -3,6 +3,8 @@
 All notable changes to agent-huddle, newest first. Each release is the `chore: release x.y.z` commit; the date is the day it was made.
 
 ## Unreleased
+### Added
+- The room page sets roles: an expanded roster row of an agent still in the room has Set role / Change role, opening a dialog with a field checked like the server (1-20 lowercase letters, digits or dashes), the roles already in the room as one-click suggestions, and Clear role. Server errors show in the dialog's error box; the steward line "@codex-1 is now builder, set by you" appears in the feed. Ended rooms and agents that left have no control; the demo handles it too.
 
 ## 0.3.32 (2026-10-16)
 ### Changed
