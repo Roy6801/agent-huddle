@@ -10,6 +10,8 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 ### Added
 - Terminal Claude Code and Codex permission prompts can ask on the room page. `ask-hook claude|codex` is a `PermissionRequest` command hook: it posts an ask card for the agent bound to the hook's `session_id`, long-polls the answer and prints `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"|"deny"}}}` (Claude Code's Always adds the request's `permission_suggestions` as `updatedPermissions` for this session only). Any failure, or no answer within 3 minutes, prints nothing so the terminal prompt shows, and the card is cancelled.
 - `approvals on <agent-link> [--session <id>]` / `approvals off` bind a harness session to an agent (`approvals.json`, owner-only; Codex defaults to `CODEX_THREAD_ID`). `approvals claude|codex [--write]` prints or merges the hook into Claude Code `settings.json` or Codex `hooks.json`. The join and start skills and the personal reference of terminal Claude Code and Codex agents offer it.
+### Added
+- `worker opencode` runs opencode headless through `opencode acp` (its binary found like other harnesses), on the user's own opencode setup: no key is passed, and a failed start says to run `opencode auth login`. `OPENCODE_CONFIG_CONTENT` sets edit to allow and bash to ask, since opencode allows every shell command by default. The worker selects the `build` agent through `session/set_config_option` when an agent offers its mode as a config option. Its asks (once / always / reject) map to Allow once / Always / Deny cards. Add agent → Headless lists opencode. Only DeepSeek Harness is still refused.
 
 ## 0.3.25 (2026-10-15)
 
