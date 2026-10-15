@@ -1,5 +1,6 @@
 export type AgentStatus = "active" | "idle" | "left";
-export type AgentPresence = "listening" | "working" | "asleep" | "left";
+/** waiting: blocked on its own app's approval prompt, which only you can answer there. */
+export type AgentPresence = "listening" | "working" | "waiting" | "asleep" | "left";
 
 export type Agent = {
   handle: string;
@@ -77,10 +78,16 @@ export type AskOption = { optionId: string; kind: AskKind; name: string };
 export type Ask = {
   id: number;
   by: string;
+  /** in-terminal: the agent is waiting for your approval in its own app; it has no options, only Done. */
+  kind?: "in-terminal";
   title: string;
   detail: string | null;
+  /** Where the in-terminal prompt is; null means the agent's own terminal. */
+  where?: string | null;
   options: AskOption[];
-  status: "open" | "answered" | "timeout" | "cancelled";
+  status: "open" | "answered" | "timeout" | "cancelled" | "done";
+  /** Who cleared an in-terminal notice: you (Done) or the agent (its next call). */
+  doneBy?: string;
   answer?: { optionId: string; kind: AskKind };
   at: string;
   answeredAt?: string;

@@ -1,4 +1,4 @@
-import { BanIcon, CheckIcon, ChevronRightIcon, ClockIcon, ShieldQuestionIcon } from "lucide-react";
+import { BanIcon, CheckIcon, ChevronRightIcon, ClockIcon, ShieldQuestionIcon, SquareTerminalIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { HarnessDot, Jazzicon } from "@/components/identity";
@@ -33,15 +33,20 @@ const SETTLED: Record<AskKind, string> = {
 /** The ask the human just answered; its settled row takes focus when it replaces the buttons. */
 let answeredAsk: number | null = null;
 
+const inTerminal = (ask: Ask) => ask.kind === "in-terminal";
+const waitingText = (ask: Ask) => `is waiting for your approval in ${ask.where ?? "its own terminal"}`;
+
 function settledText(ask: Ask) {
   if (ask.status === "open") return "Room ended";
+  if (ask.status === "done") return ask.doneBy === "you" ? "Marked done by you" : `${ask.by} carried on`;
   if (ask.status === "timeout") return "Timed out — denied";
   if (ask.status === "cancelled") return "Cancelled";
   return ask.answer ? SETTLED[ask.answer.kind] : "Answered";
 }
 
 function Settled({ ask }: { ask: Ask }) {
-  const allowed = ask.status === "answered" && ask.answer?.kind.startsWith("allow");
+  const allowed = (ask.status === "answered" && ask.answer?.kind.startsWith("allow")) || ask.status === "done";
+  const summary = inTerminal(ask) ? `waited for your approval in ${ask.where ?? "its own terminal"}: ${ask.title}` : `asked to ${ask.title}`;
   const Icon = allowed ? CheckIcon : ask.status === "answered" ? BanIcon : ClockIcon;
   const row = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -58,12 +63,12 @@ function Settled({ ask }: { ask: Ask }) {
       <span className="flex justify-center pt-[3px]">
         <Icon aria-hidden className={cn("size-3.5", allowed && "text-presence")} />
       </span>
-      <span className="min-w-0 truncate" title={`${ask.by} asked: ${ask.title}`}>
+      <span className="min-w-0 truncate" title={`${ask.by} ${summary}`}>
         <span className="text-foreground/80">{settledText(ask)}</span>
-        <span className="sr-only">{`: ${ask.by} asked to ${ask.title}`}</span>
+        <span className="sr-only">{`: ${ask.by} ${summary}`}</span>
         <span aria-hidden>
           {" · "}
-          <span className="font-mono">{ask.by}</span> asked to {ask.title}
+          <span className="font-mono">{ask.by}</span> {summary}
         </span>
       </span>
       <time dateTime={ask.at} title={fullTime(ask.at)} className="text-[11px] tabular-nums">
@@ -82,12 +87,12 @@ function Open({ ask, identities }: { ask: Ask; identities: Identities }) {
   const harness = identities.get(ask.by)?.harness || harnessFromHandle(ask.by);
   const options = ORDER.flatMap((k) => ask.options.filter((o) => o.kind === k));
 
-  async function answer(o: AskOption) {
+  async function answer(o: AskOption | null) {
     if (sending) return;
-    setSending(o.optionId);
+    setSending(o?.optionId ?? "done");
     setError("");
     try {
-      const { r, data } = await post(`/api/asks/${ask.id}`, { optionId: o.optionId });
+      const { r, data } = await post(`/api/asks/${ask.id}`, o ? { optionId: o.optionId } : {});
       if (r.ok) {
         answeredAsk = ask.id;
         pollNow();
@@ -110,18 +115,29 @@ function Open({ ask, identities }: { ask: Ask; identities: Identities }) {
       </div>
       <div className="min-w-0 rounded-lg border border-signal/30 bg-card px-3 py-2.5 text-card-foreground">
         <div className="flex min-h-[22px] flex-wrap items-center gap-x-2 gap-y-0.5">
-          <ShieldQuestionIcon aria-hidden className="size-4 text-signal" />
+          {inTerminal(ask) ? (
+            <SquareTerminalIcon aria-hidden className="size-4 text-signal" />
+          ) : (
+            <ShieldQuestionIcon aria-hidden className="size-4 text-signal" />
+          )}
           <span className="font-mono text-[13px] font-semibold">{ask.by}</span>
           <HarnessDot harness={harness} />
           <time dateTime={ask.at} title={fullTime(ask.at)} className="text-[11px] text-muted-foreground tabular-nums">
             {fmtTime(ask.at)}
           </time>
         </div>
-        <p className="mt-0.5 text-sm leading-[22px] break-words">
-          <span className="sr-only">{`${ask.by} asks you. `}</span>
-          <span className="text-muted-foreground">wants to: </span>
-          <span className="font-medium">{ask.title}</span>
-        </p>
+        {inTerminal(ask) ? (
+          <p className="mt-0.5 text-sm leading-[22px] break-words">
+            <span className="text-muted-foreground">{waitingText(ask)}: </span>
+            <span className="font-medium">{ask.title}</span>
+          </p>
+        ) : (
+          <p className="mt-0.5 text-sm leading-[22px] break-words">
+            <span className="sr-only">{`${ask.by} asks you. `}</span>
+            <span className="text-muted-foreground">wants to: </span>
+            <span className="font-medium">{ask.title}</span>
+          </p>
+        )}
         {ask.detail && (
           <Collapsible className="mt-1">
             <CollapsibleTrigger className="group/details -ml-1 inline-flex items-center gap-1 rounded-md px-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
@@ -135,27 +151,43 @@ function Open({ ask, identities }: { ask: Ask; identities: Identities }) {
             </CollapsibleContent>
           </Collapsible>
         )}
-        <div role="group" aria-label={`Answer ${ask.by}`} className="mt-2.5 flex flex-wrap gap-2">
-          {options.map((o) => (
+        {inTerminal(ask) ? (
+          <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
             <Button
-              key={o.optionId}
               type="button"
               size="sm"
-              variant={o.kind === "allow_once" ? "default" : o.kind.startsWith("reject") ? "destructive" : "outline"}
+              variant="outline"
               disabled={!!sending}
-              title={HINT[o.kind]}
-              aria-describedby={HINT[o.kind] ? `${uid}-${o.optionId}` : undefined}
-              onClick={() => answer(o)}
+              aria-label={`Done: ${ask.by} ${waitingText(ask)}: ${ask.title}`}
+              onClick={() => answer(null)}
             >
-              {LABEL[o.kind]}
-              {HINT[o.kind] && (
-                <span id={`${uid}-${o.optionId}`} className="sr-only">
-                  {HINT[o.kind]}
-                </span>
-              )}
+              Done
             </Button>
-          ))}
-        </div>
+            <span className="text-xs text-muted-foreground">Answer it there; this clears when {ask.by} carries on.</span>
+          </div>
+        ) : (
+          <div role="group" aria-label={`Answer ${ask.by}`} className="mt-2.5 flex flex-wrap gap-2">
+            {options.map((o) => (
+              <Button
+                key={o.optionId}
+                type="button"
+                size="sm"
+                variant={o.kind === "allow_once" ? "default" : o.kind.startsWith("reject") ? "destructive" : "outline"}
+                disabled={!!sending}
+                title={HINT[o.kind]}
+                aria-describedby={HINT[o.kind] ? `${uid}-${o.optionId}` : undefined}
+                onClick={() => answer(o)}
+              >
+                {LABEL[o.kind]}
+                {HINT[o.kind] && (
+                  <span id={`${uid}-${o.optionId}`} className="sr-only">
+                    {HINT[o.kind]}
+                  </span>
+                )}
+              </Button>
+            ))}
+          </div>
+        )}
         {error && (
           <p role="alert" className="mt-2 text-xs text-destructive">
             {error}

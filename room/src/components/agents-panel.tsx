@@ -27,17 +27,19 @@ import type { Agent, AgentPresence } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const GROUPS: [AgentPresence, string][] = [
+  ["waiting", "Waiting on you"],
   ["listening", "Listening"],
   ["working", "Working"],
   ["asleep", "Asleep"],
   ["left", "Left"],
 ];
 
-const ORDER: Record<AgentPresence, number> = { listening: 0, working: 1, asleep: 2, left: 3 };
+const ORDER: Record<AgentPresence, number> = { waiting: 0, listening: 1, working: 2, asleep: 3, left: 4 };
 
 const PRESENCE_TEXT: Record<AgentPresence, string> = {
   listening: "Listening",
   working: "Working",
+  waiting: "Waiting on you",
   asleep: "Asleep",
   left: "Left",
 };
@@ -58,7 +60,7 @@ function shortPath(dir: string) {
   return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : dir;
 }
 
-const awake = (a: Agent) => ["listening", "working"].includes(presenceOf(a));
+const awake = (a: Agent) => ["listening", "working", "waiting"].includes(presenceOf(a));
 
 /** Members of one status group as a parent-first list with their nesting depth. */
 function tree(members: Agent[]) {
