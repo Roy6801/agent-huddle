@@ -43,6 +43,18 @@ const HUMAN_ONLINE_MS = 30 * 1000;
 const RESERVED_ROLES = new Set(['all', 'you', 'system']);
 // These harnesses end their turn and cannot be woken from the room.
 const UNWAKEABLE = new Set(['codex', 'gemini', 'agy']);
+const QUIET_NOTES = {
+  unwakeable: {
+    label: 'cannot be woken',
+    one: (h, age) => `${h} cannot be woken from the room once its turn ends (last seen ${age} ago); nudge it in its own terminal.`,
+  },
+  working: { label: 'working', one: (h, age) => `${h} is working (last seen ${age} ago); it will read this when it next waits.` },
+  listening: {
+    label: 'between waits',
+    one: (h, age) => `${h} is not waiting right now (last seen ${age} ago); it will read this when it next waits. If its turn ended, nudge it in its own terminal.`,
+  },
+  asleep: { label: 'asleep', one: (h, age) => `${h} is asleep (last seen ${age} ago). If its turn ended, nudge it in its own terminal.` },
+};
 const ROLE_RE = /^[a-z0-9-]{1,20}$/;
 // The lookahead capture is atomic, so a token like @types/node never backs off to @types.
 const MENTION_RE = /(?<![A-Za-z0-9_.@])@(?=([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*(?:\.\*)?))\1(?![A-Za-z0-9_/@*-])/gi;
@@ -443,7 +455,7 @@ export function createHuddle(opts = {}) {
     for (const agent of s.agents.values()) {
       if (agent.waiters.size && m.to.includes(agent.handle)) flushWaiters(s, agent);
     }
-    if (m.to.length && !(from === 'system' && m.toYou)) noticeQuiet(s, m);
+    if (m.to.length) noticeQuiet(s, m, extra.routedFor);
     return m;
   }
 
@@ -454,31 +466,25 @@ export function createHuddle(opts = {}) {
     return `${Math.floor(min / 60)} h`;
   }
 
-  function noticeQuiet(s, m) {
+  // routedFor: the asleep or left agent a message was also marked for you because of; you need no note about it.
+  function noticeQuiet(s, m, routedFor) {
     const now = Date.now();
     const quiet = [];
     for (const handle of m.to) {
       const agent = s.agents.get(handle);
-      if (!agent || handle === m.from || now - agent.nudgedAt < nudgeRepeatMs || agent.waiters.size || agent.role === 'headless') continue;
+      if (!agent || handle === m.from || handle === routedFor || now - agent.nudgedAt < nudgeRepeatMs || agent.waiters.size || agent.role === 'headless') continue;
       if (agent.status !== 'left' && now - agent.lastSeen <= quietMs) continue;
       agent.nudgedAt = now;
       quiet.push(agent);
     }
     if (!quiet.length) return;
     const age = (a) => formatAge(now - a.lastSeen);
-    const state = (a) => (UNWAKEABLE.has(a.harness) ? 'unwakeable' : presence(s, a));
-    const label = { working: 'working', listening: 'between waits', unwakeable: 'cannot be woken' };
+    const note = (a) => QUIET_NOTES[UNWAKEABLE.has(a.harness) ? 'unwakeable' : presence(s, a)] ?? QUIET_NOTES.asleep;
     const [one] = quiet;
     const text =
       quiet.length === 1
-        ? state(one) === 'unwakeable'
-          ? `${one.handle} cannot be woken from the room once its turn ends (last seen ${age(one)} ago); nudge it in its own terminal.`
-          : state(one) === 'working'
-          ? `${one.handle} is working (last seen ${age(one)} ago); it will read this when it next waits.`
-          : state(one) === 'listening'
-            ? `${one.handle} is not waiting right now (last seen ${age(one)} ago); it will read this when it next waits. If its turn ended, nudge it in its own terminal.`
-            : `${one.handle} is asleep (last seen ${age(one)} ago). If its turn ended, nudge it in its own terminal.`
-        : `Not listening: ${quiet.map((a) => `${a.handle} (${label[state(a)] ?? 'asleep'}, ${age(a)})`).join(', ')}. Working agents read this when they next wait; nudge the others in their own terminals.`;
+        ? note(one).one(one.handle, age(one))
+        : `Not listening: ${quiet.map((a) => `${a.handle} (${note(a).label}, ${age(a)})`).join(', ')}. Working agents read this when they next wait; nudge the others in their own terminals.`;
     system(s, text, { toYou: true });
   }
 
@@ -528,6 +534,12 @@ export function createHuddle(opts = {}) {
     if (agent.waiters.size) return 'listening';
     if (now - agent.lastSeen >= s.timers.asleepMs) return 'asleep';
     return agent.lastWaitAt >= agent.lastCallAt ? 'listening' : 'working';
+  }
+
+  // Asleep or left: it will not read the room soon, so what is meant for it also goes to you.
+  function unreachable(s, handle) {
+    const agent = s.agents.get(handle);
+    return agent !== undefined && ['asleep', 'left'].includes(presence(s, agent));
   }
 
   function agentStatus(s, agent) {
@@ -810,12 +822,13 @@ export function createHuddle(opts = {}) {
       task.owner = h;
       task.note = note;
       const creator = s.agents.get(task.createdBy);
-      const state = creator ? presence(s, creator) : null;
-      const notify = task.createdBy !== h && creator !== undefined && state !== 'left';
+      const notify = task.createdBy !== h && creator !== undefined && creator.status !== 'left';
+      const away = unreachable(s, task.createdBy);
       system(s, `${h} finished task #${task.id} "${task.title}"${note ? `: ${note}` : ''}`, {
         mentions: notify ? [task.createdBy] : [],
         to: notify ? [task.createdBy] : [],
-        toYou: task.createdBy === 'you' || state === 'asleep' || state === 'left',
+        toYou: task.createdBy === 'you' || away,
+        routedFor: away ? task.createdBy : undefined,
       });
     } else {
       if (task.status === 'done') throw new HttpError('task_done', { n });
@@ -861,11 +874,18 @@ export function createHuddle(opts = {}) {
       throw new HttpError('invalid_for');
     }
     const { mentions, to, toYou } = resolveMentions(s, text, agent.handle);
-    const lead = s.lead !== agent.handle && to.includes(s.lead) ? presence(s, s.agents.get(s.lead)) : null;
+    const leadAway = s.lead !== agent.handle && to.includes(s.lead) && unreachable(s, s.lead);
     const minutes = body.workingMinutes === undefined ? undefined : parseWhole('workingMinutes', body.workingMinutes, WORKING_DECLARATION);
     countAgentRound(s);
     if (minutes !== undefined) agent.workingUntil = Date.now() + minutes * minuteMs;
-    const m = addMessage(s, agent.handle, text, { for: body.for ?? null, mentions, to, toYou: toYou || lead === 'asleep' || lead === 'left', files });
+    const m = addMessage(s, agent.handle, text, {
+      for: body.for ?? null,
+      mentions,
+      to,
+      toYou: toYou || leadAway,
+      files,
+      routedFor: leadAway ? s.lead : undefined,
+    });
     if (s.agentStreak === s.roundCap) {
       system(s, `The round cap of ${s.roundCap} agent posts is reached: agents are waiting on @you. Post, or change the cap in settings, to let them continue.`, { toYou: true });
     }
@@ -1194,12 +1214,12 @@ How the room works:
     const harness = sanitizeHarness(body.harness);
     if (!harness) throw new HttpError('harness_required');
     if (RESERVED_ROLES.has(harness)) throw new HttpError('reserved_harness');
-    const leads = typeof body.lead === 'string' && s.lead === null && body.lead === s.leadKey;
-    const role = cleanRole(body.role, false) ?? (leads ? 'lead' : null);
+    const becomesLead = typeof body.lead === 'string' && s.lead === null && body.lead === s.leadKey;
+    const role = cleanRole(body.role, false) ?? (becomesLead ? 'lead' : null);
     const n = (s.counters.get(harness) ?? 0) + 1;
     s.counters.set(harness, n);
     const agent = addAgent(s, `${harness}-${n}`, harness, role, null, base);
-    if (leads) {
+    if (becomesLead) {
       s.lead = agent.handle;
       s.leadKey = null;
     }

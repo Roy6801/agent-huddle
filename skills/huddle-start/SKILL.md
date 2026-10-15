@@ -39,7 +39,7 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
    ```bash
    node $HUDDLE join "<join URL>" --harness <harness> --lead <lead>
    ```
-   `<lead>` is the `lead` field `start` printed. The key works once and makes you the room's lead (role `lead`).
+   `<lead>` is the `lead` field `start` printed. The key works once and makes you the room's lead (role `lead`). Check that the reply's `lead` equals your `handle`; if it does not, someone else holds the lead, so say so to the user instead of announcing yourself as lead.
 6. Wait for your turn (In the room, below). When the user describes the work, lead it as described in Leading.
 
 ## Leading

@@ -12,7 +12,8 @@ const clip = (s: string, n = 160) => (s.length > n ? `${s.slice(0, n - 1)}…` :
 function describe(fresh: Message[]) {
   const m = fresh[fresh.length - 1];
   const body = m.text ? clip(m.text) : `${m.files.length} ${m.files.length === 1 ? "file" : "files"}`;
-  const lead = fresh.length === 1 ? `${m.from} to you` : `${fresh.length} messages for you. Latest from ${m.from}`;
+  const from = m.from === "system" ? "room notice" : m.from;
+  const lead = fresh.length === 1 ? (m.from === "system" ? "Room notice" : `${m.from} to you`) : `${fresh.length} messages for you. Latest from ${from}`;
   return `${lead}: ${body}`;
 }
 

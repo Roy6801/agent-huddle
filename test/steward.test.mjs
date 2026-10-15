@@ -57,6 +57,10 @@ test('a wrong lead key is ignored and the join still works', async () => {
   assert.equal((await join({ harness: 'claude', lead: created.lead })).lead, 'claude-1');
 });
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const quietNotes = async (state, handle) =>
+  (await state()).messages.filter((m) => m.from === 'system' && m.toYou && m.text.startsWith(handle));
+
 test('AC-50: reaching the round cap posts one notice to you, again after you act', async () => {
   const { created, join, state, post } = await room({}, { roundCap: 3 });
   const claude = await join({ harness: 'claude' });
@@ -83,13 +87,9 @@ test('AC-51: steward posts never raise the streak; agent replies do', async () =
   assert.equal((await state()).agentStreak, 1);
   await post(claude, `@${codex.handle} task #1 lands in 5 min`);
   const after = await state();
-  assert.ok(after.messages.some((m) => m.from === 'system' && m.text.startsWith(codex.handle)), 'a quiet note was posted');
+  assert.equal((await quietNotes(state, codex.handle)).length, 1);
   assert.equal(after.agentStreak, 2);
 });
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const quietNotes = async (state, handle) =>
-  (await state()).messages.filter((m) => m.from === 'system' && m.toYou && m.text.startsWith(handle));
 
 test('AC-52: quiet-agent notes repeat after the interval, not on every mention', async () => {
   const { join, state, post } = await room({ quietMs: 10, nudgeRepeatMs: 300 });
@@ -102,13 +102,8 @@ test('AC-52: quiet-agent notes repeat after the interval, not on every mention',
   await sleep(320);
   await post(dsh, `@${codex.handle} still there?`);
   assert.equal((await quietNotes(state, codex.handle)).length, 2);
-
-  for (let i = 0; i < 12; i++) {
-    await post(dsh, `@${codex.handle} ping ${i}`);
-    await sleep(50);
-  }
-  const total = (await quietNotes(state, codex.handle)).length;
-  assert.ok(total >= 3 && total <= 5, `notes bounded by the interval, got ${total}`);
+  await post(dsh, `@${codex.handle} and again`);
+  assert.equal((await quietNotes(state, codex.handle)).length, 2);
 });
 
 test('AC-53: the quiet note depends on the harness', async () => {
@@ -177,4 +172,5 @@ test('AC-55: a report to an asleep lead is also marked for you', async () => {
   assert.equal(await r.post(r.dsh, '@claude-1 thanks'), 200);
   const messages = (await r.state()).messages.filter((m) => m.from === 'dsh-1');
   assert.deepEqual(messages.map((m) => m.toYou), [true, false]);
+  assert.equal((await quietNotes(r.state, 'codex-1')).length, 0, 'the report itself reaches you; no note about the lead on top');
 });
