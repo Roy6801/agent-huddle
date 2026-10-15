@@ -15,10 +15,13 @@ const ON_PATH = path.basename(process.argv[1] ?? '') === 'agent-huddle';
 const PROG = ON_PATH ? 'agent-huddle' : `node ${THIS_FILE}`;
 const HELP_PROG = ON_PATH ? 'agent-huddle' : 'node huddle.mjs';
 const BODY_LIMIT = 64 * 1024;
+const TASK_BODY_LIMIT = 128 * 1024;
 const MAX_MESSAGES = 2000;
 const MAX_TEXT = 8000;
 const MAX_NAME = 200;
 const MAX_TITLE = 200;
+const MAX_DESCRIPTION = 2000;
+const MAX_SPEC = 20000;
 const MAX_ASK_TITLE = 300;
 const MAX_ASK_DETAIL = 2000;
 const ASK_KINDS = new Set(['allow_once', 'allow_always', 'reject_once', 'reject_always']);
@@ -187,15 +190,15 @@ export function createHuddle(opts = {}) {
     res.end(text);
   }
 
-  async function readBody(req) {
+  async function readBody(req, limit = BODY_LIMIT) {
     const declared = Number(req.headers['content-length'] || 0);
-    if (declared > BODY_LIMIT) throw new HttpError(413, 'body too large');
+    if (declared > limit) throw new HttpError(413, 'body too large');
     const chunks = [];
     let size = 0;
     let tooBig = false;
     for await (const chunk of req) {
       size += chunk.length;
-      if (size > BODY_LIMIT) tooBig = true;
+      if (size > limit) tooBig = true;
       else chunks.push(chunk);
     }
     if (tooBig) throw new HttpError(413, 'body too large');
@@ -541,6 +544,30 @@ export function createHuddle(opts = {}) {
     s.agentStreak++;
   }
 
+  function taskFields(s, body) {
+    const out = {};
+    if (body.description !== undefined) {
+      out.description = body.description === null ? null : cleanText(body.description, MAX_DESCRIPTION, 'description');
+    }
+    if (body.spec != null && body.specFile != null) throw new HttpError(400, 'send spec or specFile, not both');
+    if (body.spec !== undefined) out.spec = body.spec === null ? null : cleanText(body.spec, MAX_SPEC, 'spec');
+    if (body.specFile !== undefined) {
+      if (body.specFile !== null && !s.files.has(body.specFile)) {
+        throw new HttpError(400, 'unknown file', { valid: [...s.files.keys()] });
+      }
+      out.specFile = body.specFile;
+    }
+    return out;
+  }
+
+  function taskView(s, task, full) {
+    const f = task.specFile ? s.files.get(task.specFile) : null;
+    const view = { ...task, specFile: f ? { id: f.id, name: f.name, size: f.size } : null };
+    if (full) return view;
+    const { spec, ...rest } = view;
+    return { ...rest, specSize: spec ? spec.length : 0 };
+  }
+
   function createTask(s, creator, body) {
     const title = cleanText(body.title, MAX_TITLE, 'title');
     let assignee = null;
@@ -550,14 +577,19 @@ export function createHuddle(opts = {}) {
         throw new HttpError(400, `unknown assignee ${body.assignee}`, { valid: [...s.agents.keys()] });
       }
     }
+    const fields = taskFields(s, body);
     const task = {
       id: s.tasks.length + 1,
       title,
+      description: null,
+      spec: null,
+      specFile: null,
       status: 'open',
       owner: null,
       assignee,
       createdBy: creator,
       note: null,
+      ...fields,
     };
     s.tasks.push(task);
     const wake = assignee && assignee !== creator;
@@ -565,7 +597,7 @@ export function createHuddle(opts = {}) {
       mentions: assignee ? [assignee] : [],
       to: wake ? [assignee] : [],
     });
-    return task;
+    return taskView(s, task, true);
   }
 
   function getTask(s, n) {
@@ -977,7 +1009,7 @@ How the room works:
     const agent = s.byToken.get(token);
     if (!agent) return sendJson(res, 401, { error: 'unknown token' });
     const upload = method === 'POST' && key === 'files';
-    const body = method === 'POST' && !upload ? await readBody(req) : {};
+    const body = method === 'POST' && !upload ? await readBody(req, /^tasks(\/\d+)?$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
     agent.lastSeen = Date.now();
     agent.nudged = false;
     agent.restingAt = method === 'GET' && key === 'me' && url.searchParams.get('rest') === '1' ? Date.now() : 0;
@@ -991,10 +1023,12 @@ How the room works:
     const taskMatch = /^tasks\/(\d+)\/(claim|done|release)$/.exec(key);
     const fileMatch = /^files\/([\w-]+)$/.exec(key);
     const askMatch = /^asks\/(\d+)$/.exec(key);
+    const taskGetMatch = /^tasks\/(\d+)$/.exec(key);
     const askCancelMatch = /^asks\/(\d+)\/cancel$/.exec(key);
 
     if (method === 'GET') {
       if (fileMatch) return sendFile(res, getFile(s, fileMatch[1]));
+      if (taskGetMatch) return ok(taskView(s, getTask(s, taskGetMatch[1]), true));
       if (askMatch) {
         const ask = getAsk(s, agent, askMatch[1]);
         if (ask.status !== 'open') return ok(ask);
@@ -1029,7 +1063,7 @@ How the room works:
         case 'who':
           return ok(whoView(s));
         case 'tasks':
-          return ok({ tasks: s.tasks });
+          return ok({ tasks: s.tasks.map((t) => taskView(s, t, false)) });
         case 'files':
           return ok(fileList(s));
       }
@@ -1062,7 +1096,7 @@ How the room works:
     if (token !== s.humanToken) return sendJson(res, 401, { error: 'unknown token' });
     if (s.ended && !(method === 'GET' && key === '')) throw new HttpError(410, 'room ended');
     const upload = method === 'POST' && key === 'api/files';
-    const body = method === 'POST' && !upload ? await readBody(req) : {};
+    const body = method === 'POST' && !upload ? await readBody(req, /^api\/tasks(\/\d+)?$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
     s.humanSeen = Date.now();
     const fileMatch = /^api\/files\/([\w-]+)$/.exec(key);
     const askMatch = /^api\/asks\/(\d+)$/.exec(key);
@@ -1083,7 +1117,7 @@ How the room works:
         room: { id: s.id, name: s.name, join: `${base}/s/${s.id}`, invite: inviteText(s.name, `${base}/s/${s.id}`) },
         messages,
         ...whoView(s),
-        tasks: s.tasks,
+        tasks: s.tasks.map((t) => taskView(s, t, true)),
         asks: s.asks,
         roundCap: s.roundCap,
         headless: s.headless,
