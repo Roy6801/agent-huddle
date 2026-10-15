@@ -144,6 +144,13 @@ test('a headless assignee sees the task description and spec in its prompt', asy
   assert.match(prompt.text, /→ you \[system\] claude-1 created task #1 "Write README" for @codex-1/);
   assert.ok(prompt.text.includes(description));
   assert.ok(prompt.text.includes(spec));
+
+  const fileSpec = '# tests\n- one fixture per tie case';
+  const up = await (await fetch(`${claude.link}/files?name=spec-tests.md`, { method: 'POST', headers: { 'content-type': 'text/markdown' }, body: fileSpec })).json();
+  await fetch(`${claude.link}/tasks`, json({ title: 'Write tests', assignee: 'codex-1', specFile: up.id }));
+  const second = await until(() => readPrompts().prompts[1]);
+  assert.ok(second.text.includes('Spec (room file spec-tests.md):'));
+  assert.ok(second.text.includes(fileSpec));
 });
 
 test('a mention during a run is queued for the next run, never overlapping', async () => {
