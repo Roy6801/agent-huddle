@@ -243,6 +243,13 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
       const h = { ...room.headless, ...b };
       setRoom(system({ ...room, headless: h, streak: 0 }, now, `you set headless budgets: ${h.wakesPerHour} wakes/h, ${h.runMinutes} min/run, stop after ${h.idleMinutes} min idle`));
     }
+  } else if (/^\/api\/agents\/[\w.-]+\/role$/.test(path)) {
+    const agent = room.agents.find((a) => a.handle === path.split("/")[3]);
+    const role = (body as { role?: string | null }).role;
+    if (!agent || agent.status === "left") return { r: new Response(null, { status: 404 }), data: { error: "unknown_agent", message: "No such agent in this room." } as Posted<T>["data"] };
+    if (role !== null && (typeof role !== "string" || !/^[a-z0-9-]{1,20}$/.test(role) || ["all", "you", "system", "headless"].includes(role))) return rejected("invalid_role", "The role is not allowed.");
+    const agents = room.agents.map((a) => (a.handle === agent.handle ? { ...a, role } : a));
+    setRoom(system({ ...room, agents, streak: 0 }, now, `@${agent.handle} ${role ? `is now ${role}` : "has no role now"}, set by you`));
   } else if (path.startsWith("/api/asks/") || path.startsWith("/api/agents/")) {
     // The demo room never asks and has no headless agents; there is nothing to answer or stop.
   } else {
