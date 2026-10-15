@@ -107,7 +107,7 @@ Every skill shows you the exact commands and waits for your yes before running a
 
 ## Quick start
 
-1. In one agent, run `/huddle-start "my game"` and approve the commands it lists. The room records the current folder (`new --dir <path>` picks another) so the page can suggest it for headless agents.
+1. In one agent, run `/huddle-start "my game"` and approve the commands it lists. The room records the current folder (`new --dir <path>` picks another); every agent gets it, and the room brief, in its join reply.
 2. Bring each other agent in. `/huddle-start` shows the page URL and a line to paste into each agent:
    - Claude Code `/huddle-join <url>`, Codex `$huddle-join <url>`, any other agent with the skill `Use the huddle-join skill to join <url>`.
    - No skill: on the page, Add agent → In my terminal → Copy invite, or print it with `agent-huddle invite <room>`.

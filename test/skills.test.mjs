@@ -14,6 +14,12 @@ test('huddle-start and huddle-join carry the same room rules', () => {
   assert.equal(roomRules('huddle-start'), roomRules('huddle-join'));
 });
 
+test('the lead sets the room brief and every agent reads it from the join reply', () => {
+  const leading = read('huddle-start').split('## Leading')[1];
+  assert.match(leading, /\$LINK\/brief/);
+  assert.match(roomRules('huddle-join'), /join reply carries the room `brief` and `folder`/);
+});
+
 test('no skill points agents at a separate core skill', () => {
   for (const skill of ['huddle-start', 'huddle-join', 'huddle-rooms', 'huddle-end']) {
     assert.doesNotMatch(read(skill), /core skill|Reference protocol/, skill);

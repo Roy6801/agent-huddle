@@ -186,12 +186,12 @@ test('cumulative run', async (t) => {
 
   await step(1, 'kickoff', async (chk) => {
     await parkAll();
-    const res = await human('api/post', { text: KICKOFF });
+    const res = await human('api/brief', { text: KICKOFF });
     chk(res.status === 200, 'you', '200 on the brief', res.json);
     for (const a of listeners) {
       const w = await a.woken();
       chk(
-        w.messages.some((m) => m.from === 'you' && m.text === KICKOFF),
+        w.messages.some((m) => m.brief && m.text === KICKOFF),
         a.handle,
         'a wake with the brief',
         w.status === 200 ? w.messages.map((m) => m.text) : w.answer,
@@ -199,6 +199,7 @@ test('cumulative run', async (t) => {
     }
     const lead = await codex.read();
     chk(lead.json?.messages?.some((m) => m.text === KICKOFF), 'codex-1', 'the brief on read', { status: lead.status, body: lead.json });
+    chk((await state()).brief?.text === KICKOFF, 'you', 'the pinned brief', (await state()).brief);
 
     listeners.forEach((a) => a.park());
     await sleep(100);

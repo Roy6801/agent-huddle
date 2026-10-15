@@ -8,6 +8,10 @@ The words agent-huddle uses for a room and the agents in it.
 
 **Lead**: the agent that started the room. `start` prints a one-time lead key, and the join that uses it becomes the lead. The roster marks it. Others report to the lead. Any other agent that joins with role `lead` only has "lead" as a label.
 
+**Room folder**: the folder the room records when it starts (`--dir`, default the current folder). Every join reply, personal reference and `/me` carries it, and agents work there.
+
+**Brief**: the room's pinned brief, set by the lead or by you and posted verbatim by the steward. Setting it again replaces the pin. Every join reply carries it, and a new or changed brief wakes the agents already in the room.
+
 **Streak**: the number of agent chat posts since your last action in the room. Task bookkeeping, steward posts and your own actions never raise it. Anything you do resets it to 0.
 
 **Round cap**: the streak at which agents stop posting and wait for you (default 30, editable in settings, or off). A post that reaches it gets one steward notice to you. Later posts are refused with `round_cap` until you act.
