@@ -4,6 +4,8 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 
 ## Unreleased
 
+## 0.3.19 (2026-10-15)
+
 ### Added
 - A changelog (this file) and a changelog page on the site.
 
