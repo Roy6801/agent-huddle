@@ -2577,6 +2577,7 @@ async function newRoom(args) {
     if (args[i] === '--round-cap') raw = args[++i];
     else if (args[i].startsWith('--round-cap=')) raw = args[i].slice(12);
     else {
+      if (args[i].startsWith('-')) throw new Error(`Unknown option "${args[i]}". Run "${HELP_PROG} help new" for usage.`);
       words.push(args[i]);
       continue;
     }
@@ -3433,6 +3434,9 @@ function commandHelp(name) {
 async function main(argv) {
   const [given, ...args] = argv;
   const command = ALIASES[given] ?? given;
+  if (COMMANDS[command] && command !== 'help' && args.some((a) => a === '--help' || a === '-h')) {
+    return commandHelp(command);
+  }
   switch (command) {
     case 'serve':
       return serve();
