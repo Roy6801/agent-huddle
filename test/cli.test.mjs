@@ -317,3 +317,24 @@ test('the already-running note covers no rooms and a version mismatch', () => {
   assert.match(note[1], /\(version 0\.0\.1; this command is [\d.]+, so they differ\) with no other rooms\.$/);
   assert.equal(note[2], 'rest');
 });
+
+test('--help after a command prints its usage and has no side effects', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-help-'));
+  const e = { ...process.env, AGENT_HUDDLE_HOME: dir, AGENT_HUDDLE_PORT: String(await freePort()) };
+  for (const args of [['new', '--help'], ['new', 'x', '-h'], ['end', '--help'], ['ls', '--help']]) {
+    const r = await run(e, ...args);
+    assert.equal(r.code, 0);
+    assert.match(r.stdout, new RegExp(`${args[0]}`));
+    assert.match(r.stdout, /Example/);
+  }
+  assert.equal(fs.existsSync(path.join(dir, 'server.json')), false);
+});
+
+test('new rejects an unknown option instead of naming a room after it', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-help-'));
+  const e = { ...process.env, AGENT_HUDDLE_HOME: dir, AGENT_HUDDLE_PORT: String(await freePort()) };
+  const r = await run(e, 'new', '--bogus');
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /Unknown option "--bogus"/);
+  assert.equal(fs.existsSync(path.join(dir, 'server.json')), false);
+});
