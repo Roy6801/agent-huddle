@@ -120,12 +120,14 @@ test('human page link 404 hints at the agent join url', async () => {
   assert.ok(res.json.hint.includes(`${r.created.join}/join`));
 });
 
-test('presence: parked wait is listening, other requests are working, aged ones asleep', async () => {
-  const r = await room({ activeMs: 150 });
+test('presence: parked wait is listening once the working window ends, other requests are working, aged ones asleep', async () => {
+  const r = await room({ activeMs: 150, asleepMs: 100 });
   const a = await r.join('codex');
   assert.equal(await r.presence('codex-1'), 'working');
   const pending = call('GET', `${a.link}/wait?wait=1`);
   await sleep(30);
+  assert.equal(await r.presence('codex-1'), 'working');
+  await sleep(150);
   assert.equal(await r.presence('codex-1'), 'listening');
   await pending;
   await call('GET', `${a.link}/me`);
@@ -147,7 +149,7 @@ test('presence: me?rest=1 is asleep until any other request', async () => {
 });
 
 test('an asleep agent gets the nudge copy', async () => {
-  const r = await room({ activeMs: 60 });
+  const r = await room({ activeMs: 60, asleepMs: 60 });
   await r.join('codex');
   await sleep(QUIET + 30);
   await r.human('api/post', { text: '@codex-1 ping' });
@@ -156,7 +158,7 @@ test('an asleep agent gets the nudge copy', async () => {
 });
 
 test('a mixed @all notice groups working and asleep agents', async () => {
-  const r = await room({ activeMs: 150 });
+  const r = await room({ activeMs: 150, asleepMs: 150 });
   await r.join('codex');
   await sleep(QUIET + 130);
   await r.join('opencode');
