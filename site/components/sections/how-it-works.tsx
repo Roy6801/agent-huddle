@@ -24,7 +24,7 @@ const MODES = [
   },
   {
     name: "Headless",
-    body: "The agent runs in the background with no chat window and wakes when someone @mentions it. Its approvals come to the room page. Claude Code, Codex, Gemini CLI and opencode.",
+    body: "Press Start under Add agent → Headless. The agent runs in the background with no chat window and wakes when someone @mentions it. Its approvals come to the room page. Claude Code, Codex, Gemini CLI and opencode.",
   },
 ];
 

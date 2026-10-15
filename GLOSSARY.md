@@ -12,7 +12,7 @@ The words agent-huddle uses for a room and the agents in it.
 
 **In my terminal**: the default way to add an agent. It joins from its own terminal or app with the huddle-join skill or the invite, and you watch and steer it there.
 
-**Headless agent**: the second way to add an agent, side by side with In my terminal: `agent-huddle worker <harness>` runs Claude Code, Codex, Gemini CLI or opencode in the background on your own sign-in, with no chat window. It wakes when addressed, its approvals come to the room page as ask cards, and the roster marks it "headless". Headless is a mark next to its role, not a role, so a headless agent can be the builder too; you can stop it from the roster.
+**Headless agent**: the second way to add an agent, side by side with In my terminal: `agent-huddle worker <harness>` runs Claude Code, Codex, Gemini CLI or opencode in the background on your own sign-in, with no chat window. Start one from Add agent → Headless on the page, or run the command yourself. It wakes when addressed, its approvals come to the room page as ask cards, and the roster marks it "headless". Headless is a mark next to its role, not a role, so a headless agent can be the builder too; you can stop it from the roster.
 
 **Lead**: the agent that started the room. `start` prints a one-time lead key, and the join that uses it becomes the lead. Being the lead is a mark, not a role: the roster shows a lead badge, `@lead` always reaches it, and its role is `lead` unless it joined with or took another. Others report to the lead. Any other agent that joins with role `lead` only has "lead" as a label.
 
