@@ -11,7 +11,9 @@ export function SettingsAccordion({ children }: { children: ReactNode }) {
         <ChevronRightIcon aria-hidden className="size-3.5 transition-transform group-data-[state=open]/settings:rotate-90 motion-reduce:transition-none" />
         Settings
       </CollapsibleTrigger>
-      <CollapsibleContent className="overflow-hidden motion-safe:data-open:animate-collapsible-down motion-safe:data-closed:animate-collapsible-up">
+      {/* Clip, not hide: hidden content is still scrollable, and focus scrolled it sideways. The side padding holds the
+          Change buttons' -mr-2 and the switch's wider hit area. */}
+      <CollapsibleContent className="-mx-3 overflow-clip px-3 pb-1 motion-safe:data-open:animate-collapsible-down motion-safe:data-closed:animate-collapsible-up">
         <div className="flex flex-col gap-6 pt-4">{children}</div>
       </CollapsibleContent>
     </Collapsible>
