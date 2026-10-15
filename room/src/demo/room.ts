@@ -104,7 +104,7 @@ function useRoomState() {
   return { state, pollNow: noop, endHuddle: noop };
 }
 
-type Body = Partial<Headless> & { text?: string; files?: string[]; title?: string; assignee?: string; roundCap?: number | null };
+type Body = Partial<Headless> & { text?: string; files?: string[]; title?: string; assignee?: string; description?: string; spec?: string; roundCap?: number | null };
 
 /** Your actions change this page's copy of the room only; nothing leaves the browser. */
 async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T>> {
@@ -117,7 +117,9 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
     data = { id: room.messages.at(-1)?.id };
   } else if (path === "/api/tasks") {
     const task = createTask({ ...room, streak: 0 }, now, "you", b.title ?? "", b.assignee ?? null);
-    setRoom(task.room);
+    const description = b.description ?? null;
+    const spec = b.spec ?? null;
+    setRoom({ ...task.room, tasks: task.room.tasks.map((t) => (t.id === task.id ? { ...t, description, spec } : t)) });
     data = { id: task.id };
   } else if (path === "/api/settings") {
     if (b.roundCap !== undefined) {

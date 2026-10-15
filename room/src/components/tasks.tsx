@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 import { useRoom, useSource } from "@/hooks/use-room";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
 import { errMain, validOf } from "@/lib/api";
@@ -156,12 +157,28 @@ function TaskCard({ task }: { task: Task }) {
   );
 }
 
+const MAX_DESCRIPTION = 2000;
+const MAX_SPEC = 20000;
+
+function Count({ id, length, max }: { id: string; length: number; max: number }) {
+  return (
+    <span
+      id={id}
+      className={cn("text-right text-[11px] text-muted-foreground tabular-nums", length > max && "text-destructive")}
+    >
+      {length.toLocaleString("en-US")} / {max.toLocaleString("en-US")}
+    </span>
+  );
+}
+
 function NewTask() {
   const { state, live, pollNow, endHuddle } = useRoom();
   const { post } = useSource();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [assignee, setAssignee] = useState("");
+  const [description, setDescription] = useState("");
+  const [spec, setSpec] = useState("");
   const [error, setError] = useState<ErrorInfo | null>(null);
   const [ok, setOk] = useState("");
   const titleRef = useRef<HTMLInputElement>(null);
@@ -188,14 +205,18 @@ function NewTask() {
     const t = title.trim();
     if (state.ended) return;
     if (!t) return titleRef.current?.focus();
-    const body: { title: string; assignee?: string } = { title: t };
+    const body: { title: string; assignee?: string; description?: string; spec?: string } = { title: t };
     if (current) body.assignee = current;
+    if (description.trim()) body.description = description.trim();
+    if (spec.trim()) body.spec = spec.trim();
     try {
       const { r, data } = await post<{ id?: number }>("/api/tasks", body);
       if (r.status === 410) {
         endHuddle();
       } else if (r.ok) {
         setTitle("");
+        setDescription("");
+        setSpec("");
         setError(null);
         setOk(data?.id ? `Added task #${data.id}` : "Task added");
         clearTimeout(okTimer.current);
@@ -285,6 +306,38 @@ function NewTask() {
                 </NativeSelectOption>
               ))}
             </NativeSelect>
+          </div>
+          <div className="grid gap-1.5">
+            <label htmlFor={`${id}-description`} className="text-xs font-medium text-muted-foreground">
+              Description
+            </label>
+            <Textarea
+              id={`${id}-description`}
+              aria-describedby={[`${id}-description-count`, describedBy].filter(Boolean).join(" ")}
+              value={description}
+              rows={3}
+              placeholder="Optional context for whoever takes it"
+              disabled={state.ended}
+              onChange={(e) => setDescription(e.target.value)}
+              className="font-normal text-foreground"
+            />
+            <Count id={`${id}-description-count`} length={description.length} max={MAX_DESCRIPTION} />
+          </div>
+          <div className="grid gap-1.5">
+            <label htmlFor={`${id}-spec`} className="text-xs font-medium text-muted-foreground">
+              Spec
+            </label>
+            <Textarea
+              id={`${id}-spec`}
+              aria-describedby={[`${id}-spec-count`, describedBy].filter(Boolean).join(" ")}
+              value={spec}
+              rows={5}
+              placeholder="Optional detailed requirements"
+              disabled={state.ended}
+              onChange={(e) => setSpec(e.target.value)}
+              className="font-mono text-xs text-foreground md:text-xs"
+            />
+            <Count id={`${id}-spec-count`} length={spec.length} max={MAX_SPEC} />
           </div>
           {error && <ErrorBox id={`${id}-error`} error={error} />}
           <div role="status" className="text-xs text-presence empty:hidden">
