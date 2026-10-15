@@ -98,7 +98,7 @@ const TASKS = [
   },
   { title: 'tests', assignee: 'opencode-1', description: 'Write test/wordfreq.test.mjs with node:test against the fixtures.' },
   { title: 'README', assignee: 'dsh-1', description: 'Write README.md from the builder interface.' },
-  { title: 'review', assignee: 'claude-2', description: 'Review wordfreq.mjs and README.md for consistency.' },
+  { title: 'review', assignee: 'claude-2', description: 'Review wordfreq.mjs and README.md for consistency.', after: [1, 2, 3] },
   { title: 'CHANGELOG.md entry, first to claim' },
 ];
 
@@ -222,6 +222,13 @@ test('cumulative run', async (t) => {
     chk(s.tasks.length === 5, 'codex-1', '5 tasks', s.tasks.length);
     chk(s.tasks.filter((x) => x.assignee).length === 4, 'codex-1', '4 assigned tasks', s.tasks.map((x) => x.assignee));
     chk(s.agentStreak === 0, 'you', 'streak 0 after the brief', s.agentStreak);
+    const early = await claude2.claim(4);
+    chk(
+      early.status === 409 && early.json?.error === 'task_blocked' && early.json?.message.includes('#1, #2, #3'),
+      'claude-2',
+      '409 task_blocked on #4 while #1-#3 are open',
+      { status: early.status, body: early.json },
+    );
     const said = s.messages.filter((m) => m.from === 'codex-1');
     chk(said.length === 0, 'codex-1', 'no posts after the brief', said.map((m) => m.text));
   });
@@ -314,10 +321,13 @@ test('cumulative run', async (t) => {
 
     const blocked = await claude2.post('@builder one more finding');
     chk(blocked.status === 429 && blocked.json?.error === 'round_cap', 'claude-2', '429 round_cap', { status: blocked.status, body: blocked.json });
-    const claimed = await claude2.claim(4);
-    chk(claimed.status === 200, 'claude-2', 'a claim to still work at the cap', { status: claimed.status, body: claimed.json });
     const closed = await claude1.done(1, 'wordfreq.mjs finished');
     chk(closed.status === 200, 'claude-1', 'a done call to still work at the cap', { status: closed.status, body: closed.json });
+    const tested = await opencode.done(2, 'task 2 finished');
+    chk(tested.status === 200, 'opencode-1', 'task #2 closed at the cap', { status: tested.status, body: tested.json });
+    const claimed = await claude2.claim(4);
+    chk(claimed.status === 200, 'claude-2', 'a claim to still work at the cap once #1-#3 are done', { status: claimed.status, body: claimed.json });
+    await claude2.read();
 
     await deliver(chk, 'you', () => human('api/post', { text: '@all carry on' }), '@all carry on', listeners.map((a) => a.handle), [
       'codex-1',
@@ -364,7 +374,7 @@ test('cumulative run', async (t) => {
     const stored = (await state()).messages.find((m) => m.text === summary);
     chk(stored?.toYou === true, 'claude-2', 'the summary addressed to you', stored);
 
-    const owners = { 2: opencode, 4: claude2, 5: winner };
+    const owners = { 4: claude2, 5: winner };
     for (const [n, a] of Object.entries(owners)) {
       const res = await a.done(Number(n), `task ${n} finished`);
       chk(res.status === 200, a.handle, `task #${n} closed`, { status: res.status, body: res.json });

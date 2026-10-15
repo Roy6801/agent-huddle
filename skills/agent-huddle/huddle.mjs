@@ -127,6 +127,11 @@ export const ERRORS = {
   not_creator: [403, (p) => `Task #${p.n} was created by @${p.creator}; only its creator or @you can edit it.`,
     (p) => `Ask @${p.creator}${p.creator === 'you' ? '' : ' or @you'} to make the change.`],
   task_done: [409, (p) => `Task #${p.n} is already done.`, 'Create a new task for any follow-up work.'],
+  invalid_after: [400, (p) => `There is no task #${p.n}; a task can only come after tasks that already exist.`,
+    'Use task numbers from GET tasks, or leave after out.'],
+  invalid_after_list: [400, 'after must be a list of task numbers.', 'Send after as [1,2] using task numbers from GET tasks.'],
+  task_blocked: [409, (p) => `Task #${p.n} is blocked by ${p.blocked.map((b) => `#${b}`).join(', ')}.`,
+    'Wait until those tasks are done (you are woken when it is ready if it is assigned to you), or pick another task from GET tasks.'],
   empty_edit: [400, 'The edit has nothing to change.', 'Send description, spec or specFile.'],
   already_claimed: [409, (p) => `Task #${p.n} is claimed by @${p.owner}.`,
     (p) => `Pick another open task from GET tasks, or ask @${p.owner} to release #${p.n}.`],
@@ -773,9 +778,11 @@ export function createHuddle(opts = {}) {
     return out;
   }
 
+  const blockedBy = (s, task) => task.after.filter((n) => s.tasks[n - 1].status !== 'done');
+
   function taskView(s, task) {
     const f = task.specFile ? s.files.get(task.specFile) : null;
-    return { ...task, specFile: f ? { id: f.id, name: f.name, size: f.size } : null };
+    return { ...task, specFile: f ? { id: f.id, name: f.name, size: f.size } : null, blocked: blockedBy(s, task) };
   }
 
   function listView(s, task) {
@@ -791,6 +798,16 @@ export function createHuddle(opts = {}) {
     return view;
   }
 
+  function taskOrder(s, value) {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value)) throw new HttpError('invalid_after_list');
+    const ns = value.map((v) => (typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : v));
+    for (const n of ns) {
+      if (!Number.isInteger(n) || n < 1 || n > s.tasks.length) throw new HttpError('invalid_after', { n });
+    }
+    return [...new Set(ns)].sort((a, b) => a - b);
+  }
+
   function createTask(s, creator, body) {
     const title = cleanText(body.title, MAX_TITLE, 'title');
     let assignee = null;
@@ -801,6 +818,7 @@ export function createHuddle(opts = {}) {
       }
     }
     const fields = taskFields(s, body);
+    const after = taskOrder(s, body.after);
     const task = {
       id: s.tasks.length + 1,
       title,
@@ -813,11 +831,16 @@ export function createHuddle(opts = {}) {
       assignee,
       createdBy: creator,
       note: null,
+      after,
       ...fields,
     };
     s.tasks.push(task);
     const wake = assignee && assignee !== creator;
-    system(s, `${creator} created task #${task.id} "${title}"${assignee ? ` for @${assignee}` : ''}`, {
+    const waiting = blockedBy(s, task);
+    const order = after.length
+      ? `, after ${after.map((n) => `#${n}`).join(', ')}${waiting.length ? ` (blocked by ${waiting.map((n) => `#${n}`).join(', ')})` : ''}`
+      : '';
+    system(s, `${creator} created task #${task.id} "${title}"${assignee ? ` for @${assignee}` : ''}${order}`, {
       mentions: assignee ? [assignee] : [],
       to: wake ? [assignee] : [],
       task: task.id,
@@ -853,6 +876,21 @@ export function createHuddle(opts = {}) {
     return task;
   }
 
+  function assertUnblocked(s, task) {
+    const blocked = blockedBy(s, task);
+    if (blocked.length) throw new HttpError('task_blocked', { n: task.id, blocked });
+  }
+
+  function announceReady(s, done) {
+    for (const t of s.tasks) {
+      if (t.status === 'done' || !t.after.includes(done.id) || blockedBy(s, t).length) continue;
+      const text = `Task #${t.id} "${t.title}" is ready: ${t.after.map((n) => `#${n}`).join(', ')} ${t.after.length > 1 ? 'are' : 'is'} done.`;
+      const who = t.owner ?? t.assignee;
+      if (who && s.agents.get(who)?.status !== 'left') system(s, text, { mentions: [who], to: [who], task: t.id });
+      else narrate(s, text.charAt(0).toLowerCase() + text.slice(1));
+    }
+  }
+
   function taskAction(s, agent, n, action, body) {
     const task = getTask(s, n);
     const h = agent.handle;
@@ -860,15 +898,18 @@ export function createHuddle(opts = {}) {
       if (task.status === 'done') throw new HttpError('task_done', { n });
       if (task.owner === h) return task;
       if (task.owner) throw new HttpError('already_claimed', { n, owner: task.owner });
+      assertUnblocked(s, task);
       moveTask(task, 'claimed', h);
       narrate(s, `${h} claimed task #${task.id}`);
     } else if (action === 'done') {
       if (task.status === 'done') throw new HttpError('task_done', { n });
       if (task.owner && task.owner !== h) throw new HttpError('already_claimed', { n, owner: task.owner });
+      assertUnblocked(s, task);
       const note = body.note === undefined || body.note === null ? null : cleanText(body.note, MAX_TEXT, 'note');
       moveTask(task, 'done', h);
       task.note = note;
       narrate(s, `${h} finished task #${task.id} "${task.title}"`);
+      announceReady(s, task);
       if (task.createdBy !== h) {
         const creator = s.agents.get(task.createdBy);
         const notify = creator !== undefined && creator.status !== 'left';
@@ -1142,6 +1183,7 @@ Endpoints (all relative to your link):
   Spawn child:   ${post('spawn', '{"role":"tester"}')}
   List tasks:    curl -s ${link}/tasks
   Create task:   ${post('tasks', '{"title":"draw sprite","assignee":"codex-1","description":"64x64 PNG with a transparent background; done when it loads in the game"}')}
+  After others:  ${post('tasks', '{"title":"review","assignee":"claude-2","after":[1,2,3]}')}   (blocked until #1-#3 are done; claim and done are refused until then)
   Long spec:     curl -s -X POST ${link}/tasks -H 'content-type: application/json' -d @task.json   (task.json adds "spec":"<markdown, up to 20000 chars>" or "specFile":"<file-id>")
   Read task:     curl -s ${link}/tasks/1   (description and spec; read it before starting a task you did not get in your wake)
   Edit task:     ${post('tasks/1', '{"spec":"ties sort alphabetically by word"}')}   (creator only; null removes a field; the owner is told)

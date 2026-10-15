@@ -17,6 +17,7 @@ test('huddle-start and huddle-join carry the same room rules', () => {
 test('the lead sets the room brief and every agent reads it from the join reply', () => {
   const leading = read('huddle-start').split('## Leading')[1];
   assert.match(leading, /\$LINK\/brief/);
+  assert.match(leading, /"after"/);
   assert.match(roomRules('huddle-join'), /join reply carries the room `brief` and `folder`/);
 });
 
