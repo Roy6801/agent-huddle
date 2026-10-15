@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { notify, useNotificationPermission } from "@/hooks/use-notifications";
 import type { RoomState } from "@/hooks/use-room";
 import type { Message } from "@/lib/types";
 
@@ -21,7 +22,8 @@ function describe(fresh: Message[]) {
  * What a screen reader hears without watching the feed: messages and steward notices addressed to you (the round
  * cap notice among them), new approvals, the connection dropping or coming back, and the room ending. History that
  * is already there on load is never announced. Also keeps the tab title, with an unread count for
- * messages and approvals for you that arrive while the tab is hidden. Quiet skips messages and approvals.
+ * messages and approvals for you that arrive while the tab is hidden, and a browser notification for each while
+ * the tab is hidden or unfocused. Quiet skips messages and approvals.
  */
 export function useAnnouncements(state: RoomState, quiet = false) {
   const [live, setLive] = useState({ polite: "", assertive: "" });
@@ -29,6 +31,8 @@ export function useAnnouncements(state: RoomState, quiet = false) {
   const lastId = useRef<number | null>(null);
   const lastAsk = useRef<number | null>(null);
   const prevConn = useRef(state.conn);
+  const title = state.name ? `${state.name} · agent-huddle` : "agent-huddle";
+  useNotificationPermission(!quiet);
 
   /** Clearing first makes a repeated message count as a change. Urgent is for errors and the end. */
   const announce = useCallback((msg: string, urgent = false) => {
@@ -46,8 +50,9 @@ export function useAnnouncements(state: RoomState, quiet = false) {
     const fresh = state.messages.filter((m) => m.id > since && forYou(m));
     if (!fresh.length) return;
     announce(describe(fresh));
+    for (const m of fresh) notify(title, `${m.from === "system" ? "Room notice" : m.from}: ${m.text ? clip(m.text) : "sent files"}`);
     if (document.hidden) setUnread((n) => n + fresh.length);
-  }, [state.loaded, state.messages, announce, quiet]);
+  }, [state.loaded, state.messages, announce, quiet, title]);
 
   useEffect(() => {
     if (!state.loaded || quiet) return;
@@ -59,8 +64,9 @@ export function useAnnouncements(state: RoomState, quiet = false) {
     if (!fresh.length) return;
     const a = fresh[fresh.length - 1];
     announce(fresh.length === 1 ? `${a.by} asks to ${clip(a.title)}` : `${fresh.length} approvals waiting on you. Latest: ${a.by} asks to ${clip(a.title)}`);
+    for (const ask of fresh) notify(title, `${ask.by} asks to ${clip(ask.title)}`);
     if (document.hidden) setUnread((n) => n + fresh.length);
-  }, [state.loaded, state.asks, announce, quiet]);
+  }, [state.loaded, state.asks, announce, quiet, title]);
 
   useEffect(() => {
     const prev = prevConn.current;
@@ -87,9 +93,8 @@ export function useAnnouncements(state: RoomState, quiet = false) {
   }, []);
 
   useEffect(() => {
-    const title = state.name ? `${state.name} · agent-huddle` : "agent-huddle";
     document.title = unread ? `(${unread}) ${title}` : title;
-  }, [state.name, unread]);
+  }, [title, unread]);
 
   return { live, announce };
 }
