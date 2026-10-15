@@ -572,7 +572,7 @@ test('worker claude joins headless in acceptEdits, answers a mention, and its ad
   await say(room.claude, '@claude-2 hi');
   await until(async () => (await state(room)).some((m) => m.from === 'claude-2' && m.text.includes('echo(fake-1)')));
   assert.match(readPrompts().prompts[0].text, /You are claude-2 \(headless Claude Code\)/);
-  assert.deepEqual(readPrompts().env, { apiKey: false, authToken: false });
+  assert.deepEqual(readPrompts().env, { apiKey: false, authToken: false, opencodeConfig: null });
 });
 
 test('a Claude Code permission request becomes an Allow once / Always / Deny card with its command', async () => {
@@ -590,6 +590,44 @@ test('a Claude Code permission request becomes an Allow once / Always / Deny car
   await until(async () => (await state(room)).some((m) => m.from === 'claude-2' && m.text.includes('[allow-with-updates]')));
 });
 
+test('worker opencode joins headless, switches its mode to build, asks for shell commands, and answers a mention', async () => {
+  const room = await setup('opencode headless room');
+  const w = startWorker(room.created.join, { FAKE_ACP_CONFIG_MODES: 'plan,build' }, 'opencode');
+  await until(() => w.out.includes('opencode-1 is listening'));
+  assert.match(w.out, /mode build/);
+  assert.deepEqual(readPrompts().modes, [{ sessionId: 'fake-1', configId: 'mode', value: 'build' }]);
+  const who = await (await fetch(`${room.claude.link}/who`)).json();
+  assert.equal(who.agents.find((a) => a.handle === 'opencode-1').role, 'headless');
+  assert.doesNotMatch(w.err, /hears the room from its own terminal/);
+
+  await say(room.claude, '@opencode-1 hi');
+  await until(async () => (await state(room)).some((m) => m.from === 'opencode-1' && m.text.includes('echo(fake-1)')));
+  assert.match(readPrompts().prompts[0].text, /You are opencode-1 \(headless opencode\)/);
+  assert.deepEqual(JSON.parse(readPrompts().env.opencodeConfig), { permission: { edit: 'allow', bash: 'ask' } });
+});
+
+test('an opencode permission request becomes an Allow once / Always / Deny card with its command', async () => {
+  const room = await setup('opencode perm room');
+  const w = startWorker(room.created.join, { FAKE_ACP_PERMISSION: 'opencode' }, 'opencode');
+  await until(() => w.out.includes('opencode-1 is listening'));
+  assert.doesNotMatch(w.out, /mode/);
+  await say(room.claude, '@opencode-1 clean up');
+  const [ask] = await until(async () => (await asks(room)).length && asks(room));
+  assert.equal(ask.title, 'rm -rf build');
+  assert.equal(ask.detail, 'command: rm -rf build');
+  assert.deepEqual(ask.options.map((o) => [o.optionId, o.name]), [['once', 'Allow once'], ['always', 'Always'], ['reject', 'Deny']]);
+  assert.equal((await answerAsk(room, 1, 'always')).status, 200);
+  await until(() => readPrompts().outcomes?.length);
+  assert.deepEqual(readPrompts().outcomes, [{ outcome: 'selected', optionId: 'always' }]);
+});
+
+test('a failed start of worker opencode says to run opencode auth login', async () => {
+  const room = await setup('opencode start-fail room');
+  const w = startWorker(room.created.join, { FAKE_ACP_NEW_FAIL: '1' }, 'opencode');
+  assert.equal(await w.exit, 1);
+  assert.match(w.err, /could not start the agent: auth required; if opencode is not signed in, run opencode auth login in a terminal/);
+});
+
 test('worker gemini sends no set_mode when the agent offers no modes', async () => {
   const room = await setup('gemini mode room');
   const w = startWorker(room.created.join, {}, 'gemini');
@@ -602,10 +640,10 @@ test('an unknown harness exits 1 listing the supported ones', async () => {
   const room = await setup('unknown harness room');
   const w = startWorker(room.created.join, {}, 'foo');
   assert.equal(await w.exit, 1);
-  assert.match(w.err, /supported: claude, codex, gemini/);
+  assert.match(w.err, /supported: claude, codex, gemini, opencode/);
 });
 
-for (const harness of ['opencode', 'dsh']) {
+for (const harness of ['dsh']) {
   test(`worker ${harness} is refused: it hears the room from its own terminal`, async () => {
     const room = await setup(`${harness} refused room`);
     const w = startWorker(room.created.join, {}, harness);
@@ -748,7 +786,7 @@ test('the room state shows a requested stop and lists the supported harnesses', 
   const st = await (await fetch(`${room.created.page}/api/state`)).json();
   assert.equal(st.agents.find((a) => a.handle === 'codex-1').stopRequested, true);
   assert.equal(st.agents.find((a) => a.handle === 'claude-1').stopRequested, false);
-  assert.deepEqual(st.harnesses, [['claude', 'Claude Code'], ['codex', 'Codex'], ['gemini', 'Gemini CLI']]);
+  assert.deepEqual(st.harnesses, [['claude', 'Claude Code'], ['codex', 'Codex'], ['gemini', 'Gemini CLI'], ['opencode', 'opencode']]);
   await w.exit;
 });
 
@@ -761,7 +799,10 @@ test('each worker harness launches its pinned adapter', () => {
   assert.equal(WORKER_HARNESSES.codex.env.INITIAL_AGENT_MODE, 'workspace-write');
   assert.equal(cmd('gemini').at(-1), '--acp');
   assert.equal(WORKER_HARNESSES.gemini.mode, 'autoEdit');
-  assert.deepEqual(Object.keys(WORKER_HARNESSES), ['claude', 'codex', 'gemini']);
+  assert.equal(cmd('opencode').at(-1), 'acp');
+  assert.equal(WORKER_HARNESSES.opencode.mode, 'build');
+  assert.deepEqual(JSON.parse(WORKER_HARNESSES.opencode.env.OPENCODE_CONFIG_CONTENT), { permission: { edit: 'allow', bash: 'ask' } });
+  assert.deepEqual(Object.keys(WORKER_HARNESSES), ['claude', 'codex', 'gemini', 'opencode']);
 });
 
 test('a headless worker starts with the room folder and the brief', async () => {
