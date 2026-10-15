@@ -17,6 +17,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { RoleDialog } from "@/components/role-dialog";
 import { usePanels } from "@/hooks/use-panels";
 import { useRoom, useSource } from "@/hooks/use-room";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
@@ -240,6 +241,7 @@ function AgentRow({ agent, depth }: { agent: Agent; depth: number }) {
                 </time>
               </Detail>
             )}
+            {presence !== "left" && <RoleDialog agent={agent} />}
             {agent.headless && presence !== "left" && <StopButton handle={agent.handle} requested={agent.stopRequested === true} />}
           </dl>
         </CollapsibleContent>
