@@ -90,7 +90,8 @@ test('AC-37.1-3: the page starts a headless worker in the room folder that joins
   const state = await r.get();
   assert.deepEqual(state.workers.map((x) => [x.id, x.handle, x.status, x.log]), [[w.id, 'codex-1', 'running', w.log]]);
   const agent = state.agents.find((a) => a.handle === 'codex-1');
-  assert.equal(agent.role, 'headless');
+  assert.equal(agent.headless, true);
+  assert.equal(agent.role, null);
   assert.equal(agent.harness, 'codex');
 
   const claude = await (await fetch(`${r.created.join}/join`, json({ harness: 'claude' }))).json();
