@@ -56,8 +56,8 @@ async function setup(name, ...newArgs) {
   return { created, claude };
 }
 
-function startWorker(join, extra = {}, harness = 'codex') {
-  const proc = spawn(process.execPath, [CLI, 'worker', harness, join, '--dir', home], {
+function startWorker(join, extra = {}, harness = 'codex', args = []) {
+  const proc = spawn(process.execPath, [CLI, 'worker', harness, join, '--dir', home, ...args], {
     env: {
       ...env,
       AGENT_HUDDLE_ACP_CMD: JSON.stringify([process.execPath, FAKE]),
@@ -103,7 +103,8 @@ test('a headless codex answers mentions in the same session', async () => {
 
   const who = await (await fetch(`${claude.link}/who`)).json();
   const roster = who.agents.find((a) => a.handle === 'codex-1');
-  assert.equal(roster.role, 'headless');
+  assert.equal(roster.headless, true);
+  assert.equal(roster.role, null);
   assert.equal(roster.folder, home);
 
   const replies = async () => (await (await fetch(`${claude.link}/read?limit=500`)).json()).messages.filter((m) => m.from === 'codex-1');
@@ -541,6 +542,21 @@ test('a room ended while a permission request is open cancels it and exits 0', a
   assert.deepEqual(readPrompts().outcomes, [{ outcome: 'cancelled' }]);
 });
 
+test('worker --role joins headless with that role, and @role wakes it', async () => {
+  const room = await setup('headless role room');
+  const w = startWorker(room.created.join, {}, 'codex', ['--role', 'builder']);
+  await until(() => w.out.includes('codex-1 is listening'));
+  const roster = (await (await fetch(`${room.claude.link}/who`)).json()).agents.find((a) => a.handle === 'codex-1');
+  assert.equal(roster.role, 'builder');
+  assert.equal(roster.headless, true);
+  assert.ok((await state(room)).some((m) => m.text === 'codex-1 joined headless as builder'));
+
+  await say(room.claude, '@builder ping');
+  await until(() => readPrompts().prompts.length === 1);
+  assert.match(readPrompts().prompts[0].text, /You are codex-1 \(role builder\)/);
+  assert.doesNotMatch(readPrompts().prompts[0].text, /Wait \(<=25s\):/);
+});
+
 test('worker gemini sets the planned mode when the agent offers it, and joins as a headless gemini', async () => {
   const room = await setup('gemini planned mode room');
   const w = startWorker(room.created.join, { FAKE_ACP_MODES: 'autoEdit,default' }, 'gemini');
@@ -548,7 +564,7 @@ test('worker gemini sets the planned mode when the agent offers it, and joins as
   assert.match(w.out, /mode autoEdit/);
   assert.deepEqual(readPrompts().modes, [{ sessionId: 'fake-1', modeId: 'autoEdit' }]);
   const who = await (await fetch(`${room.claude.link}/who`)).json();
-  assert.equal(who.agents.find((a) => a.handle === 'gemini-1').role, 'headless');
+  assert.equal(who.agents.find((a) => a.handle === 'gemini-1').headless, true);
 
   await say(room.claude, '@gemini-1 hi');
   await until(() => readPrompts().prompts.length === 1);
@@ -566,7 +582,7 @@ test('worker claude joins headless in acceptEdits, answers a mention, and its ad
   assert.match(w.out, /mode acceptEdits/);
   assert.deepEqual(readPrompts().modes, [{ sessionId: 'fake-1', modeId: 'acceptEdits' }]);
   const who = await (await fetch(`${room.claude.link}/who`)).json();
-  assert.equal(who.agents.find((a) => a.handle === 'claude-2').role, 'headless');
+  assert.equal(who.agents.find((a) => a.handle === 'claude-2').headless, true);
   assert.doesNotMatch(w.err, /hears the room from its own terminal/);
 
   await say(room.claude, '@claude-2 hi');

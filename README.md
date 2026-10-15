@@ -175,10 +175,10 @@ Agents join from their own terminal by default. Headless is the second way in, f
 A headless agent runs in your terminal, with no chat window of its own. It sleeps until someone @mentions it, so other agents can hand it work.
 
 ```bash
-agent-huddle worker <harness> <join-url> [--dir <path>]
+agent-huddle worker <harness> <join-url> [--dir <path>] [--role <role>]
 ```
 
-`--dir` is the folder the agent works in (default: the current folder). Each harness must already be installed and signed in; the worker prints the reason and exits if not.
+`--dir` is the folder the agent works in (default: the current folder). `--role` gives it a role, so `@builder` reaches it; the roster still marks it headless. Each harness must already be installed and signed in; the worker prints the reason and exits if not.
 
 | Harness | Runs | Mode |
 | --- | --- | --- |

@@ -43,6 +43,8 @@ const ASLEEP_WINDOW_MS = 10 * 60 * 1000;
 const REST_WINDOW_MS = 15000;
 const HUMAN_ONLINE_MS = 30 * 1000;
 const RESERVED_ROLES = new Set(['all', 'you', 'system']);
+// Headless is a flag on the agent, not a role; old clients still join with role 'headless' to set it.
+const HEADLESS_ROLE = 'headless';
 // These harnesses end their turn and cannot be woken from the room.
 const UNWAKEABLE = new Set(['codex', 'gemini', 'agy']);
 const QUIET_NOTES = {
@@ -107,7 +109,7 @@ export const ERRORS = {
     (p) => `Resend with a non-empty ${p.label} within the limit; long content fits better in a file.`],
   invalid_file_name: [400, 'The upload has no file name.', 'Add ?name=<filename> to the URL, for example POST files?name=notes.md.'],
   role_required: [400, 'A spawned agent needs a role.', 'Send a role such as {"role":"tester"}.'],
-  invalid_role: [400, 'The role is not allowed.', 'Use 1-20 lowercase letters, digits or dashes, other than all, you or system.'],
+  invalid_role: [400, 'The role is not allowed.', 'Use 1-20 lowercase letters, digits or dashes, other than all, you, system or headless.'],
   invalid_round_cap: [400, `roundCap must be a whole number from 1 to ${ROUND_CAP_MAX}, or "off".`,
     'Resend it in that range, or "off" to let agents post without pausing.'],
   invalid_number: [400, (p) => `${p.key} must be a whole number from ${p.min} to ${p.max}.`,
@@ -303,8 +305,8 @@ function historyView(lines, full) {
       files: files.map((f, i) => ({ id: `${m.id}-${i}`, type: '', ...f })),
     })),
     tasks: latest('task', (l) => l.task.id).map((l) => l.task),
-    agents: latest('agent', (l) => l.handle).map(({ handle, harness, role, status, folder, at }) =>
-      ({ handle, harness, role, status, folder, parent: null, lastSeen: at })),
+    agents: latest('agent', (l) => l.handle).map(({ handle, harness, role, headless, status, folder, at }) =>
+      ({ handle, harness, role, ...(headless && { headless }), status, folder, parent: null, lastSeen: at })),
     asks: latest('ask', (l) => l.ask.id).map((l) => l.ask),
     brief: brief ? { text: brief.text, by: brief.by, at: brief.at, id: brief.id } : null,
   };
@@ -370,7 +372,7 @@ function cleanRole(value, required) {
     if (required) throw new HttpError('role_required');
     return null;
   }
-  if (typeof value !== 'string' || !ROLE_RE.test(value) || RESERVED_ROLES.has(value)) {
+  if (typeof value !== 'string' || !ROLE_RE.test(value) || RESERVED_ROLES.has(value) || value === HEADLESS_ROLE) {
     throw new HttpError('invalid_role');
   }
   return value;
@@ -609,7 +611,7 @@ export function createHuddle(opts = {}) {
 
   const historyTask = (s, task) => historyLine(s, { type: 'task', task: listView(s, task) });
   const historyAgent = (s, a) =>
-    historyLine(s, { type: 'agent', handle: a.handle, harness: a.harness, role: a.role, status: a.status, folder: a.folder });
+    historyLine(s, { type: 'agent', handle: a.handle, harness: a.harness, role: a.role, ...(a.headless && { headless: true }), status: a.status, folder: a.folder });
   const historyAsk = (s, ask) => historyLine(s, { type: 'ask', ask });
 
   function writeTranscript(s, reason) {
@@ -650,12 +652,13 @@ export function createHuddle(opts = {}) {
     s.tombstone.unref();
   }
 
-  function addAgent(s, handle, harness, role, parent, base, folder = null) {
+  function addAgent(s, handle, harness, role, parent, base, folder = null, headless = false) {
     const token = newToken();
     const agent = {
       handle,
       harness,
       role,
+      headless,
       parent,
       folder,
       folderCheck: folderCheck(s.folder && canonical(s.folder), folder),
@@ -717,7 +720,7 @@ export function createHuddle(opts = {}) {
     const quiet = [];
     for (const handle of m.to) {
       const agent = s.agents.get(handle);
-      if (!agent || handle === m.from || handle === routedFor || now - agent.nudgedAt < nudgeRepeatMs || agent.waiters.size || agent.role === 'headless') continue;
+      if (!agent || handle === m.from || handle === routedFor || now - agent.nudgedAt < nudgeRepeatMs || agent.waiters.size || agent.headless) continue;
       if (agent.status !== 'left' && !agent.offShift && now - agent.lastSeen <= quietMs) continue;
       agent.nudgedAt = now;
       quiet.push(agent);
@@ -806,6 +809,7 @@ export function createHuddle(opts = {}) {
         handle: a.handle,
         harness: a.harness,
         role: a.role,
+        ...(a.headless && { headless: true }),
         parent: a.parent,
         folder: a.folder ?? null,
         folderCheck: a.folderCheck ?? null,
@@ -1415,7 +1419,7 @@ export function createHuddle(opts = {}) {
   function stopAgent(s, handle) {
     const agent = s.agents.get(handle);
     if (!agent || agent.status === 'left') throw new HttpError('unknown_agent', { handle });
-    if (agent.role !== 'headless') throw new HttpError('not_headless', { handle });
+    if (!agent.headless) throw new HttpError('not_headless', { handle });
     if (agent.stopRequested) return { ok: true };
     agent.stopRequested = true;
     system(s, `you asked ${handle} to stop`);
@@ -1573,7 +1577,7 @@ Endpoints (all relative to your link):
   Download file: curl -s -o player.png ${link}/files/<file-id>
   Read brief:    curl -s ${link}/brief
   Set brief:     curl -s -X POST ${link}/brief -H 'content-type: text/markdown' --data-binary @brief.md   (lead only; pinned and posted verbatim to everyone)
-  Leave:         curl -s -X POST ${link}/leave${PAGE_APPROVALS.has(agent.harness) && agent.role !== 'headless' ? `
+  Leave:         curl -s -X POST ${link}/leave${PAGE_APPROVALS.has(agent.harness) && !agent.headless ? `
   Page approvals: node ${THIS_FILE} approvals on '${link}'${agent.harness === 'claude' ? ' --session <your session id>' : ''}   (optional: your permission prompts ask @you on the page; needs the hook once, node ${THIS_FILE} approvals ${agent.harness})` : ''}
 
 Mentions: @handle, @handle.* (it and its children), @role, @all, @you.
@@ -1602,7 +1606,7 @@ How the room works:
 - ${s.roundCap === null ? 'There is no round cap in this room.' : `After ${s.roundCap} agent posts in a row the server pauses the room until @you posts.`}
 `;
     // A headless agent's worker reads, waits and leaves for it; those calls would steal its wakes.
-    return agent.role === 'headless' ? text.split('\n').filter((line) => !WORKER_CALLS.test(line)).join('\n') : text;
+    return agent.headless ? text.split('\n').filter((line) => !WORKER_CALLS.test(line)).join('\n') : text;
   }
 
   // ---- admin ----
@@ -1778,17 +1782,18 @@ How the room works:
     if (RESERVED_ROLES.has(harness)) throw new HttpError('reserved_harness');
     markActivity(s);
     const becomesLead = typeof body.lead === 'string' && s.lead === null && body.lead === s.leadKey;
-    const role = cleanRole(body.role, false) ?? (becomesLead ? 'lead' : null);
+    const headless = body.headless === true || body.role === HEADLESS_ROLE;
+    const role = (body.role === HEADLESS_ROLE ? null : cleanRole(body.role, false)) ?? (becomesLead ? 'lead' : null);
     const folder = parseFolder(body.folder);
     const n = (s.counters.get(harness) ?? 0) + 1;
     s.counters.set(harness, n);
-    const agent = addAgent(s, `${harness}-${n}`, harness, role, null, base, folder);
+    const agent = addAgent(s, `${harness}-${n}`, harness, role, null, base, folder, headless);
     if (becomesLead) {
       s.lead = agent.handle;
       s.leadKey = null;
     }
     historyAgent(s, agent);
-    narrate(s, `${agent.handle} joined${role ? ` as ${role}` : ''}`);
+    narrate(s, `${agent.handle} joined${headless ? ' headless' : ''}${role ? ` as ${role}` : ''}`);
     const outside = agent.folderCheck === 'outside';
     if (outside) system(s, `${agent.handle} joined from ${folder}, outside the room folder ${s.folder}.`, { toYou: true });
     return {
@@ -2736,13 +2741,16 @@ async function runWorker(args) {
   };
   const positional = [];
   let dir = process.cwd();
+  let role;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--dir') dir = args[++i] ?? '';
     else if (args[i].startsWith('--dir=')) dir = args[i].slice(6);
+    else if (args[i] === '--role') role = args[++i] ?? '';
+    else if (args[i].startsWith('--role=')) role = args[i].slice(7);
     else positional.push(args[i]);
   }
   const [harness, joinUrl] = positional;
-  if (!harness || !joinUrl) fail('usage: node huddle.mjs worker <harness> <join-url> [--dir <path>]');
+  if (!harness || !joinUrl) fail('usage: node huddle.mjs worker <harness> <join-url> [--dir <path>] [--role <role>]');
   if (Object.hasOwn(TERMINAL_HARNESSES, harness)) {
     fail(`${TERMINAL_HARNESSES[harness]} hears the room from its own terminal; join it with the invite (Add agent → In my terminal) instead of a headless worker`);
   }
@@ -2767,7 +2775,7 @@ async function runWorker(args) {
   const joinRes = await fetch(`${url.origin}${url.pathname.replace(/\/$/, '')}/join`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ harness, role: 'headless', folder }),
+    body: JSON.stringify({ harness, headless: true, ...(role && { role }), folder }),
   });
   if (!joinRes.ok) fail(`could not join: ${(await joinRes.json().catch(() => ({}))).message ?? joinRes.status}`);
   const me = await joinRes.json();
@@ -3933,10 +3941,11 @@ const COMMANDS = {
   worker: {
     group: 'Agents',
     summary: 'run a headless agent (Claude Code, Codex, Gemini CLI, opencode) that answers when addressed',
-    usage: 'worker <harness> <join-url> [--dir <path>]',
+    usage: 'worker <harness> <join-url> [--dir <path>] [--role <role>]',
     options: [
-      '--dir <path>  folder the agent works in (default: current folder)',
-      `harness      ${Object.keys(WORKER_HARNESSES).join(', ')}`,
+      '--dir <path>   folder the agent works in (default: current folder)',
+      '--role <role>  optional, [a-z0-9-]{1,20}; @role mentions reach it',
+      `harness        ${Object.keys(WORKER_HARNESSES).join(', ')}`,
       "It uses the harness's own sign-in. DeepSeek Harness joins with the invite instead.",
     ],
     example: 'node huddle.mjs worker codex http://127.0.0.1:4747/s/<id> --dir ~/code/api',
