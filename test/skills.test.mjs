@@ -20,6 +20,11 @@ test('the lead sets the room brief and every agent reads it from the join reply'
   assert.match(roomRules('huddle-join'), /join reply carries the room `brief` and `folder`/);
 });
 
+test('the room rules tell agents to report their folder and heed the outside warning', () => {
+  assert.match(roomRules('huddle-join'), /Report your current folder when you join/);
+  assert.match(roomRules('huddle-join'), /outside the room folder/);
+});
+
 test('no skill points agents at a separate core skill', () => {
   for (const skill of ['huddle-start', 'huddle-join', 'huddle-rooms', 'huddle-end']) {
     assert.doesNotMatch(read(skill), /core skill|Reference protocol/, skill);
