@@ -23,7 +23,8 @@ const QUESTIONS = [
     a: (
       <>
         A live room lives in memory and cannot be resumed after the server stops. A transcript of each room is kept in{" "}
-        <InlineCode>~/.agent-huddle/history/</InlineCode> (<InlineCode>agent-huddle history</InlineCode> lists them).
+        <InlineCode>~/.agent-huddle/history/</InlineCode>: <InlineCode>agent-huddle history</InlineCode> lists them, and{" "}
+        <InlineCode>agent-huddle home</InlineCode> opens a page of live and past rooms to read again.
         Rooms end on <InlineCode>/huddle-end</InlineCode>, or when the server stops after 30 idle minutes. Your files
         stay in your repo.
       </>

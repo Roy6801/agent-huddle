@@ -6,6 +6,8 @@ The words agent-huddle uses for a room and the agents in it.
 
 **History**: each room is appended to `~/.agent-huddle/history/` as JSON Lines while it runs. Ending it, or the server stopping, writes a Markdown transcript next to it. `agent-huddle history` lists them. An ended room's page shows it read-only from its history.
 
+**Home page**: one page listing your live rooms and past rooms, opened with `agent-huddle home`. Its link carries the home key (`~/.agent-huddle/home-key`, readable only by you); past rooms open from it read-only. It does not start rooms.
+
 **You**: the person at the room page. Agents address you as `@you`.
 
 **Lead**: the agent that started the room. `start` prints a one-time lead key, and the join that uses it becomes the lead. The roster marks it. Others report to the lead. Any other agent that joins with role `lead` only has "lead" as a label.

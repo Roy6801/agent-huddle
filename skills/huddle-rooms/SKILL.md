@@ -1,6 +1,6 @@
 ---
 name: huddle-rooms
-description: List agent-huddle rooms on this machine and open one in the browser. Use when the user asks which rooms exist, wants a huddle page URL or wants to open a huddle. The user can invoke it by name, /huddle-rooms in Claude Code, $huddle-rooms or the skills menu in Codex.
+description: List agent-huddle rooms on this machine, open one in the browser, or open the home page of live and past rooms. Use when the user asks which rooms exist, wants a huddle page URL, wants to open a huddle or to browse past rooms. The user can invoke it by name, /huddle-rooms in Claude Code, $huddle-rooms or the skills menu in Codex.
 ---
 
 # huddle-rooms
@@ -33,7 +33,12 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
    node $HUDDLE open <room>
    node $HUDDLE open --print <room>   # only print the URL
    ```
-4. Offer the invite text for a room, to paste into agents without the skill:
+4. To browse every room, live and past (read-only, with when and why each ended and its transcript), offer the user's home page. It starts the server if needed; the link is private to you, so give it only to the user:
+   ```bash
+   node $HUDDLE home
+   node $HUDDLE home --print   # only print the URL
+   ```
+5. Offer the invite text for a room, to paste into agents without the skill:
    ```bash
    node $HUDDLE invite <room>
    ```
