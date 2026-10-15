@@ -142,7 +142,8 @@ export const ERRORS = {
   invalid_after_list: [400, 'after must be a list of task numbers, like [1,2].', 'Send after as [1,2] using task numbers from GET tasks.'],
   task_blocked: [409, (p) => `Task #${p.n} is blocked by ${refs(p.blocked)}.`,
     'Wait until those tasks are done (you are woken when it is ready if it is assigned to you), or pick another task from GET tasks.'],
-  empty_edit: [400, 'The edit has nothing to change.', 'Send description, spec or specFile.'],
+  after_cycle: [400, (p) => `Task #${p.n} cannot come after itself, directly or through other tasks.`, 'Pick tasks that do not wait on this one.'],
+  empty_edit: [400, 'The edit has nothing to change.', 'Send title, assignee, after, description, spec or specFile.'],
   already_claimed: [409, (p) => `Task #${p.n} is claimed by @${p.owner}.`,
     (p) => `Pick another open task from GET tasks, or ask @${p.owner} to release #${p.n}.`],
   not_lead: [403, (p) => (p.lead ? `Only the lead (@${p.lead}) or @you can set the brief.` : 'This room has no lead, so only @you can set the brief.'),
@@ -948,15 +949,28 @@ export function createHuddle(opts = {}) {
     return [...new Set(value)].sort((a, b) => a - b);
   }
 
+  function taskAssignee(s, value) {
+    if (value === undefined || value === null) return null;
+    const handle = typeof value === 'string' ? value.replace(/^@/, '').toLowerCase() : '';
+    if (!s.agents.has(handle)) throw new HttpError('unknown_assignee', { assignee: value }, { valid: [...s.agents.keys()] });
+    return handle;
+  }
+
+  // A task cannot wait on itself, directly or through the tasks it waits on.
+  function assertNoCycle(s, task, after) {
+    const seen = new Set();
+    const walk = (n) => {
+      if (n === task.id) throw new HttpError('after_cycle', { n: task.id });
+      if (seen.has(n)) return;
+      seen.add(n);
+      s.tasks[n - 1].after.forEach(walk);
+    };
+    after.forEach(walk);
+  }
+
   function createTask(s, creator, body) {
     const title = cleanText(body.title, MAX_TITLE, 'title');
-    let assignee = null;
-    if (body.assignee !== undefined && body.assignee !== null) {
-      assignee = typeof body.assignee === 'string' ? body.assignee.replace(/^@/, '').toLowerCase() : '';
-      if (!s.agents.has(assignee)) {
-        throw new HttpError('unknown_assignee', { assignee: body.assignee }, { valid: [...s.agents.keys()] });
-      }
-    }
+    const assignee = taskAssignee(s, body.assignee);
     const fields = taskFields(s, body);
     const after = taskOrder(s, body.after);
     const task = {
@@ -1006,14 +1020,39 @@ export function createHuddle(opts = {}) {
     }
     if (task.status === 'done') throw new HttpError('task_done', { n });
     const fields = taskFields(s, body);
+    const changes = [];
+    const wasTarget = task.owner ?? task.assignee;
+    if (body.title !== undefined) {
+      const title = cleanText(body.title, MAX_TITLE, 'title');
+      if (title !== task.title) {
+        fields.title = title;
+        changes.push(`was "${task.title}"`);
+      }
+    }
+    if (body.assignee !== undefined) {
+      const assignee = taskAssignee(s, body.assignee);
+      if (assignee !== task.assignee) {
+        fields.assignee = assignee;
+        changes.push(assignee ? `now for @${assignee}` : 'now unassigned');
+      }
+    }
+    if (body.after !== undefined) {
+      const after = taskOrder(s, body.after);
+      if (after.join() !== task.after.join()) {
+        assertNoCycle(s, task, after);
+        fields.after = after;
+        changes.push(after.length ? `now after ${refs(after)}` : 'no longer after any task');
+      }
+    }
     if (!Object.keys(fields).length) throw new HttpError('empty_edit');
     Object.assign(task, fields);
     historyTask(s, task);
-    const target = task.owner ?? task.assignee;
-    const notify = Boolean(target) && target !== editor && s.agents.get(target)?.status !== 'left';
-    system(s, `${editor} edited task #${task.id} "${task.title}"`, {
-      mentions: notify ? [target] : [],
-      to: notify ? [target] : [],
+    const targets = new Set([task.owner ?? task.assignee]);
+    if (!task.owner) targets.add(wasTarget);
+    const notified = [...targets].filter((h) => h && h !== editor && s.agents.get(h)?.status !== 'left');
+    system(s, `${editor} edited task #${task.id} "${task.title}"${changes.length ? ` (${changes.join(', ')})` : ''}`, {
+      mentions: notified,
+      to: notified,
       task: task.id,
     });
     return task;
