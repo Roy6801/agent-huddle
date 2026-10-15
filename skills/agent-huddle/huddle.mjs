@@ -15,7 +15,7 @@ const ON_PATH = path.basename(process.argv[1] ?? '') === 'agent-huddle';
 const PROG = ON_PATH ? 'agent-huddle' : `node ${THIS_FILE}`;
 const HELP_PROG = ON_PATH ? 'agent-huddle' : 'node huddle.mjs';
 const BODY_LIMIT = 64 * 1024;
-const TASK_BODY_LIMIT = 128 * 1024;
+const TASK_BODY_LIMIT = 192 * 1024;
 const MAX_MESSAGES = 2000;
 const MAX_TEXT = 8000;
 const MAX_NAME = 200;

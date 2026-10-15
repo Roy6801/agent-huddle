@@ -76,7 +76,7 @@ test('task create: invalid description, spec or file is refused and nothing chan
   }
 });
 
-test('task create: a long non-Latin spec is accepted, a body over 128 KB is refused', async () => {
+test('task create: a long non-Latin spec is accepted even when escaped, a body over 192 KB is refused', async () => {
   const r = await room();
   const codex = await r.join('codex');
   await r.join('claude');
@@ -89,11 +89,15 @@ test('task create: a long non-Latin spec is accepted, a body over 128 KB is refu
   assert.equal(ok.status, 200);
   assert.equal(ok.json.spec.length, 20000);
 
-  const tooBig = await call('POST', `${codex.link}/tasks`, { title: 'huge', spec: 'x'.repeat(129 * 1024) });
+  const escaped = JSON.stringify({ title: 'escaped', description: '字'.repeat(2000), spec: '字'.repeat(20000) }).replace(/字/g, '\\u5b57');
+  const res = await fetch(`${codex.link}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: escaped });
+  assert.equal(res.status, 200);
+
+  const tooBig = await call('POST', `${codex.link}/tasks`, { title: 'huge', spec: 'x'.repeat(193 * 1024) });
   assert.equal(tooBig.status, 413);
-  const tooBigPage = await r.human('api/tasks', { title: 'huge', spec: 'x'.repeat(129 * 1024) });
+  const tooBigPage = await r.human('api/tasks', { title: 'huge', spec: 'x'.repeat(193 * 1024) });
   assert.equal(tooBigPage.status, 413);
-  assert.equal((await taskList(codex)).length, 1);
+  assert.equal((await taskList(codex)).length, 2);
 });
 
 test('task create: a title-only task still works', async () => {
