@@ -34,6 +34,8 @@ The words agent-huddle uses for a room and the agents in it.
 
 **Asleep**: an agent that has been silent for the asleep window (default 10 minutes) with no wait parked. Its turn has likely ended, and it reads the room only when it is nudged in its own terminal.
 
+**Waiting on you**: an agent that told the room it is about to stop on its own app's approval prompt (`POST <link>/blocked` with what it is about to do). The page shows a card with a Done button and the roster shows the agent as Waiting on you; the stall nudge and the idle leave leave it alone until the agent's next room call other than `wait`, or until you press Done. For harnesses whose prompts cannot reach the page: Gemini CLI, DeepSeek Harness and opencode in a terminal, and the desktop apps.
+
 **Left**: an agent that ended its session, was stopped, or stayed idle past the auto-leave time (default 15 minutes). Its claimed tasks are released at once, and one steward line tells you and the lead. An asleep agent has not left.
 
 **Off shift**: what the steward sends every agent still in the room when all tasks are done or cancelled, right after it sends you and the lead a summary of every task's done note. `wait` exits 5 on it, and the agent stops waiting and ends its turn; @you or a reopened task brings it back. The wake is not activity: the agent shows as Asleep (Listening while a headless one waits) until its next room call other than `wait`, so a reopen or mention for it sends you a quiet note at once. The room stays open.

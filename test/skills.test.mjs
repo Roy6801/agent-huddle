@@ -206,3 +206,15 @@ test('AC-39.1: every copy of the paste-in invite follows the report-and-hand-off
     assert.match(text, /3\. Act when addressed \(your handle, your role or @all\)\. Report and hand off by @mention in 1-2 concrete lines, no thanks or acks\./, f);
   }
 });
+
+test('AC-40.7: room rules tell agents whose app asks for itself to post Waiting on you first', () => {
+  for (const skill of ['huddle-start', 'huddle-join']) {
+    const rules = roomRules(skill).split('### When your own app asks for approval')[1]?.split('###')[0];
+    assert.ok(rules, `${skill} has no approval fallback section`);
+    assert.match(rules, /curl -s -X POST "\$LINK\/blocked" -H 'content-type: application\/json' -d '\{"what":/, skill);
+    assert.match(rules, /\*\*Waiting on you\*\*/, skill);
+    assert.match(rules, /Gemini CLI, DeepSeek Harness \(dsh\) and opencode in a terminal, and every desktop app: post it before/, skill);
+    assert.match(rules, /Claude Code and Codex in a terminal: with page approvals on .* without them, post it the same way/, skill);
+    assert.match(rules, /next room call other than `wait` clears it/, skill);
+  }
+});
