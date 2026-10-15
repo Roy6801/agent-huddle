@@ -132,3 +132,81 @@ test('read task: full task by id, the list carries the spec size only', async ()
   assert.equal((await call('GET', `${opencode.link}/tasks/9`)).status, 404);
   assert.equal((await r.state()).tasks[0].spec, spec);
 });
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const parkWait = async (agent) => {
+  const pending = fetch(`${agent.link}/wait?wait=5`).then((res) => res.json());
+  await sleep(200);
+  return pending;
+};
+const forTask = (payload, n) => payload.messages.find((m) => m.task === n);
+
+test('wake: the assignee gets description and spec in its wake, a title-only task gets nulls', async () => {
+  const r = await room();
+  const codex = await r.join('codex');
+  const claude = await r.join('claude');
+  const description = 'd'.repeat(600);
+  const spec = 's'.repeat(4000);
+
+  let wait = parkWait(claude);
+  await call('POST', `${codex.link}/tasks`, { title: 'Implement wordfreq CLI', assignee: claude.handle, description, spec });
+  const full = forTask(await wait, 1);
+  assert.equal(full.taskDetail.title, 'Implement wordfreq CLI');
+  assert.equal(full.taskDetail.description, description);
+  assert.equal(full.taskDetail.spec, spec);
+
+  wait = parkWait(claude);
+  await call('POST', `${codex.link}/tasks`, { title: 'draw sprite', assignee: claude.handle });
+  const bare = forTask(await wait, 2);
+  assert.equal(bare.text, 'codex-1 created task #2 "draw sprite" for @claude-1');
+  assert.equal(bare.taskDetail.description, null);
+  assert.equal(bare.taskDetail.spec, null);
+  assert.equal(bare.taskDetail.specFile, null);
+});
+
+test('wake: other agents read the creation message without detail, a claim reply carries the task', async () => {
+  const r = await room();
+  const codex = await r.join('codex');
+  const claude = await r.join('claude');
+  const opencode = await r.join('opencode');
+  const dsh = await r.join('dsh');
+  await call('POST', `${codex.link}/tasks`, { title: 'wordfreq', assignee: claude.handle, description: 'count words', spec: 'the spec' });
+
+  const read = (await call('GET', `${opencode.link}/read`)).json;
+  const seen = forTask(read, 1);
+  assert.ok(seen);
+  assert.ok(!('taskDetail' in seen));
+  assert.ok(!('taskDetail' in (await r.state()).messages.find((m) => m.task === 1)));
+
+  await call('POST', `${codex.link}/tasks`, { title: 'CHANGELOG.md entry, first to claim', description: 'add a line', spec: 'under Unreleased' });
+  const claim = await call('POST', `${dsh.link}/tasks/2/claim`);
+  assert.equal(claim.json.owner, 'dsh-1');
+  assert.equal(claim.json.description, 'add a line');
+  assert.equal(claim.json.spec, 'under Unreleased');
+});
+
+test('wake: a spec file arrives with a download command that fetches the exact bytes', async () => {
+  const r = await room();
+  const codex = await r.join('codex');
+  const opencode = await r.join('opencode');
+  const body = '# wordfreq\n' + 'count the words, ignore case\n'.repeat(320);
+  const upload = await fetch(`${codex.link}/files?name=spec-wordfreq.md`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/markdown' },
+    body,
+  });
+  const file = await upload.json();
+
+  const wait = parkWait(opencode);
+  await call('POST', `${codex.link}/tasks`, { title: 'Write and run CLI tests', assignee: opencode.handle, specFile: file.id });
+  const { specFile } = forTask(await wait, 1).taskDetail;
+  assert.equal(specFile.id, file.id);
+  assert.equal(specFile.name, 'spec-wordfreq.md');
+  assert.equal(specFile.size, Buffer.byteLength(body));
+  assert.ok(specFile.download.includes(`${opencode.link}/files/${file.id}`));
+
+  const got = (await call('GET', `${opencode.link}/tasks/1`)).json.specFile;
+  assert.deepEqual(got, specFile);
+  const url = /(http:\/\/\S+)$/.exec(specFile.download)[1];
+  assert.equal(await (await fetch(url)).text(), body);
+});
