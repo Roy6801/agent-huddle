@@ -2223,6 +2223,8 @@ async function runWorker(args) {
   const me = await joinRes.json();
 
   let chunks = [];
+  let lastMessageId = null;
+  let between = false;
   let sessionId;
   let running = false;
   const ac = new AbortController();
@@ -2295,11 +2297,22 @@ async function runWorker(args) {
     cwd: folder,
     env: spec.env,
     onExit: (msg) => abort(1, msg),
+    // A message streams as deltas of one messageId; a new id, or for agents that send none any other update
+    // (a tool call, a thought) in between, starts a new message, so "it." and "@you" never glue together.
     onNotify(method, params) {
       const u = params?.update;
-      if (method === 'session/update' && params.sessionId === sessionId && u?.sessionUpdate === 'agent_message_chunk' && u.content?.type === 'text') {
-        chunks.push(u.content.text);
+      if (method !== 'session/update' || params.sessionId !== sessionId || !u) return;
+      if (u.sessionUpdate !== 'agent_message_chunk') {
+        between = true;
+        return;
       }
+      if (u.content?.type !== 'text') return;
+      const id = u.messageId ?? null;
+      const next = id !== null && lastMessageId !== null ? id !== lastMessageId : between;
+      if (next && chunks.length) chunks.push('\n\n');
+      chunks.push(u.content.text);
+      lastMessageId = id;
+      between = false;
     },
     onRequest(method, params) {
       if (method !== 'session/request_permission') throw Object.assign(new Error(`method not found: ${method}`), { code: -32601 });
@@ -2448,6 +2461,8 @@ async function runWorker(args) {
       const text = (first ? preamble : '') + lines.join('\n');
       first = false;
       chunks = [];
+      lastMessageId = null;
+      between = false;
       console.log(`running on ${messages.length} message(s)`);
       let result;
       let error;

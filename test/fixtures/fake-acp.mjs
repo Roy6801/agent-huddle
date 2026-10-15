@@ -5,7 +5,7 @@ import readline from 'node:readline';
 // node --test also globs this file; only serve when a test opts in
 if (!process.env.FAKE_ACP) process.exit(0);
 
-const { FAKE_ACP_LOG, FAKE_ACP_PID, FAKE_ACP_DELAY_MS, FAKE_ACP_STOP, FAKE_ACP_NEW_FAIL, FAKE_ACP_HANG, FAKE_ACP_GRANDCHILD, FAKE_ACP_REPLY, FAKE_ACP_PERMISSION, FAKE_ACP_MODES } = process.env;
+const { FAKE_ACP_LOG, FAKE_ACP_PID, FAKE_ACP_DELAY_MS, FAKE_ACP_STOP, FAKE_ACP_NEW_FAIL, FAKE_ACP_HANG, FAKE_ACP_GRANDCHILD, FAKE_ACP_REPLY, FAKE_ACP_PERMISSION, FAKE_ACP_MODES, FAKE_ACP_SPLIT } = process.env;
 if (FAKE_ACP_PID) fs.writeFileSync(FAKE_ACP_PID, String(process.pid));
 if (FAKE_ACP_GRANDCHILD) {
   const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
@@ -23,8 +23,15 @@ let inflight = 0;
 let maxConcurrency = 0;
 let active = null;
 const send = (msg) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...msg })}\n`);
-const update = (sessionId, sessionUpdate, text) =>
-  send({ method: 'session/update', params: { sessionId, update: { sessionUpdate, content: { type: 'text', text } } } });
+const update = (sessionId, sessionUpdate, text, messageId) =>
+  send({ method: 'session/update', params: { sessionId, update: { sessionUpdate, content: { type: 'text', text }, ...(messageId && { messageId }) } } });
+// Two messages with a tool call between, the second streamed as two deltas; 'ids' tags them like codex-acp does.
+const split = (sessionId, ids) => {
+  update(sessionId, 'agent_message_chunk', 'I will look at it.', ids && 'm1');
+  send({ method: 'session/update', params: { sessionId, update: { sessionUpdate: 'tool_call', toolCallId: 't1', title: 'ls', kind: 'execute', status: 'completed' } } });
+  update(sessionId, 'agent_message_chunk', '@you it', ids && 'm2');
+  update(sessionId, 'agent_message_chunk', ' is done.', ids && 'm2');
+};
 const save = () => {
   if (!FAKE_ACP_LOG) return;
   fs.writeFileSync(`${FAKE_ACP_LOG}.tmp`, JSON.stringify({ prompts: log, cancels, outcomes, modes, maxConcurrency }));
@@ -79,6 +86,10 @@ const methods = {
       };
       const timer = setTimeout(() => {
         update(sessionId, 'agent_thought_chunk', 'thinking...');
+        if (FAKE_ACP_SPLIT) {
+          split(sessionId, FAKE_ACP_SPLIT === 'ids');
+          return done({ stopReason: 'end_turn' });
+        }
         update(sessionId, 'agent_message_chunk', `echo(${sessionId}): `);
         update(sessionId, 'agent_message_chunk', `${FAKE_ACP_REPLY ?? text.split('\n').at(-1)}${chosen && ` [${chosen}]`}`);
         if (FAKE_ACP_STOP === 'refusal') done({ stopReason: 'refusal' });
