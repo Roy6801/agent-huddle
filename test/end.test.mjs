@@ -82,43 +82,56 @@ test('end without --yes and without a TTY ends nothing', async () => {
   assert.ok(room.id);
 });
 
-test('end --yes ends the last room and stops the server', async () => {
+test('end --yes ends the last room and leaves the server running', async () => {
   const ctx = await setup();
   const room = await newRoom(ctx, 'demo run');
   const res = await cli(ctx, 'end', 'demo run', '--yes');
   assert.equal(res.code, 0, res.stderr);
   assert.ok(res.stdout.includes(`Ended "demo run" (${room.id.slice(0, 8)})`));
+  assert.match(
+    res.stdout,
+    /No rooms left; the server keeps running\. Stop it with (agent-huddle|node huddle\.mjs) down, or it stops after 30 idle minutes\./,
+  );
+  assert.doesNotMatch(res.stdout, /Server stopped/);
+  assert.ok(await serverUp(ctx));
+  assert.equal((await live(ctx)).length, 0);
+});
+
+test('ending one of two rooms keeps the server running, even with --stop-server', async () => {
+  const ctx = await setup();
+  await newRoom(ctx, 'one');
+  await newRoom(ctx, 'two');
+  const res = await cli(ctx, 'end', 'one', '--yes', '--stop-server');
+  assert.equal(res.code, 0, res.stderr);
+  assert.match(res.stdout, /1 room\(s\) still live; server keeps running\./);
+  assert.ok(await serverUp(ctx));
+});
+
+test('--stop-server stops the server after the last room', async () => {
+  const ctx = await setup();
+  await newRoom(ctx, 'solo');
+  const res = await cli(ctx, 'end', 'solo', '--yes', '--stop-server');
+  assert.equal(res.code, 0, res.stderr);
   assert.match(res.stdout, /Server stopped \(no rooms left\)\./);
   await waitDown(ctx);
   assert.equal(await serverUp(ctx), false);
   assert.equal(fs.existsSync(stateFile(ctx)), false);
 });
 
-test('ending one of two rooms keeps the server running', async () => {
-  const ctx = await setup();
-  await newRoom(ctx, 'one');
-  await newRoom(ctx, 'two');
-  const res = await cli(ctx, 'end', 'one', '--yes');
-  assert.equal(res.code, 0, res.stderr);
-  assert.match(res.stdout, /1 room\(s\) still live; server keeps running\./);
-  assert.ok(await serverUp(ctx));
-});
-
-test('--keep-server leaves the server running after the last room', async () => {
+test('--keep-server is still accepted and leaves the server running', async () => {
   const ctx = await setup();
   await newRoom(ctx, 'solo');
   const res = await cli(ctx, 'end', 'solo', '--yes', '--keep-server');
   assert.equal(res.code, 0, res.stderr);
-  assert.doesNotMatch(res.stdout, /Server stopped/);
+  assert.match(res.stdout, /No rooms left; the server keeps running\./);
   assert.ok(await serverUp(ctx));
-  assert.equal((await live(ctx)).length, 0);
 });
 
-test('end all --yes ends every room and stops the server', async () => {
+test('end all --yes --stop-server ends every room and stops the server', async () => {
   const ctx = await setup();
   await newRoom(ctx, 'one');
   await newRoom(ctx, 'two');
-  const res = await cli(ctx, 'end', 'all', '--yes');
+  const res = await cli(ctx, 'end', 'all', '--yes', '--stop-server');
   assert.equal(res.code, 0, res.stderr);
   assert.equal((res.stdout.match(/^Ended /gm) || []).length, 2);
   assert.match(res.stdout, /Server stopped/);
