@@ -141,7 +141,6 @@ export function RoundCap() {
     <SettingsEditor
       id="cap"
       lead={<CapMeter />}
-      label="Round cap"
       noun="round cap"
       summary={<span>{roundCap === null ? "No limit set" : `Pause agents after ${roundCap} posts in a row`}</span>}
       onOpen={() => {

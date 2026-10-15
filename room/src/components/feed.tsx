@@ -154,7 +154,7 @@ function SystemLine({ m, fresh }: { m: Message; fresh: boolean }) {
       <span className="flex justify-center pt-[3px]">
         <Icon aria-hidden className={cn("size-3.5", SYS_ICON_CLASS[type])} />
       </span>
-      <span className={cn("min-w-0 break-words", m.brief && "whitespace-pre-wrap")}>
+      <span className="min-w-0 break-words whitespace-pre-wrap">
         {m.brief && <Badge variant="outline" className="mr-1.5 h-5 px-2 text-[11px] font-normal">Brief</Badge>}
         {who ? (
           <>

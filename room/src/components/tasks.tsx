@@ -154,31 +154,19 @@ function TaskTextFields({
   );
 }
 
-function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
+function usePostTask(path: string, onSuccess: () => void) {
   const { pollNow, endHuddle } = useRoom();
   const { post } = useSource();
-  const [base] = useState(() => ({ description: task.description, spec: task.spec }));
-  const [description, setDescription] = useState(base.description ?? "");
-  const [spec, setSpec] = useState(base.spec ?? "");
   const [error, setError] = useState<ErrorInfo | null>(null);
-  const id = useId();
-  const describedBy = error ? `${id}-error` : undefined;
-  const changed = task.description !== base.description || task.spec !== base.spec;
 
-  async function submit() {
-    const body: { description?: string | null; spec?: string | null } = {};
-    const nextDescription = description.trim() || null;
-    const nextSpec = spec.trim() || null;
-    if (nextDescription !== base.description) body.description = nextDescription;
-    if (nextSpec !== base.spec) body.spec = nextSpec;
-    if (!Object.keys(body).length) return onClose();
+  async function send(body: object) {
     try {
-      const { r, data } = await post<{ id?: number }>(`/api/tasks/${task.id}`, body);
+      const { r, data } = await post<{ id?: number }>(path, body);
       if (r.status === 410) {
         endHuddle();
       } else if (r.ok) {
         pollNow();
-        onClose();
+        onSuccess();
       } else {
         setError({ message: errMain(r, data), ...chipsOf(data) });
       }
@@ -187,14 +175,28 @@ function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
     }
   }
 
+  return { error, setError, send };
+}
+
+type TaskFormProps = {
+  id: string;
+  label: string;
+  submitLabel: string;
+  error: ErrorInfo | null;
+  onSubmit: () => void;
+  onClose: () => void;
+  children: ReactNode;
+};
+
+function TaskForm({ id, label, submitLabel, error, onSubmit, onClose, children }: TaskFormProps) {
   return (
     <form
       autoComplete="off"
-      aria-label={`Edit task #${task.id}`}
+      aria-label={label}
       className="grid gap-3 border-t px-3 py-2.5"
       onSubmit={(e) => {
         e.preventDefault();
-        submit();
+        onSubmit();
       }}
       onKeyDown={(e) => {
         if (e.key === "Escape" && !e.defaultPrevented) {
@@ -204,6 +206,41 @@ function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
         }
       }}
     >
+      {children}
+      {error && <ErrorBox id={`${id}-error`} error={error} />}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" size="sm">
+          {submitLabel}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
+  const [base] = useState(() => ({ description: task.description, spec: task.spec }));
+  const [description, setDescription] = useState(base.description ?? "");
+  const [spec, setSpec] = useState(base.spec ?? "");
+  const { error, send } = usePostTask(`/api/tasks/${task.id}`, onClose);
+  const id = useId();
+  const describedBy = error ? `${id}-error` : undefined;
+  const changed = task.description !== base.description || task.spec !== base.spec;
+
+  function submit() {
+    const body: { description?: string | null; spec?: string | null } = {};
+    const nextDescription = description.trim() || null;
+    const nextSpec = spec.trim() || null;
+    if (nextDescription !== base.description) body.description = nextDescription;
+    if (nextSpec !== base.spec) body.spec = nextSpec;
+    if (!Object.keys(body).length) return onClose();
+    return send(body);
+  }
+
+  return (
+    <TaskForm id={id} label={`Edit task #${task.id}`} submitLabel="Save" error={error} onSubmit={submit} onClose={onClose}>
       <TaskTextFields
         id={id}
         describedBy={describedBy}
@@ -214,25 +251,14 @@ function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
       >
         {task.specFile && <p className="text-[11px] text-muted-foreground">Typing a spec replaces the spec file.</p>}
       </TaskTextFields>
-      {error && <ErrorBox id={`${id}-error`} error={error} />}
       {changed && <p className="text-[11px] text-muted-foreground">This task changed since you opened it.</p>}
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button type="submit" size="sm">
-          Save
-        </Button>
-      </div>
-    </form>
+    </TaskForm>
   );
 }
 
-function ReopenTask({ task, onClose }: { task: Task; onClose: () => void }) {
-  const { pollNow, endHuddle } = useRoom();
-  const { post } = useSource();
+function ReopenTask({ task, onClose, onReopened }: { task: Task; onClose: () => void; onReopened: () => void }) {
   const [reason, setReason] = useState("");
-  const [error, setError] = useState<ErrorInfo | null>(null);
+  const { error, setError, send } = usePostTask(`/api/tasks/${task.id}/reopen`, onReopened);
   const field = useRef<HTMLTextAreaElement>(null);
   const id = useId();
   const describedBy = error ? `${id}-error` : undefined;
@@ -241,40 +267,13 @@ function ReopenTask({ task, onClose }: { task: Task; onClose: () => void }) {
     field.current?.focus();
   }, []);
 
-  async function submit() {
+  function submit() {
     if (!reason.trim()) return setError({ message: "Enter a reason." });
-    try {
-      const { r, data } = await post<{ id?: number }>(`/api/tasks/${task.id}/reopen`, { reason: reason.trim() });
-      if (r.status === 410) {
-        endHuddle();
-      } else if (r.ok) {
-        pollNow();
-        onClose();
-      } else {
-        setError({ message: errMain(r, data), ...chipsOf(data) });
-      }
-    } catch {
-      setError({ message: "Could not reach the server." });
-    }
+    return send({ reason: reason.trim() });
   }
 
   return (
-    <form
-      autoComplete="off"
-      aria-label={`Reopen task #${task.id}`}
-      className="grid gap-3 border-t px-3 py-2.5"
-      onSubmit={(e) => {
-        e.preventDefault();
-        submit();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape" && !e.defaultPrevented) {
-          e.preventDefault();
-          e.stopPropagation();
-          onClose();
-        }
-      }}
-    >
+    <TaskForm id={id} label={`Reopen task #${task.id}`} submitLabel="Reopen" error={error} onSubmit={submit} onClose={onClose}>
       <div className="grid gap-1.5">
         <label htmlFor={`${id}-reason`} className="text-xs font-medium text-muted-foreground">
           Reason
@@ -290,16 +289,7 @@ function ReopenTask({ task, onClose }: { task: Task; onClose: () => void }) {
         />
         <Count id={`${id}-reason-count`} text={reason} max={MAX_REASON} />
       </div>
-      {error && <ErrorBox id={`${id}-error`} error={error} />}
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button type="submit" size="sm">
-          Reopen
-        </Button>
-      </div>
-    </form>
+    </TaskForm>
   );
 }
 
@@ -341,36 +331,25 @@ function TaskCard({ task }: { task: Task }) {
   const Icon = status.icon;
   const done = task.status === "done";
   const { ended } = useRoom().state;
-  const [editing, setEditing] = useState(false);
-  const [reopening, setReopening] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
-  const editTrigger = useRef<HTMLButtonElement>(null);
-  const editable = !done && !ended;
-  const reopenable = done && !ended;
-  const reopenTrigger = useRef<HTMLButtonElement>(null);
+  const action = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (editing && !editable) {
-      setEditing(false);
+    if (formOpen) {
+      setFormOpen(false);
       trigger.current?.focus();
     }
-  }, [editing, editable]);
+  }, [done, ended]);
 
-  useEffect(() => {
-    if (reopening && !reopenable) {
-      setReopening(false);
-      trigger.current?.focus();
-    }
-  }, [reopening, reopenable]);
-
-  function closeReopen() {
-    setReopening(false);
-    requestAnimationFrame(() => reopenTrigger.current?.focus());
+  function closeForm() {
+    setFormOpen(false);
+    requestAnimationFrame(() => action.current?.focus());
   }
 
-  function closeEdit() {
-    setEditing(false);
-    requestAnimationFrame(() => editTrigger.current?.focus());
+  function reopened() {
+    setFormOpen(false);
+    requestAnimationFrame(() => trigger.current?.focus());
   }
 
   return (
@@ -379,10 +358,7 @@ function TaskCard({ task }: { task: Task }) {
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
-        if (!o) {
-          setEditing(false);
-          setReopening(false);
-        }
+        if (!o) setFormOpen(false);
       }}
     >
       <li className={cn("rounded-lg border bg-background/60 transition-colors", done && "bg-transparent", open && "bg-background")}>
@@ -459,43 +435,31 @@ function TaskCard({ task }: { task: Task }) {
             )}
             {task.reopened && (
               <Row label="Reopened by">
-                <span className="break-words whitespace-pre-wrap">
-                  <span className="font-mono">{who(task.reopened.by)}</span>: {task.reopened.reason}
+                <span className="flex min-w-0 items-start gap-1">
+                  <Person handle={task.reopened.by} />
+                  <span className="break-words whitespace-pre-wrap">: {task.reopened.reason}</span>
                 </span>
               </Row>
             )}
           </dl>
-          {editable &&
-            (editing ? (
-              <EditTask task={task} onClose={closeEdit} />
+          {!ended &&
+            (formOpen ? (
+              done ? (
+                <ReopenTask task={task} onClose={closeForm} onReopened={reopened} />
+              ) : (
+                <EditTask task={task} onClose={closeForm} />
+              )
             ) : (
               <div className="flex justify-end px-3 pb-2.5">
                 <Button
-                  ref={editTrigger}
+                  ref={action}
                   type="button"
                   variant="ghost"
                   size="sm"
-                  aria-label={`Edit task #${task.id}`}
-                  onClick={() => setEditing(true)}
+                  aria-label={`${done ? "Reopen" : "Edit"} task #${task.id}`}
+                  onClick={() => setFormOpen(true)}
                 >
-                  Edit
-                </Button>
-              </div>
-            ))}
-          {reopenable &&
-            (reopening ? (
-              <ReopenTask task={task} onClose={closeReopen} />
-            ) : (
-              <div className="flex justify-end px-3 pb-2.5">
-                <Button
-                  ref={reopenTrigger}
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  aria-label={`Reopen task #${task.id}`}
-                  onClick={() => setReopening(true)}
-                >
-                  Reopen
+                  {done ? "Reopen" : "Edit"}
                 </Button>
               </div>
             ))}
