@@ -1,9 +1,9 @@
 /* Plain CSS on the room's tokens: index.css keeps src/demo out of Tailwind's sources, so page.html
-   carries none of the demo. Phones: under the header on the right, and under the "waiting on you"
-   banner while it shows. Wider: the foot of the agents panel, or stacked in its rail when collapsed. */
+   carries none of the demo. Phones: bottom right, just above the composer, clear of the brief bar and
+   the header. Wider: the foot of the agents panel, or stacked in its rail when collapsed. */
 .demo-controls {
   position: fixed;
-  top: 4rem;
+  bottom: 5rem;
   right: 0.5rem;
   z-index: 40;
   display: flex;
@@ -29,15 +29,8 @@
   text-transform: uppercase;
 }
 
-@media (max-width: 767px) {
-  .demo-controls[data-at-cap] {
-    top: 7.5rem;
-  }
-}
-
 @media (min-width: 768px) {
   .demo-controls {
-    top: auto;
     right: auto;
     bottom: 0.75rem;
     left: 0.75rem;
