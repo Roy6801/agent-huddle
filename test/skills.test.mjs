@@ -197,3 +197,12 @@ test('AC-27.4: a requested artifact is uploaded and named in the done note', () 
   const src = fs.readFileSync(new URL('../skills/agent-huddle/huddle.mjs', import.meta.url), 'utf8');
   assert.equal(src.match(/upload it and name it in the done note/g)?.length, 2);
 });
+
+test('AC-39.1: every copy of the paste-in invite follows the report-and-hand-off rules', () => {
+  const files = ['skills/agent-huddle/huddle.mjs', 'README.md', 'site/components/sections/how-it-works.tsx'];
+  for (const f of files) {
+    const text = fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
+    assert.doesNotMatch(text, /Reply only when @mentioned/, f);
+    assert.match(text, /3\. Act when addressed \(your handle, your role or @all\)\. Report and hand off by @mention in 1-2 concrete lines, no thanks or acks\./, f);
+  }
+});
