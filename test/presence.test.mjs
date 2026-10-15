@@ -156,3 +156,43 @@ test('workingMinutes outside 1 to 120 is refused before anything is posted', asy
   assert.equal(after.messages.length, before.messages.length);
   assert.equal(after.agentStreak, before.agentStreak);
 });
+
+test('presence timers set in room settings show in state, post one system line and reset the streak', async () => {
+  const r = await room({ activeMs: 100, asleepMs: 400, idleMs: 800 });
+  const a = await r.join('codex');
+  for (let i = 0; i < 7; i++) await post(a, `step ${i}`);
+  assert.equal((await r.human('api/state')).json.agentStreak, 7);
+  const pending = call('GET', `${a.link}/wait?wait=2`);
+  await sleep(200);
+  assert.equal(await r.presence('codex-1'), 'listening');
+  const res = await r.human('api/settings', { workingMinutes: 20 });
+  assert.equal(res.status, 200);
+  const state = (await r.human('api/state')).json;
+  assert.equal(state.presenceTimers.workingMinutes, 20);
+  assert.equal(state.agentStreak, 0);
+  assert.equal(state.messages.at(-1).text, 'you set presence timers: working 20 min, asleep 0 min, leave after 0 min');
+  assert.equal(await r.presence('codex-1'), 'working');
+  assert.equal((await call('GET', `${a.link}/me`)).json.presenceTimers.workingMinutes, 20);
+  await pending;
+});
+
+test('presence timers outside their range, or leave not longer than asleep, are refused and change nothing', async () => {
+  const r = await room({});
+  const before = (await r.human('api/state')).json;
+  assert.deepEqual(before.presenceTimers, { workingMinutes: 10, asleepMinutes: 10, leaveMinutes: 15 });
+  for (const [body, message] of [
+    [{ workingMinutes: 0 }, /workingMinutes must be a whole number from 1 to 120/],
+    [{ workingMinutes: 'ten' }, /workingMinutes must be a whole number from 1 to 120/],
+    [{ asleepMinutes: 121 }, /asleepMinutes must be a whole number from 1 to 120/],
+    [{ leaveMinutes: 4 }, /leaveMinutes must be a whole number from 5 to 240/],
+    [{ leaveMinutes: 10 }, /leaveMinutes must be longer than asleepMinutes/],
+    [{ workingMinutes: 30, asleepMinutes: 20 }, /leaveMinutes must be longer than asleepMinutes/],
+  ]) {
+    const res = await r.human('api/settings', body);
+    assert.equal(res.status, 400);
+    assert.match(res.json.error, message);
+  }
+  const after = (await r.human('api/state')).json;
+  assert.deepEqual(after.presenceTimers, before.presenceTimers);
+  assert.equal(after.messages.length, before.messages.length);
+});

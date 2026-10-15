@@ -143,6 +143,30 @@ function parseHeadless(body, current) {
   return next;
 }
 
+const PRESENCE_LIMITS = { workingMinutes: [1, 120], asleepMinutes: [1, 120], leaveMinutes: [5, 240] };
+const PRESENCE_FIELDS = { workingMinutes: 'workingMs', asleepMinutes: 'asleepMs', leaveMinutes: 'leaveMs' };
+
+function parsePresence(body, current) {
+  const next = { ...current };
+  for (const [key, [min, max]] of Object.entries(PRESENCE_LIMITS)) {
+    if (body[key] === undefined) continue;
+    if (!Number.isInteger(body[key]) || body[key] < min || body[key] > max) {
+      throw new HttpError(400, `${key} must be a whole number from ${min} to ${max}`);
+    }
+    next[PRESENCE_FIELDS[key]] = body[key] * 60000;
+  }
+  if ((body.asleepMinutes !== undefined || body.leaveMinutes !== undefined) && next.leaveMs <= next.asleepMs) {
+    throw new HttpError(400, 'leaveMinutes must be longer than asleepMinutes');
+  }
+  return next;
+}
+
+const presenceTimers = (timers) => ({
+  workingMinutes: Math.round(timers.workingMs / 60000),
+  asleepMinutes: Math.round(timers.asleepMs / 60000),
+  leaveMinutes: Math.round(timers.leaveMs / 60000),
+});
+
 function parseFolder(v) {
   if (v === undefined || v === null) return null;
   if (typeof v !== 'string' || v.length > 1024 || !path.isAbsolute(v)) {
@@ -737,18 +761,25 @@ export function createHuddle(opts = {}) {
   function setSettings(s, body) {
     const cap = body.roundCap === undefined ? s.roundCap : parseRoundCap(body.roundCap);
     const headless = parseHeadless(body, s.headless);
+    const timers = parsePresence(body, s.timers);
     const capChanged = body.roundCap !== undefined;
+    const timersChanged = Object.keys(timers).some((k) => timers[k] !== s.timers[k]);
     const budgetsChanged = Object.keys(headless).some((k) => headless[k] !== s.headless[k]);
-    if (!capChanged && !Object.keys(HEADLESS_LIMITS).some((k) => body[k] !== undefined)) {
-      throw new HttpError(400, 'send roundCap, wakesPerHour, runMinutes or idleMinutes');
+    if (!capChanged && ![...Object.keys(HEADLESS_LIMITS), ...Object.keys(PRESENCE_LIMITS)].some((k) => body[k] !== undefined)) {
+      throw new HttpError(400, 'send roundCap, wakesPerHour, runMinutes, idleMinutes, workingMinutes, asleepMinutes or leaveMinutes');
     }
     s.roundCap = cap;
     s.headless = headless;
+    s.timers = timers;
     if (capChanged) {
       system(s, cap === null ? "you turned the round cap off (agents won't pause for you)" : `you set the round cap to ${cap}`);
     }
     if (budgetsChanged) {
       system(s, `you set headless budgets: ${headless.wakesPerHour} wakes/h, ${headless.runMinutes} min/run, stop after ${headless.idleMinutes} min idle`);
+    }
+    if (timersChanged) {
+      const p = presenceTimers(timers);
+      system(s, `you set presence timers: working ${p.workingMinutes} min, asleep ${p.asleepMinutes} min, leave after ${p.leaveMinutes} min`);
     }
     return { roundCap: s.roundCap };
   }
@@ -1109,6 +1140,7 @@ How the room works:
             unread: unreadCount(s, agent),
             roundCap: s.roundCap,
             headless: s.headless,
+            presenceTimers: presenceTimers(s.timers),
             stopRequested: agent.stopRequested === true,
             addressed: hasAddressedUnread(s, agent),
           });
@@ -1185,6 +1217,7 @@ How the room works:
         asks: s.asks,
         roundCap: s.roundCap,
         headless: s.headless,
+        presenceTimers: presenceTimers(s.timers),
         agentStreak: s.agentStreak,
         folder: s.folder,
         worker: THIS_FILE,
