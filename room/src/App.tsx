@@ -66,6 +66,7 @@ function Banners() {
           </span>
           <div className="text-[13px] leading-5">
             <strong className="block font-semibold">This room has ended</strong>
+            {state.endedNote && <span className="block break-words text-muted-foreground">{state.endedNote}</span>}
             <span className="text-muted-foreground">
               Start a new one with{" "}
               <code className="rounded-md border bg-background px-1.5 font-mono text-xs text-foreground/80">/huddle-start</code>{" "}

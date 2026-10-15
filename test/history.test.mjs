@@ -46,7 +46,8 @@ async function room(name, opts = {}) {
   const files = () => fs.readdirSync(historyDir).filter((f) => f.endsWith('.jsonl'));
   const text = () => fs.readFileSync(path.join(historyDir, files()[0]), 'utf8');
   const lines = () => text().trimEnd().split('\n').map((l) => JSON.parse(l));
-  return { created, join, state, historyDir, files, text, lines };
+  const end = async () => (await call('POST', `http://127.0.0.1:${port}/admin/rooms/${created.id}/end`, undefined, { authorization: 'Bearer admin' })).json;
+  return { created, join, state, historyDir, files, text, lines, end };
 }
 
 test('AC-93: a live room is appended to one dated file, starting with the room line', async () => {
@@ -161,6 +162,39 @@ test('AC-97: an unwritable history folder tells you once and the room still work
   assert.equal(notices[0].toYou, true);
   assert.equal(notices[0].kind, 'system');
   assert.deepEqual(r.files(), []);
+  const ended = await r.end();
+  assert.equal(ended.transcript, null);
+  assert.equal(ended.historyError, 'EACCES');
+});
+
+test('AC-95: ending a room writes a readable transcript next to its history', async () => {
+  const r = await room('transcript test');
+  const agents = [];
+  for (const harness of ['claude', 'codex', 'opencode', 'dsh', 'claude']) agents.push(await r.join({ harness }));
+  for (const [i, a] of agents.entries()) {
+    assert.equal((await call('POST', `${a.link}/tasks`, { title: `task ${i + 1}` })).status, 200);
+    assert.equal((await call('POST', `${a.link}/tasks/${i + 1}/claim`)).status, 200);
+    assert.equal((await call('POST', `${a.link}/post`, { text: `working on ${i + 1}\nsecond line` })).status, 200);
+    assert.equal((await call('POST', `${a.link}/tasks/${i + 1}/done`, { note: `note ${i + 1}` })).status, 200);
+  }
+  const ended = await r.end();
+  const jsonl = path.join(r.historyDir, r.files()[0]);
+  assert.equal(ended.transcript, jsonl.replace(/\.jsonl$/, '.md'));
+  assert.equal(fs.statSync(ended.transcript).mode & 0o777, 0o600);
+  const md = fs.readFileSync(ended.transcript, 'utf8');
+  assert.ok(md.startsWith('# transcript test\n'));
+  const section = (h) => md.split(`## ${h}\n\n`)[1].split('\n\n')[0].split('\n');
+  assert.deepEqual(section('Agents'), ['- claude-1 (claude)', '- codex-1 (codex)', '- opencode-1 (opencode)', '- dsh-1 (dsh)', '- claude-2 (claude)']);
+  assert.deepEqual(section('Tasks'), agents.map((a, i) => `- #${i + 1} task ${i + 1} (done by ${a.handle}): note ${i + 1}`));
+  const lines = r.lines();
+  const messages = lines.filter((l) => l.type === 'message');
+  assert.ok(messages.some((m) => m.offShift));
+  assert.equal(section('Messages').filter((l) => /^- \d\d:\d\d /.test(l)).length, messages.length);
+  assert.match(md, /: working on 1\n {4}second line\n/);
+  assert.deepEqual(lines.at(-1), { at: lines.at(-1).at, type: 'end', transcript: ended.transcript });
+  const gone = await call('POST', `${agents[0].link}/post`, { text: 'late' });
+  assert.equal(gone.status, 410);
+  assert.equal(gone.json.message, `This room has ended. Its transcript is at ${ended.transcript}.`);
 });
 
 test('history holds no page token, agent link, lead key or full room id', async () => {
@@ -205,7 +239,16 @@ test('the server writes history under AGENT_HUDDLE_HOME', async () => {
     const files = fs.readdirSync(path.join(home, 'history'));
     assert.deepEqual(files.map((f) => f.slice(11)), [`home-room-${id.slice(0, 8)}.jsonl`]);
     assert.equal(fs.statSync(path.join(home, 'history')).mode & 0o777, 0o700);
+    const ended = await run(env, 'end', id, '--yes', '--keep-server');
+    assert.match(ended.stdout, new RegExp(`\nTranscript: ${path.join(home, 'history')}/.*-${id.slice(0, 8)}\\.md\n`));
+    if (process.getuid?.() !== 0) {
+      fs.chmodSync(path.join(home, 'history'), 0o500);
+      const second = JSON.parse((await run(env, 'new', 'off room')).stdout);
+      const off = await run(env, 'end', second.id, '--yes', '--keep-server');
+      assert.match(off.stdout, /\nNo transcript written: history is not being saved \(EACCES\)\.\n/);
+    }
   } finally {
+    if (fs.existsSync(path.join(home, 'history'))) fs.chmodSync(path.join(home, 'history'), 0o700);
     await run(env, 'down');
   }
 });

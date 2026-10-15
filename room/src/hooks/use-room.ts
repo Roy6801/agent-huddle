@@ -31,6 +31,8 @@ export type RoomState = {
   notice: string;
   loaded: boolean;
   ended: boolean;
+  /** What the server said beyond "This room has ended.", such as where its transcript is. */
+  endedNote?: string;
 };
 
 const INITIAL: RoomState = {
@@ -63,11 +65,11 @@ export function useRoomState() {
   const ended = useRef(false);
   const sig = useRef({ agents: "", tasks: "", asks: "" });
 
-  const endHuddle = useCallback(() => {
+  const endHuddle = useCallback((note?: string) => {
     if (ended.current) return;
     ended.current = true;
     clearTimeout(timer.current);
-    setState((s) => ({ ...s, ended: true, conn: "ended", notice: "" }));
+    setState((s) => ({ ...s, ended: true, endedNote: note || undefined, conn: "ended", notice: "" }));
   }, []);
 
   const poll = useCallback(async () => {
@@ -77,7 +79,8 @@ export function useRoomState() {
     try {
       const r = await fetch(`${base}/api/state?since=${lastId.current}`, { cache: "no-store" });
       if (r.status === 410) {
-        endHuddle();
+        const body: ApiError | null = await r.json().catch(() => null);
+        endHuddle(body?.message?.replace(/^This room has ended\.\s*/, ""));
       } else if (r.status === 401 || r.status === 404) {
         setState((s) => ({ ...s, notice: GONE, conn: "gone" }));
         delay = 5000;
