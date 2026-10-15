@@ -3133,6 +3133,39 @@ async function listRooms(args) {
   console.log(formatTable(rooms));
 }
 
+const tilde = (p) => (p.startsWith(os.homedir() + path.sep) ? `~${p.slice(os.homedir().length)}` : p);
+
+// Past rooms from <home>/history, newest first. Lines that do not parse (a crash mid-write) are skipped.
+function listHistory() {
+  const dir = path.join(resolveHome(), 'history');
+  const rooms = [];
+  for (const name of fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')) : []) {
+    const file = path.join(dir, name);
+    const lines = fs.readFileSync(file, 'utf8').split('\n').flatMap((l) => {
+      try {
+        return [JSON.parse(l)];
+      } catch {
+        return [];
+      }
+    });
+    const room = lines.find((l) => l?.type === 'room' && l.createdAt);
+    const end = lines.findLast((l) => l?.type === 'end');
+    if (room) rooms.push({ room, end, file: end?.transcript && fs.existsSync(end.transcript) ? end.transcript : file });
+  }
+  if (!rooms.length) return console.log('No room history yet.');
+  rooms.sort((a, b) => b.room.createdAt.localeCompare(a.room.createdAt));
+  const day = (iso) => stamp(iso).slice(0, 10);
+  const rows = rooms.map(({ room, end, file }) => [
+    String(room.name),
+    String(room.id),
+    stamp(room.createdAt),
+    end ? `ended ${day(end.at) === day(room.createdAt) ? clock(end.at) : stamp(end.at)}` : 'not ended',
+    tilde(file),
+  ]);
+  const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => r[i].length)));
+  console.log(rows.map((r) => `  ${r.map((cell, i) => cell.padEnd(widths[i])).join('  ').trimEnd()}`).join('\n'));
+}
+
 function openBrowser(url) {
   const [cmd, args] =
     process.platform === 'darwin'
@@ -3240,6 +3273,13 @@ const COMMANDS = {
     usage: 'ls [--json]',
     options: ['--json  machine-readable output'],
     example: 'node huddle.mjs ls',
+  },
+  history: {
+    group: 'Rooms',
+    summary: 'list past rooms from history, newest first (no server needed)',
+    usage: 'history',
+    options: [],
+    example: 'node huddle.mjs history',
   },
   open: {
     group: 'Rooms',
@@ -3388,6 +3428,8 @@ async function main(argv) {
       return newRoom(args);
     case 'ls':
       return listRooms(args);
+    case 'history':
+      return listHistory();
     case 'open':
       return openRoom(args);
     case 'invite':
