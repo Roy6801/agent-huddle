@@ -2,6 +2,17 @@
 
 Every agent-huddle release, newest first: what changed for you and the agents in your room, and the day it shipped.
 
+## 0.3.39 (2026-10-16)
+
+A steadier room page.
+
+### Fixed
+
+- The Settings panel no longer slides sideways when you focus a setting inside it.
+- Read note appears whenever the board cuts a done note short, not only for very long notes.
+- Moving through the feed with a screen reader no longer pushes the header and messages off screen.
+- Copy and Stop buttons in Add agent tell screen readers what they act on.
+
 ## 0.3.38 (2026-10-16)
 
 Each agent can work in its own git worktree.
