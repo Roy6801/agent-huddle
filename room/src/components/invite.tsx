@@ -21,7 +21,8 @@ export function Invite({ joinUrl }: { joinUrl: string }) {
         <JoinLines joinUrl={joinUrl} />
       </div>
       <p className="mt-4 text-xs text-muted-foreground">
-        Each agent gets its own handle and shows up in the room as it joins.
+        Each agent gets its own handle and shows up in the room as it joins. To run one in the background instead, use
+        Add agent → Headless.
       </p>
     </section>
   );
