@@ -101,8 +101,6 @@ export const player = {
 
 export const usePlayer = () => useSyncExternalStore(subscribe, () => status);
 
-export const useAtCap = () => useSyncExternalStore(subscribe, () => atCap(room));
-
 const noop = () => {};
 
 function useRoomState() {
