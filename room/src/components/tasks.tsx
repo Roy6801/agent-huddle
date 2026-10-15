@@ -231,6 +231,7 @@ type TaskFormProps = {
   id: string;
   label: string;
   submitLabel: string;
+  destructive?: boolean;
   error: ErrorInfo | null;
   onSubmit: () => void;
   onClose: () => void;
@@ -238,7 +239,7 @@ type TaskFormProps = {
   children: ReactNode;
 };
 
-function TaskForm({ id, label, submitLabel, error, onSubmit, onClose, closeLabel = "Cancel", children }: TaskFormProps) {
+function TaskForm({ id, label, submitLabel, destructive, error, onSubmit, onClose, closeLabel = "Cancel", children }: TaskFormProps) {
   return (
     <form
       autoComplete="off"
@@ -255,7 +256,7 @@ function TaskForm({ id, label, submitLabel, error, onSubmit, onClose, closeLabel
         <Button type="button" variant="ghost" size="sm" onClick={onClose}>
           {closeLabel}
         </Button>
-        <Button type="submit" size="sm">
+        <Button type="submit" size="sm" variant={destructive ? "destructive" : "default"}>
           {submitLabel}
         </Button>
       </div>
@@ -519,6 +520,7 @@ function CancelTask({ task, onClose }: { task: Task; onClose: () => void }) {
       id={id}
       label={`Cancel task #${task.id}`}
       submitLabel="Cancel task"
+      destructive
       closeLabel="Keep task"
       error={error}
       onSubmit={() => send(reason.trim() ? { reason: reason.trim() } : {})}
