@@ -196,10 +196,47 @@ test('a very long old and new folder pair still creates the move task', async ()
   const b = long(tmp());
   const { join, state, settings, created } = await room({ folder: a });
   const lead = await join({ folder: a, lead: created.lead });
+  await join({ folder: a });
   assert.equal((await settings({ folder: b })).status, 200);
   const st = await state();
   assert.equal(st.folder, b);
   assert.equal(st.tasks.length, 1);
   assert.equal(st.tasks[0].assignee, lead.handle);
   assert.ok(st.tasks[0].description.length <= 2000);
+});
+
+test('AC-23.7: changing the folder before other agents join or any task creates no move task and shifts no task numbers', async () => {
+  const a = tmp();
+  const b = tmp();
+  const c = tmp();
+  const { join, state, settings, created } = await room({ folder: a });
+  assert.equal((await settings({ folder: b })).status, 200);
+  const lead = await join({ folder: a, lead: created.lead });
+  assert.equal((await settings({ folder: c })).status, 200);
+  let st = await state();
+  assert.equal(st.folder, c);
+  assert.equal(st.tasks.length, 0);
+  assert.equal(notes(st, /moved the room folder/).length, 0);
+  const set = notes(st, /you set the room folder to/);
+  assert.equal(set.length, 2);
+  assert.ok(set[1].to.includes(lead.handle));
+  assert.equal((await join({ folder: c })).folder, c);
+
+  const task = await (await post(`${lead.link}/tasks`, { title: 'first' })).json();
+  assert.equal(task.id, 1);
+  assert.equal((await settings({ folder: a })).status, 200);
+  st = await state();
+  assert.equal(notes(st, /moved the room folder/).length, 1);
+  assert.equal(st.tasks.length, 2);
+});
+
+test('AC-23.6: the new reply names the room folder and asks to confirm it before agents join', async () => {
+  const dir = tmp();
+  const { created } = await room({ folder: dir });
+  assert.equal(created.folder, dir);
+  const blocks = created.announce.split('\n\n');
+  assert.equal(blocks[2], `Room folder: ${dir}. Every agent works there. Confirm it before you bring in agents; if it is wrong, change Room folder in the page's settings now, before agents join.`);
+  const none = await room();
+  assert.equal(none.created.folder, null);
+  assert.match(none.created.announce, /No room folder is set\. Set Room folder in the page's settings before you bring in agents\./);
 });

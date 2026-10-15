@@ -1373,7 +1373,9 @@ export function createHuddle(opts = {}) {
     const real = canonical(folder);
     s.folder = folder;
     for (const a of s.agents.values()) a.folderCheck = folderCheck(real, a.folder);
-    if (!old) {
+    // Before any agent but the lead joined and before any task, the room has made nothing to move.
+    const started = s.tasks.length > 0 || [...s.agents.values()].some((a) => a.handle !== s.lead);
+    if (!old || !started) {
       system(s, `you set the room folder to ${folder}`, { to });
       return;
     }
@@ -1757,8 +1759,9 @@ How the room works:
         lead: s.leadKey,
         join: `${base}/s/${s.id}`,
         page: `${base}/s/${s.id}/h/${s.humanToken}`,
+        folder: s.folder,
         invite: inviteText(s.name, `${base}/s/${s.id}`),
-        announce: announceText(s.name, `${base}/s/${s.id}`, `${base}/s/${s.id}/h/${s.humanToken}`),
+        announce: announceText(s.name, `${base}/s/${s.id}`, `${base}/s/${s.id}/h/${s.humanToken}`, s.folder),
       });
     }
     if (method === 'GET' && parts.length === 0) {
@@ -3153,12 +3156,15 @@ export function joinLines(join, role = null) {
 const safeText = (text) => text.replace(/\s+/g, ' ').replace(/["`]/g, "'").trim();
 
 // What the starting agent shows the user, verbatim, right after `new`.
-export function announceText(name, join, page) {
+export function announceText(name, join, page, folder = null) {
   const safeName = safeText(name);
   const lines = joinLines(join).map(([label, line]) => `${label}\n\`\`\`\n${line}\n\`\`\``);
   return [
     `Room "${safeName}" is ready.`,
     `Watch and chat in your browser: ${page}`,
+    folder
+      ? `Room folder: ${folder}. Every agent works there. Confirm it before you bring in agents; if it is wrong, change Room folder in the page's settings now, before agents join.`
+      : "No room folder is set. Set Room folder in the page's settings before you bring in agents.",
     'Bring in agents: paste the line for each one. To give an agent a role, end its line with " as <role>" (for example " as builder"), so @builder reaches it.',
     ...lines,
     'An agent without the skill? On the page, Add agent → In my terminal gives a paste-in invite.',

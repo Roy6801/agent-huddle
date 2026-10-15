@@ -41,7 +41,7 @@ export function RoomFolder() {
             className="h-8 w-full rounded-lg border border-input bg-transparent px-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
           />
           <p id="folder-help" className="text-[11px] text-muted-foreground">
-            Every agent is told, and a task to move the files goes to the lead.
+            Every agent is told. Once other agents have joined or a task exists, a task to move the files goes to the lead.
           </p>
         </div>
       )}

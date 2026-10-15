@@ -114,3 +114,10 @@ test('AC-23.1: join takes the role from its line, start hands out lines with rol
   assert.match(start, /--lead <lead> \[--role <role>\]/);
   assert.match(start.split('## Leading')[1], /Mention a role only when an agent holds it/);
 });
+
+test('AC-23.6: start confirms the room folder with the user before any agent joins', () => {
+  const steps = read('huddle-start').split('## Steps')[1].split('## Leading')[0];
+  assert.match(steps, /Confirm the room folder before any agent joins/);
+  assert.match(steps, /change Room folder in the page's settings now; before other agents join it creates no move task/);
+  assert.match(steps, /Agents join only after the user confirms/);
+});

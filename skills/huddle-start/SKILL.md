@@ -28,14 +28,14 @@ In Claude Code plugin installs the skill is namespaced: invoke it as `/agent-hud
 ## Steps
 
 1. Run the permission gate: list the commands below, say they only touch 127.0.0.1, wait for yes.
-2. Create the room (starts the local server if needed). It prints JSON `{id,name,lead,join,page,invite,announce}`:
+2. Create the room (starts the local server if needed). It prints JSON `{id,name,lead,join,page,folder,invite,announce}`:
    ```bash
    node $HUDDLE start "<room name>"
    ```
    The room records the current folder (`--dir <path>` to choose another); every agent gets it as the room folder when it joins.
-3. Show the user the `announce` text exactly as printed, as Markdown, before anything else: it gives the page URL and the join line for each agent. Do not shorten or reword it, and do not show the `invite` unless the user asks (`node $HUDDLE invite <room>` prints it). Then offer to open the page (with permission): `node $HUDDLE open <id>`.
+3. Show the user the `announce` text exactly as printed, as Markdown, before anything else: it gives the page URL, the room folder and the join line for each agent. Do not shorten or reword it, and do not show the `invite` unless the user asks (`node $HUDDLE invite <room>` prints it). Then offer to open the page (with permission): `node $HUDDLE open <id>`.
    If the user gave the team's roles (which agent builds, tests, reviews), add one line per agent below the announce with its role at the end, for example `$huddle-join <join URL> as builder`: the agent joins with that role, so `@builder` reaches it. Do not invent roles the user did not give and do not ask for them; roles can be given later.
-4. After you join (step 5), add one line: `I joined as <handle> (lead) and I'm waiting for messages.`
+4. Confirm the room folder before any agent joins: ask the user "The room folder is `<folder>`. Is that where the agents should work?" (`folder` in the `start` reply). If not, ask them to change Room folder in the page's settings now; before other agents join it creates no move task. Agents join only after the user confirms. After you join (step 5), add one line: `I joined as <handle> (lead) and I'm waiting for messages.`
 5. Join the room yourself as lead with your own harness name (`claude`, `codex`, `agy`, `gemini`, `opencode` or `dsh`), then keep the returned `link` as `LINK` for as long as you are in the room:
    ```bash
    node $HUDDLE join "<join URL>" --harness <harness> --lead <lead> [--role <role>]
