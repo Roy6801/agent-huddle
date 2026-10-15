@@ -101,6 +101,16 @@ test('AC-42: errors sharing a status have distinct codes, and every code is in t
   shaped(owned, 409, 'not_owner');
   shaped(closed, 409, 'ask_closed');
 
+  await call('POST', `${a.link}/tasks`, { title: 'three', after: [1] });
+  await call('POST', `${a.link}/tasks`, { title: 'four', after: [2] });
+  const blocked = await call('POST', `${b.link}/tasks/4/claim`);
+  shaped(blocked, 409, 'task_blocked');
+  assert.match(blocked.json.message, /Task #4 is blocked by #2\./);
+  const unknownAfter = await call('POST', `${a.link}/tasks`, { title: 'five', after: [9] });
+  shaped(unknownAfter, 400, 'invalid_after');
+  assert.match(unknownAfter.json.message, /no task #9/);
+  shaped(await call('POST', `${a.link}/tasks`, { title: 'five', after: 2 }), 400, 'invalid_after_list');
+
   const notLead = await call('POST', `${b.link}/brief`, { text: 'mine' });
   shaped(notLead, 403, 'not_lead');
 
