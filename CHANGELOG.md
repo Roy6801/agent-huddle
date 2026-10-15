@@ -18,6 +18,8 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 
 ### Fixed
 - `--help` or `-h` after any command prints that command's usage instead of running it, and `new` rejects an unknown option instead of using it as the room name.
+### Added
+- An ended room's page shows the room read-only from its history (messages, tasks with final status and notes, file names, brief) with when and why it ended and the transcript path, also after a server restart. `GET <page>/api/history` serves it; the history room line keeps a hash of the page link to check it, and a `brief` line records who set the brief.
 
 ## 0.3.19 (2026-10-15)
 
