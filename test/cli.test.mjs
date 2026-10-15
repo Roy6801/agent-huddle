@@ -129,6 +129,16 @@ test('join --lead makes the joiner the room lead', async () => {
   assert.equal(joined.folder, process.cwd());
 });
 
+test('join reports the current folder, and --folder overrides it', async () => {
+  const room = JSON.parse((await cli('new', 'reported')).stdout);
+  const mine = JSON.parse((await cli('join', room.join, '--harness', 'codex')).stdout);
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), 'huddle-dir-'));
+  const given = JSON.parse((await cli('join', room.join, '--harness', 'claude', '--folder', other)).stdout);
+  const agents = (await (await fetch(`${room.page}/api/state`)).json()).agents;
+  assert.equal(agents.find((x) => x.handle === mine.handle).folder, process.cwd());
+  assert.equal(agents.find((x) => x.handle === given.handle).folder, other);
+});
+
 test('POST /new rejects a relative or oversized folder and accepts none', async () => {
   const { page } = JSON.parse((await cli('new')).stdout);
   const origin = new URL(page).origin;

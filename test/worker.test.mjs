@@ -104,6 +104,7 @@ test('a headless codex answers mentions in the same session', async () => {
   const who = await (await fetch(`${claude.link}/who`)).json();
   const roster = who.agents.find((a) => a.handle === 'codex-1');
   assert.equal(roster.role, 'headless');
+  assert.equal(roster.folder, home);
 
   const replies = async () => (await (await fetch(`${claude.link}/read?limit=500`)).json()).messages.filter((m) => m.from === 'codex-1');
   const seen = [];
