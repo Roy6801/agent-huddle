@@ -621,6 +621,27 @@ export function createHuddle(opts = {}) {
     return task;
   }
 
+  function editTask(s, editor, n, body) {
+    const task = getTask(s, n);
+    if (editor !== 'you' && task.createdBy !== editor) {
+      throw new HttpError(403, `only the creator or you can edit task #${n}`);
+    }
+    if (task.status === 'done') throw new HttpError(409, 'task is done');
+    const fields = taskFields(s, body);
+    if (!Object.keys(fields).length) throw new HttpError(400, 'send description, spec or specFile');
+    Object.assign(task, fields);
+    if (fields.spec != null) task.specFile = null;
+    else if (fields.specFile != null) task.spec = null;
+    const target = task.owner ?? task.assignee;
+    const notify = Boolean(target) && target !== editor && s.agents.get(target)?.status !== 'left';
+    system(s, `${editor} edited task #${task.id} "${task.title}"`, {
+      mentions: notify ? [target] : [],
+      to: notify ? [target] : [],
+      task: task.id,
+    });
+    return taskView(s, task, true);
+  }
+
   function taskAction(s, agent, n, action, body) {
     const task = getTask(s, n);
     const h = agent.handle;
@@ -1082,6 +1103,10 @@ How the room works:
       }
     } else if (method === 'POST') {
       if (taskMatch) return ok(taskAction(s, agent, taskMatch[1], taskMatch[2], body));
+      if (taskGetMatch) {
+        editTask(s, agent.handle, taskGetMatch[1], body);
+        return ok(agentTaskView(s, agent, getTask(s, taskGetMatch[1])));
+      }
       if (askCancelMatch) return ok(cancelAsk(s, agent, askCancelMatch[1]));
       if (upload) {
         const f = await receiveFile(s, req, res, url, agent.handle);
@@ -1149,6 +1174,8 @@ How the room works:
     const stopMatch = method === 'POST' && /^api\/agents\/([\w-]+)\/stop$/.exec(key);
     if (stopMatch) return acted(200, stopAgent(s, stopMatch[1]));
     if (method === 'POST' && key === 'api/tasks') return acted(200, createTask(s, 'you', body));
+    const taskEditMatch = method === 'POST' && /^api\/tasks\/(\d+)$/.exec(key);
+    if (taskEditMatch) return acted(200, editTask(s, 'you', taskEditMatch[1], body));
     if (method === 'POST' && askMatch) return acted(200, answerAsk(s, askMatch[1], body));
     if (method === 'GET' && key === 'api/files') return sendJson(res, 200, fileList(s));
     if (method === 'GET' && fileMatch) return sendFile(res, getFile(s, fileMatch[1]));

@@ -210,3 +210,89 @@ test('wake: a spec file arrives with a download command that fetches the exact b
   const url = /(http:\/\/\S+)$/.exec(specFile.download)[1];
   assert.equal(await (await fetch(url)).text(), body);
 });
+
+test('edit: the creator or you edit a task, the owner is woken with the new detail, the streak is untouched by agents', async () => {
+  const r = await room();
+  const codex = await r.join('codex');
+  const claude = await r.join('claude');
+  await call('POST', `${codex.link}/tasks`, { title: 'wordfreq', assignee: claude.handle, spec: 'old spec' });
+  await call('POST', `${claude.link}/tasks/1/claim`);
+  await call('GET', `${claude.link}/read`);
+
+  const streak = async () => (await r.state()).agentStreak;
+  const before = await streak();
+  let wait = parkWait(claude);
+  const edit = await call('POST', `${codex.link}/tasks/1`, { spec: 'ties sort alphabetically by word' });
+  assert.equal(edit.status, 200);
+  assert.equal(edit.json.spec, 'ties sort alphabetically by word');
+  const woken = forTask(await wait, 1);
+  assert.ok(woken.text.includes('codex-1 edited task #1'));
+  assert.equal(woken.taskDetail.spec, 'ties sort alphabetically by word');
+  assert.equal(await streak(), before);
+
+  for (let i = 0; i < 3; i++) await call('POST', `${codex.link}/post`, { text: `chat ${i}` });
+  assert.ok((await streak()) > 0);
+  await call('GET', `${claude.link}/read`);
+  wait = parkWait(claude);
+  const human = await r.human('api/tasks/1', { description: 'new desc' });
+  assert.equal(human.status, 200);
+  assert.equal(forTask(await wait, 1).taskDetail.description, 'new desc');
+  assert.equal(await streak(), 0);
+
+  await call('POST', `${codex.link}/tasks`, { title: 'loose' });
+  await call('POST', `${codex.link}/tasks/2`, { description: 'edited' });
+  const last = (await r.state()).messages.at(-1);
+  assert.equal(last.task, 2);
+  assert.deepEqual(last.to, []);
+});
+
+test('edit: only the creator or you may edit, a refused edit changes nothing', async () => {
+  const r = await room();
+  const codex = await r.join('codex');
+  const claude = await r.join('claude');
+  const dsh = await r.join('dsh');
+  await call('POST', `${codex.link}/tasks`, { title: 'wordfreq', assignee: claude.handle, description: 'keep' });
+  await call('POST', `${claude.link}/tasks/1/claim`);
+  const count = async () => (await r.state()).messages.length;
+  const before = await count();
+
+  for (const who of [dsh, claude]) {
+    const res = await call('POST', `${who.link}/tasks/1`, { description: 'x' });
+    assert.equal(res.status, 403);
+    assert.equal(res.json.error, 'only the creator or you can edit task #1');
+  }
+  assert.equal((await call('GET', `${codex.link}/tasks/1`)).json.description, 'keep');
+  assert.equal(await count(), before);
+});
+
+test('edit: done tasks and empty bodies are refused, null removes the spec, a file replaces the spec', async () => {
+  const r = await room();
+  const codex = await r.join('codex');
+  const claude = await r.join('claude');
+  const upload = await fetch(`${codex.link}/files?name=spec.md`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/markdown' },
+    body: '# spec',
+  });
+  const file = await upload.json();
+  await call('POST', `${codex.link}/tasks`, { title: 'one', spec: 'text spec' });
+  await call('POST', `${codex.link}/tasks`, { title: 'two' });
+
+  const empty = await call('POST', `${codex.link}/tasks/1`, {});
+  assert.equal(empty.status, 400);
+  assert.equal(empty.json.error, 'send description, spec or specFile');
+
+  const viaFile = await call('POST', `${codex.link}/tasks/1`, { specFile: file.id });
+  assert.equal(viaFile.json.spec, null);
+  assert.equal(viaFile.json.specFile.id, file.id);
+  const viaText = await call('POST', `${codex.link}/tasks/1`, { spec: 'text again' });
+  assert.equal(viaText.json.specFile, null);
+  assert.equal(viaText.json.spec, 'text again');
+  const removed = await call('POST', `${codex.link}/tasks/1`, { spec: null });
+  assert.equal(removed.json.spec, null);
+
+  await call('POST', `${claude.link}/tasks/2/done`);
+  const done = await call('POST', `${codex.link}/tasks/2`, { description: 'late' });
+  assert.equal(done.status, 409);
+  assert.equal(done.json.error, 'task is done');
+});
