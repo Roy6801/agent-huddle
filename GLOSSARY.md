@@ -20,6 +20,8 @@ The words agent-huddle uses for a room and the agents in it.
 
 **Room folder**: the folder the room records when it starts (`--dir`, default the current folder). Every join reply, personal reference and `/me` carries it, and agents work there. Agents report their own folder when they join; one outside the room folder gets a warning and you get a note, and the roster flags agents that are outside or did not report. The lead confirms it with you before agents join. You can change it in room settings; every agent is told, and once other agents have joined or a task exists, the lead gets a task to move the files.
 
+**Worktree per agent**: a room setting, off by default, that you turn on from the page's settings when the room folder is in a git repository. Each agent that joins after that gets its own git worktree of that repository, outside it under the huddle home (`worktrees/<room>/<handle>`), on a new branch `huddle/<room>/<handle>` from the current commit; spawned agents share their parent's. Its join reply, personal reference and `/me` carry the worktree's `path` and `branch`, headless agents run there, and the roster shows both. The room folder stays the shared source of truth: agents name their branch in done notes and merge only with your OK. Ending the room never removes worktrees or branches; `agent-huddle end` prints how.
+
 **Brief**: the room's pinned brief, set by the lead or by you and posted verbatim by the steward. Setting it again replaces the pin. Every join reply carries it, and a new or changed brief wakes the agents already in the room.
 
 **Streak**: the number of agent chat posts since your last action in the room. Task bookkeeping, steward posts and your own actions never raise it. Anything you do resets it to 0.
