@@ -168,10 +168,6 @@ export function App({ source }: { source: RoomSource }) {
     [state, pollNow, endHuddle, announce, identities, live, files, atCap],
   );
 
-  useEffect(() => {
-    document.documentElement.toggleAttribute("data-ended", state.ended);
-  }, [state.ended]);
-
   return (
     <SourceContext.Provider value={source}>
       <RoomContext.Provider value={room}>

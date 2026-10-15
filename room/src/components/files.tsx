@@ -23,10 +23,8 @@ export function FileTypeIcon({ type, name, className }: { type: string; name: st
   );
 }
 
-function FileCard({ file, gone: broken = false }: { file: FileMeta; gone?: boolean }) {
+function FileCard({ file, gone = false }: { file: FileMeta; gone?: boolean }) {
   const { fileUrl } = useSource();
-  const { ended } = useRoom().state;
-  const gone = broken || ended;
   const name = file.name || "file";
   const body = (
     <>
@@ -63,10 +61,9 @@ function FileCard({ file, gone: broken = false }: { file: FileMeta; gone?: boole
 
 function Thumb({ file, onLoad }: { file: FileMeta; onLoad: (img: HTMLImageElement) => void }) {
   const { fileUrl } = useSource();
-  const { ended } = useRoom().state;
   const [broken, setBroken] = useState(false);
   const name = file.name || "image";
-  if (broken || ended) return <FileCard file={file} gone />;
+  if (broken) return <FileCard file={file} gone />;
   return (
     <a
       href={fileUrl(file.id)}
@@ -90,10 +87,17 @@ function Thumb({ file, onLoad }: { file: FileMeta; onLoad: (img: HTMLImageElemen
 }
 
 export function MessageFiles({ files, onImageLoad }: { files: FileMeta[]; onImageLoad: (img: HTMLImageElement) => void }) {
+  const { ended } = useRoom().state;
   return (
     <div className="mt-1.5 flex flex-wrap gap-2">
       {files.map((f) =>
-        INLINE_TYPES.has(f.type) ? <Thumb key={f.id} file={f} onLoad={onImageLoad} /> : <FileCard key={f.id} file={f} />,
+        ended ? (
+          <FileCard key={f.id} file={f} gone />
+        ) : INLINE_TYPES.has(f.type) ? (
+          <Thumb key={f.id} file={f} onLoad={onImageLoad} />
+        ) : (
+          <FileCard key={f.id} file={f} />
+        ),
       )}
     </div>
   );
