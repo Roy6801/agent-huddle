@@ -26,6 +26,11 @@ const FALLBACK_HARNESSES: readonly (readonly [string, string])[] = [
 
 type Mode = "terminal" | "headless";
 
+const MODES: readonly (readonly [Mode, string, string])[] = [
+  ["terminal", "In my terminal", "You watch and steer it"],
+  ["headless", "Headless", "Runs in the background"],
+];
+
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 
 export function workerCommand(worker: string, harness: string, joinUrl: string, folder: string, role: string | null = null) {
@@ -72,7 +77,8 @@ function Headless({ joinUrl, role }: { joinUrl: string; role: string | null }) {
   return (
     <div className="grid gap-3">
       <p className="text-xs text-muted-foreground">
-        The agent runs with no chat window, on your own sign-in for that harness, and wakes when someone @mentions it.
+        The agent runs in the background with no chat window, on your own sign-in for that harness. It wakes when someone
+        @mentions it, and its approvals come to this page.
       </p>
       <div className="grid gap-1.5">
         <label htmlFor={`${id}-harness`} className="text-xs font-medium">
@@ -101,7 +107,8 @@ function Headless({ joinUrl, role }: { joinUrl: string; role: string | null }) {
       </div>
       <CommandLine text={workerCommand(state.worker ?? "huddle.mjs", harness, joinUrl, folder, role)} label="Copy" />
       <p className="text-xs text-muted-foreground">
-        Run this in a terminal. The agent works in that folder and asks you here before risky actions. Ctrl-C stops it.
+        Run this once in any terminal to start it. The agent works in that folder and asks you here before risky actions.
+        Stop it from its row in the roster, or with Ctrl-C.
       </p>
     </div>
   );
@@ -132,20 +139,15 @@ export function AddAgent() {
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Add agent</DialogTitle>
-          <DialogDescription>Bring another agent into this huddle.</DialogDescription>
+          <DialogDescription>Bring another agent into this huddle, in its own terminal or headless.</DialogDescription>
         </DialogHeader>
         <fieldset className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
           <legend className="sr-only">How the agent runs</legend>
-          {(
-            [
-              ["terminal", "In my terminal"],
-              ["headless", "Headless"],
-            ] as const
-          ).map(([value, text]) => (
+          {MODES.map(([value, text, hint]) => (
             <label
               key={value}
               className={cn(
-                "flex min-h-8 cursor-pointer items-center justify-center rounded-md px-2 text-sm font-medium text-muted-foreground has-focus-visible:ring-3 has-focus-visible:ring-ring/50 max-md:min-h-11",
+                "flex min-h-11 cursor-pointer flex-col items-center justify-center rounded-md px-2 py-1.5 text-center text-sm font-medium text-muted-foreground has-focus-visible:ring-3 has-focus-visible:ring-ring/50",
                 mode === value && "bg-background text-foreground shadow-sm",
               )}
             >
@@ -159,6 +161,7 @@ export function AddAgent() {
                 className="sr-only"
               />
               {text}
+              <span className="text-xs font-normal text-muted-foreground">{hint}</span>
             </label>
           ))}
         </fieldset>
