@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { base, type ApiError, type Posted, type Upload } from "@/lib/api";
-import type { Agent, Ask, Conn, Headless, Message, PresenceTimers, SharedFile, StateResponse, Task } from "@/lib/types";
+import type { Agent, Ask, Brief, Conn, Headless, Message, PresenceTimers, SharedFile, StateResponse, Task } from "@/lib/types";
 
 export type RoomState = {
   name: string;
@@ -18,6 +18,8 @@ export type RoomState = {
   tasks: Task[];
   asks: Ask[];
   messages: Message[];
+  /** The pinned room brief; null when none is set. */
+  brief: Brief | null;
   /** undefined until the first state arrives; null means no cap. */
   roundCap: number | null | undefined;
   streak: number;
@@ -38,6 +40,7 @@ const INITIAL: RoomState = {
   tasks: [],
   asks: [],
   messages: [],
+  brief: null,
   roundCap: undefined,
   streak: 0,
   headless: undefined,
@@ -99,6 +102,8 @@ export function useRoomState() {
           const joinUrl = data.room?.join ?? s.joinUrl;
           const invite = data.room?.invite ?? s.invite;
           const roundCap = data.roundCap === null || typeof data.roundCap === "number" ? data.roundCap : s.roundCap;
+          const brief = "brief" in data ? (data.brief ?? null) : s.brief;
+          const briefSame = (brief ? `${brief.id}:${brief.text}` : "") === (s.brief ? `${s.brief.id}:${s.brief.text}` : "");
           const folder = data.folder ?? s.folder;
           const worker = data.worker ?? s.worker;
           const harnesses = data.harnesses ?? s.harnesses;
@@ -119,6 +124,7 @@ export function useRoomState() {
             name === s.name &&
             joinUrl === s.joinUrl &&
             invite === s.invite &&
+            briefSame &&
             roundCap === s.roundCap &&
             folder === s.folder &&
             worker === s.worker &&
@@ -133,6 +139,7 @@ export function useRoomState() {
             joinUrl,
             invite,
             roundCap,
+            brief: briefSame ? s.brief : brief,
             folder,
             worker,
             harnesses: harnessesSame ? s.harnesses : harnesses,

@@ -150,6 +150,14 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
       setRoom(system({ ...room, streak: 0, tasks: room.tasks.map((t) => (t.id === id ? task : t)) }, now, `you edited task #${id} "${old.title}"`));
       data = task;
     }
+  } else if (path === "/api/brief") {
+    const text = b.text ?? "";
+    if (!text.trim() || text.length > 20000) return rejected("invalid_text", "text must be 1-20000 characters");
+    const at = new Date(now).toISOString();
+    const set = addMessage({ ...room, streak: 0 }, now, "system", text, { kind: "system", mentions: [], brief: true });
+    const brief = { text, by: "you", at, id: set.messages.at(-1)?.id ?? 0 };
+    setRoom({ ...set, brief });
+    data = brief;
   } else if (path === "/api/settings") {
     if (b.roundCap !== undefined) {
       const roundCap = b.roundCap;

@@ -48,6 +48,7 @@ export const INITIAL_STEPS = 9;
 const HISTORY_GAP = 40_000;
 
 const EMPTY: RoomState = {
+  brief: null,
   name: "moonhop",
   joinUrl: "http://127.0.0.1:4747/s/moonhop",
   folder: "/Users/you/code/moonhop",
