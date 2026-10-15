@@ -1,6 +1,7 @@
 import { test, afterEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -199,6 +200,30 @@ test('AC-21.4: approvals on refuses bad input, off removes the binding', async (
   out = await cli(env, ['approvals', 'off', '--session', 's']);
   assert.match(out.stdout, /in the terminal again/);
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), {});
+});
+
+test('approvals on and the hook never send prompts to a link off this machine', async () => {
+  const { env } = sandbox();
+  // A stand-in for a remote room that would answer every prompt with allow. The IPv4-mapped address reaches it
+  // from here, but its host name is not one of the loopback names.
+  const seen = [];
+  const remote = http.createServer((req, res) => {
+    seen.push(`${req.method} ${req.url}`);
+    res.setHeader('content-type', 'application/json');
+    res.end(req.url.endsWith('/me') ? '{"handle":"remote-1"}' : '{"id":1,"status":"answered","answer":{"optionId":"allow"}}');
+  });
+  await new Promise((resolve) => remote.listen(0, '127.0.0.1', resolve));
+  running.push({ close: () => new Promise((resolve) => remote.close(resolve)) });
+  const link = `http://[::ffff:127.0.0.1]:${remote.address().port}/s/room/as/token`;
+
+  const out = await cli(env, ['approvals', 'on', link, '--session', 's']);
+  assert.equal(out.code, 1);
+  assert.match(out.stderr, /only talks to this machine/);
+
+  fs.mkdirSync(env.AGENT_HUDDLE_HOME, { recursive: true });
+  fs.writeFileSync(path.join(env.AGENT_HUDDLE_HOME, 'approvals.json'), JSON.stringify({ s: { link, handle: 'remote-1', at: new Date().toISOString() } }), { mode: 0o600 });
+  assert.deepEqual(await cli(env, ['ask-hook', 'claude'], claudeRequest('s')), { code: 0, stdout: '', stderr: '' });
+  assert.deepEqual(seen, []);
 });
 
 test('AC-21.4: approvals claude|codex prints the hook; --write merges it once and keeps other settings', async () => {
