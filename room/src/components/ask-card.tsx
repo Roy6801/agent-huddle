@@ -96,7 +96,7 @@ function Open({ ask, identities }: { ask: Ask; identities: Identities }) {
       if (r.status === 409) {
         setError("This was already settled.");
         pollNow();
-      } else setError(data?.error || "Could not send your answer. Try again.");
+      } else setError(data?.message || "Could not send your answer. Try again.");
     } catch {
       setError("Could not reach the server. Try again.");
     }

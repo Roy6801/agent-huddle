@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import type { useAttachments } from "@/hooks/use-attachments";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useRoom, useSource } from "@/hooks/use-room";
-import { errMain, validOf } from "@/lib/api";
+import { chipsOf, errMain } from "@/lib/api";
 import { fmtSize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -109,7 +109,7 @@ export function Composer({
         pollNow();
         setTimeout(onSent, 150);
       } else {
-        setError({ message: errMain(r, data), valid: validOf(data), validLabel: "Valid mentions" });
+        setError({ message: errMain(r, data), ...chipsOf(data) });
       }
     } catch {
       setError({ message: "Could not reach the server. Your text is kept; try again." });

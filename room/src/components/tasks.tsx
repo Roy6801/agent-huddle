@@ -13,7 +13,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea";
 import { useRoom, useSource } from "@/hooks/use-room";
 import { useRovingFocus } from "@/hooks/use-roving-focus";
-import { errMain, validOf } from "@/lib/api";
+import { chipsOf, errMain } from "@/lib/api";
 import { fmtSize } from "@/lib/format";
 import type { Task, TaskSpecFile, TaskStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -175,7 +175,7 @@ function EditTask({ task, onClose }: { task: Task; onClose: () => void }) {
         pollNow();
         onClose();
       } else {
-        setError({ message: errMain(r, data), valid: validOf(data) });
+        setError({ message: errMain(r, data), ...chipsOf(data) });
       }
     } catch {
       setError({ message: "Could not reach the server." });
@@ -431,7 +431,7 @@ function NewTask() {
         titleRef.current?.focus();
         pollNow();
       } else {
-        setError({ message: errMain(r, data), valid: validOf(data), validLabel: "Valid assignees" });
+        setError({ message: errMain(r, data), ...chipsOf(data) });
       }
     } catch {
       setError({ message: "Could not reach the server." });
