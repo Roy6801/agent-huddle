@@ -308,7 +308,7 @@ export const Feed = memo(function Feed({
     <div className="relative flex min-h-0 flex-1">
       <div
         ref={scroller}
-        className="min-w-0 flex-1 overflow-y-auto overscroll-contain"
+        className="relative min-w-0 flex-1 overflow-y-auto overscroll-contain"
         onScroll={(e) => {
           stick.current = atBottom(e.currentTarget);
           if (stick.current && pending) setPending(0);
