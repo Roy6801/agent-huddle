@@ -2,6 +2,7 @@ import {
   ArrowDownIcon,
   CircleCheckIcon,
   CircleDotIcon,
+  CircleSlashIcon,
   CornerDownRightIcon,
   GitForkIcon,
   InfoIcon,
@@ -37,12 +38,13 @@ const SYS_TYPES: [RegExp, SysType][] = [
   [/^(\S+) released task #/, "release"],
   [/^(\S+) marked task #\d+ .* done/, "done"],
   [/^(\S+) (?:re|un)assigned task #/, "task"],
+  [/^(\S+) cancelled task #/, "cancel"],
   [/^(\S+) spawned /, "spawn"],
   [/^(\S+) isn't listening\b/, "alert"],
   [/^Not listening:/, "alert"],
 ];
 
-type SysType = "join" | "leave" | "task" | "claim" | "done" | "release" | "spawn" | "alert" | "info";
+type SysType = "join" | "leave" | "task" | "claim" | "done" | "release" | "cancel" | "spawn" | "alert" | "info";
 
 const SYS_ICON: Record<SysType, typeof InfoIcon> = {
   join: LogInIcon,
@@ -51,6 +53,7 @@ const SYS_ICON: Record<SysType, typeof InfoIcon> = {
   claim: CircleDotIcon,
   done: CircleCheckIcon,
   release: RotateCcwIcon,
+  cancel: CircleSlashIcon,
   spawn: GitForkIcon,
   alert: TriangleAlertIcon,
   info: InfoIcon,

@@ -3,6 +3,7 @@ import {
   CircleCheckIcon,
   CircleDashedIcon,
   CircleDotIcon,
+  CircleSlashIcon,
   CopyIcon,
   DownloadIcon,
   LockIcon,
@@ -20,7 +21,13 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,9 +45,11 @@ const STATUS: Record<View, { icon: typeof CircleDotIcon; label: string; iconClas
   blocked: { icon: LockIcon, label: "Blocked", iconClass: "text-muted-foreground", badge: "border-dashed border-border text-muted-foreground" },
   claimed: { icon: CircleDotIcon, label: "Claimed", iconClass: "text-foreground", badge: "bg-secondary text-secondary-foreground" },
   done: { icon: CircleCheckIcon, label: "Done", iconClass: "text-presence", badge: "bg-presence/12 text-presence" },
+  cancelled: { icon: CircleSlashIcon, label: "Cancelled", iconClass: "text-muted-foreground", badge: "bg-muted text-muted-foreground" },
 };
 
-const ORDER: Record<View, number> = { open: 0, blocked: 1, claimed: 2, done: 3 };
+const ORDER: Record<View, number> = { open: 0, blocked: 1, claimed: 2, done: 3, cancelled: 4 };
+const finished = (t: Task) => t.status === "done" || t.status === "cancelled";
 const viewOf = (t: Task): View => (t.status === "open" && t.blocked.length ? "blocked" : t.status);
 const who = (h: string) => (h === "you" ? "You" : h);
 
@@ -201,10 +210,11 @@ type TaskFormProps = {
   error: ErrorInfo | null;
   onSubmit: () => void;
   onClose: () => void;
+  closeLabel?: string;
   children: ReactNode;
 };
 
-function TaskForm({ id, label, submitLabel, error, onSubmit, onClose, children }: TaskFormProps) {
+function TaskForm({ id, label, submitLabel, error, onSubmit, onClose, closeLabel = "Cancel", children }: TaskFormProps) {
   return (
     <form
       autoComplete="off"
@@ -219,7 +229,7 @@ function TaskForm({ id, label, submitLabel, error, onSubmit, onClose, children }
       {error && <ErrorBox id={`${id}-error`} error={error} />}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-          Cancel
+          {closeLabel}
         </Button>
         <Button type="submit" size="sm">
           {submitLabel}
@@ -475,11 +485,55 @@ function ReassignTask({ task, onClose }: { task: Task; onClose: () => void }) {
   );
 }
 
-type Mode = "edit" | "reopen" | "done" | "reassign";
+function CancelTask({ task, onClose }: { task: Task; onClose: () => void }) {
+  const [reason, setReason] = useState("");
+  const { error, send } = usePostTask(`/api/tasks/${task.id}/cancel`, onClose);
+  const id = useId();
+
+  return (
+    <TaskForm
+      id={id}
+      label={`Cancel task #${task.id}`}
+      submitLabel="Cancel task"
+      closeLabel="Keep task"
+      error={error}
+      onSubmit={() => send(reason.trim() ? { reason: reason.trim() } : {})}
+      onClose={onClose}
+    >
+      <div className="grid gap-1.5">
+        <label htmlFor={`${id}-reason`} className="text-xs font-medium text-muted-foreground">
+          Reason (optional)
+        </label>
+        <Textarea
+          id={`${id}-reason`}
+          autoFocus
+          aria-describedby={[`${id}-reason-count`, error ? `${id}-error` : ""].filter(Boolean).join(" ")}
+          value={reason}
+          rows={3}
+          placeholder="Why it is no longer needed"
+          onChange={(e) => setReason(e.target.value)}
+          className="font-normal text-foreground"
+        />
+        <Count id={`${id}-reason-count`} text={reason} max={MAX_REASON} />
+      </div>
+    </TaskForm>
+  );
+}
+
+/** Who a cancel tells: the holder or assignee, the creator, and whoever has a task after it. */
+function cancelTold(tasks: Task[], task: Task) {
+  const after = tasks.filter((t) => !finished(t) && t.after.includes(task.id)).map((t) => t.owner ?? t.assignee);
+  return [...new Set([task.owner ?? task.assignee, task.createdBy, ...after])].filter((h): h is string => !!h && h !== "you");
+}
+
+type Mode = "edit" | "reopen" | "done" | "reassign" | "cancel";
 
 const DIALOG: Record<Mode, { title: (n: number) => string; describe: (t: Task) => string }> = {
   edit: { title: (n) => `Edit task #${n}`, describe: () => "The assignee or owner is told what changed." },
-  reopen: { title: (n) => `Reopen task #${n}`, describe: () => "The owner is told why it is open again." },
+  reopen: {
+    title: (n) => `Reopen task #${n}`,
+    describe: (t) => (t.status === "cancelled" ? "It is open again for its assignee, who is told why." : "The owner is told why it is open again."),
+  },
   done: {
     title: (n) => `Mark task #${n} done`,
     describe: (t) => `It counts as done by you.${t.owner ? ` @${t.owner} holds it and is told.` : t.assignee ? ` @${t.assignee} is told.` : ""}`,
@@ -491,11 +545,16 @@ const DIALOG: Record<Mode, { title: (n: number) => string; describe: (t: Task) =
         ? `@${t.owner} holds it. Moving it to someone else releases it and tells them; the new assignee is woken with the task.`
         : "The new assignee is woken with the task.",
   },
+  cancel: {
+    title: (n) => `Cancel task #${n}`,
+    describe: () => "It counts as finished, so tasks waiting only on it can start. It keeps its number, and Reopen brings it back.",
+  },
 };
 
-/** Edit, Reopen and the status actions open in one dialog; a done task cannot be edited, so it only offers Reopen. */
+/** Edit, Reopen and the status actions open in one dialog; a done or cancelled task cannot be edited, so it only offers Reopen. */
 function TaskActions({ task }: { task: Task }) {
-  const done = task.status === "done";
+  const { tasks } = useRoom().state;
+  const done = finished(task);
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("edit");
   const status = useRef<HTMLButtonElement>(null);
@@ -506,22 +565,23 @@ function TaskActions({ task }: { task: Task }) {
     setMode(m);
     setOpen(true);
   };
-  const Form = { edit: EditTask, reopen: ReopenTask, done: FinishTask, reassign: ReassignTask }[mode];
+  const Form = { edit: EditTask, reopen: ReopenTask, done: FinishTask, reassign: ReassignTask, cancel: CancelTask }[mode];
 
   const wasDone = useRef(done);
   useEffect(() => {
     setOpen(false);
-    // Marking it done removes the Status button that had focus; Reopen takes its place.
+    // Marking it done or cancelled removes the Status button that had focus; Reopen takes its place.
     if (done && !wasDone.current && document.activeElement === document.body) edit.current?.focus();
     wasDone.current = done;
   }, [done]);
 
   const blockedBy = task.blocked.map((n) => `#${n}`).join(", ");
+  const told = mode === "cancel" ? cancelTold(tasks, task) : [];
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <div className="flex flex-wrap items-center justify-end gap-2 px-3 pb-2.5">
-        {done && <p className="min-w-0 text-[11px] text-muted-foreground">A done task cannot be edited. Reopen it first.</p>}
+        {done && <p className="min-w-0 text-[11px] text-muted-foreground">A {task.status} task cannot be edited. Reopen it first.</p>}
         {!done && (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
@@ -547,6 +607,11 @@ function TaskActions({ task }: { task: Task }) {
               <DropdownMenuItem onSelect={() => show("reassign")}>
                 <UserRoundIcon aria-hidden />
                 Reassign…
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onSelect={() => show("cancel")}>
+                <CircleSlashIcon aria-hidden />
+                Cancel task…
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -575,7 +640,10 @@ function TaskActions({ task }: { task: Task }) {
           <DialogTitle className="leading-snug break-words">
             {DIALOG[mode].title(task.id)}
           </DialogTitle>
-          <DialogDescription className="text-xs">{DIALOG[mode].describe(task)}</DialogDescription>
+          <DialogDescription className="text-xs">
+            {DIALOG[mode].describe(task)}
+            {told.length > 0 && ` ${told.map((h) => `@${h}`).join(", ")} ${told.length > 1 ? "are" : "is"} told.`}
+          </DialogDescription>
         </DialogHeader>
         <Form task={task} onClose={close} />
       </DialogContent>
@@ -620,7 +688,7 @@ function TaskCard({ task }: { task: Task }) {
   const [open, setOpen] = useState(false);
   const status = STATUS[viewOf(task)] ?? STATUS.open;
   const Icon = status.icon;
-  const done = task.status === "done";
+  const done = finished(task);
   const { ended } = useRoom().state;
   const trigger = useRef<HTMLButtonElement>(null);
 
@@ -696,11 +764,19 @@ function TaskCard({ task }: { task: Task }) {
               </Row>
             )}
             {task.note && (
-              <Row label={done || !task.reopened ? "Done note" : "Last done note"}>
+              <Row label={task.status === "done" || !task.reopened ? "Done note" : "Last done note"}>
                 <code className="block rounded-md bg-muted px-2 py-1.5 font-mono text-[11px] leading-4 text-foreground/85">
                   <span className="line-clamp-6 break-words whitespace-pre-wrap">{task.note}</span>
                 </code>
                 {longText(task.note) && <TextDialog task={task} kind="note" text={task.note} />}
+              </Row>
+            )}
+            {task.cancelled && (
+              <Row label="Cancelled by">
+                <span className="grid min-w-0 gap-0.5">
+                  <Person handle={task.cancelled.by} />
+                  {task.cancelled.reason && <span className="break-words whitespace-pre-wrap">{task.cancelled.reason}</span>}
+                </span>
               </Row>
             )}
             {task.reopened && (
@@ -912,6 +988,7 @@ export function Tasks() {
   const { state } = useRoom();
   const { tasks } = state;
   const done = tasks.filter((t) => t.status === "done").length;
+  const cancelled = tasks.filter((t) => t.status === "cancelled").length;
   const sorted = tasks.slice().sort((a, b) => (ORDER[viewOf(a)] ?? 4) - (ORDER[viewOf(b)] ?? 4) || a.id - b.id);
   const roving = useRovingFocus<HTMLUListElement>();
 
@@ -923,7 +1000,8 @@ export function Tasks() {
         </h3>
         {tasks.length > 0 && (
           <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
-            {done}/{tasks.length} done
+            {done}/{tasks.length - cancelled} done
+            {cancelled > 0 && ` · ${cancelled} cancelled`}
           </span>
         )}
       </div>
