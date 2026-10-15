@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 
 import { CurrentYear } from "@/components/current-year";
@@ -17,6 +18,9 @@ export function SiteFooter() {
           </Suspense>{" "}
           agent-huddle · <a href="/LICENSE" className="underline underline-offset-4 hover:text-foreground">MIT license</a>, runs only on 127.0.0.1.{repoPublic && ` Maintained by ${MAINTAINER}.`}
         </p>
+        <Link href="/changelog" className="flex h-11 items-center underline-offset-4 hover:text-foreground hover:underline">
+          Changelog
+        </Link>
         {repoPublic && (
           <>
             <a href={ISSUES_URL} className="hidden h-11 items-center underline-offset-4 hover:text-foreground hover:underline sm:flex">
