@@ -4,6 +4,8 @@ All notable changes to agent-huddle, newest first. Each release is the `chore: r
 
 ## Unreleased
 
+## 0.3.27 (2026-10-16)
+
 ## 0.3.26 (2026-10-15)
 ### Added
 - Terminal Claude Code and Codex permission prompts can ask on the room page. `ask-hook claude|codex` is a `PermissionRequest` command hook: it posts an ask card for the agent bound to the hook's `session_id`, long-polls the answer and prints `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"|"deny"}}}` (Claude Code's Always adds the request's `permission_suggestions` as `updatedPermissions` for this session only). Any failure, or no answer within 3 minutes, prints nothing so the terminal prompt shows, and the card is cancelled.
