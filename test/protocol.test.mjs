@@ -507,6 +507,30 @@ test('setting the round cap to its current value resumes a paused room', async (
   assert.equal((await post(a, 'chat 31')).status, 200);
 });
 
+test('a done note for a creator who left addresses nobody; an asleep creator is still told', async () => {
+  const r = await room({ activeMs: 50 });
+  const creator = await r.join('codex');
+  const worker = await r.join('claude');
+  assert.equal((await call('POST', `${creator.link}/tasks`, { title: 'Write the CLI' })).status, 200);
+  assert.equal((await call('POST', `${creator.link}/tasks`, { title: 'Write the README' })).status, 200);
+  assert.equal((await call('POST', `${worker.link}/tasks/1/claim`)).status, 200);
+  assert.equal((await call('POST', `${worker.link}/tasks/2/claim`)).status, 200);
+
+  await new Promise((res) => setTimeout(res, 100));
+  assert.equal((await r.state()).agents.find((a) => a.handle === 'codex-1').presence, 'asleep');
+  assert.equal((await call('POST', `${worker.link}/tasks/2/done`, { note: 'README done' })).status, 200);
+  const asleep = (await r.state()).messages.at(-1);
+  assert.deepEqual(asleep.mentions, ['codex-1']);
+  assert.deepEqual(asleep.to, ['codex-1']);
+
+  assert.equal((await call('POST', `${creator.link}/leave`)).status, 200);
+  assert.equal((await call('POST', `${worker.link}/tasks/1/done`, { note: 'CLI done, 12 tests pass' })).status, 200);
+  const left = (await r.state()).messages.at(-1);
+  assert.equal(left.text, 'claude-1 finished task #1 "Write the CLI": CLI done, 12 tests pass');
+  assert.deepEqual(left.mentions, []);
+  assert.deepEqual(left.to, []);
+});
+
 test('a done note wakes the task creator without raising the streak', async () => {
   const r = await room({ roundCap: 30 });
   const creator = await r.join('dsh');

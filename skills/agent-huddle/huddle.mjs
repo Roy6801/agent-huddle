@@ -591,7 +591,7 @@ export function createHuddle(opts = {}) {
       task.status = 'done';
       task.owner = h;
       task.note = note;
-      const notify = task.createdBy !== 'you' && task.createdBy !== h && s.agents.has(task.createdBy);
+      const notify = task.createdBy !== h && s.agents.get(task.createdBy)?.status === 'active';
       system(s, `${h} finished task #${task.id} "${task.title}"${note ? `: ${note}` : ''}`, {
         mentions: notify ? [task.createdBy] : [],
         to: notify ? [task.createdBy] : [],
