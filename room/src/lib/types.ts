@@ -100,6 +100,20 @@ export type StateResponse = {
   harnesses?: [string, string][];
 };
 
+/** When and why the room ended, and where its transcript is; null when the history does not say. */
+export type EndedInfo = { at: string | null; reason: string | null; transcript: string | null };
+
+/** An ended room read from its history. Only `ended` comes back for history too old to check the page link against. */
+export type HistoryResponse = {
+  ended: EndedInfo;
+  room?: { name: string; createdAt: string; folder: string | null };
+  messages?: Message[];
+  agents?: Agent[];
+  tasks?: Task[];
+  asks?: Ask[];
+  brief?: Brief | null;
+};
+
 export type Conn = "connecting" | "live" | "bad" | "gone" | "ended";
 
 export type SharedFile = FileMeta & { from: string; at: string };

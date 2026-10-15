@@ -1,9 +1,10 @@
-import { CircleAlertIcon, CircleStopIcon, ShieldQuestionIcon, TriangleAlertIcon } from "lucide-react";
+import { CircleAlertIcon, CircleStopIcon, CopyIcon, ShieldQuestionIcon, TriangleAlertIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { AgentsPanel } from "@/components/agents-panel";
 import { Board } from "@/components/board";
 import { Chat } from "@/components/chat";
+import { CopyButton } from "@/components/copy-button";
 import { Header } from "@/components/header";
 import { PinnedBrief } from "@/components/pinned-brief";
 import { ShortcutsDialog, useShortcutsKey } from "@/components/shortcuts";
@@ -12,6 +13,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAnnouncements } from "@/hooks/use-announcements";
 import { PanelsContext, usePersistedOpen, type Panels } from "@/hooks/use-panels";
 import { RoomContext, SourceContext, useDerived, useRoom, type Room, type RoomSource } from "@/hooks/use-room";
+import { fullTime } from "@/lib/format";
+import type { EndedInfo } from "@/lib/types";
 
 /** First tab stop on the page. The message box, or the feed once the room has ended. */
 function SkipLink() {
@@ -27,6 +30,38 @@ function SkipLink() {
     >
       Skip to message box
     </a>
+  );
+}
+
+/** When and why the room ended, and its transcript path with a copy button. */
+function EndedDetails({ info }: { info: EndedInfo }) {
+  const { at, reason, transcript } = info;
+  return (
+    <>
+      {at && (
+        <span className="block text-muted-foreground">
+          Ended <time dateTime={at}>{fullTime(at)}</time>
+          {reason && ` (${reason})`}.
+        </span>
+      )}
+      {transcript && (
+        <span className="mt-1 flex min-w-0 items-center gap-1.5">
+          <span className="shrink-0 text-muted-foreground">Transcript</span>
+          <code className="min-w-0 truncate rounded-md border bg-background px-1.5 font-mono text-xs text-foreground/80" title={transcript}>
+            {transcript}
+          </code>
+          <CopyButton
+            text={transcript}
+            label="Copy transcript path"
+            labelClassName="sr-only"
+            icon={<CopyIcon aria-hidden />}
+            variant="ghost"
+            size="icon-xs"
+            className="shrink-0 text-muted-foreground"
+          />
+        </span>
+      )}
+    </>
   );
 }
 
@@ -64,10 +99,10 @@ function Banners() {
           <span className="grid size-8 shrink-0 place-items-center rounded-full border bg-background text-muted-foreground">
             <CircleStopIcon aria-hidden className="size-4" />
           </span>
-          <div className="text-[13px] leading-5">
+          <div className="min-w-0 flex-1 text-[13px] leading-5">
             <strong className="block font-semibold">This room has ended</strong>
-            {state.endedNote && <span className="block break-words text-muted-foreground">{state.endedNote}</span>}
-            <span className="text-muted-foreground">
+            {state.endedInfo && <EndedDetails info={state.endedInfo} />}
+            <span className="mt-1 block text-muted-foreground">
               Start a new one with{" "}
               <code className="rounded-md border bg-background px-1.5 font-mono text-xs text-foreground/80">/huddle-start</code>{" "}
               in any agent.

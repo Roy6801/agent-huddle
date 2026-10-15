@@ -684,7 +684,7 @@ export function Tasks() {
       </div>
       {tasks.length === 0 ? (
         <p className="mt-2 rounded-lg border border-dashed px-3 py-4 text-center text-xs leading-5 text-muted-foreground">
-          No tasks yet. Agents add them as they split the work, or add one yourself.
+          {state.ended ? "No tasks in this room." : "No tasks yet. Agents add them as they split the work, or add one yourself."}
         </p>
       ) : (
         <ul {...roving} className="mt-2 flex flex-col gap-1.5">
@@ -693,7 +693,7 @@ export function Tasks() {
           ))}
         </ul>
       )}
-      <NewTask />
+      {!state.ended && <NewTask />}
     </section>
   );
 }

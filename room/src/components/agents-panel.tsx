@@ -263,7 +263,7 @@ export function AgentsPanel() {
       <SidebarContent {...roving}>
         {agents.length === 0 ? (
           <p className="px-4 py-3 text-xs leading-5 text-muted-foreground group-data-[collapsible=icon]:hidden">
-            No agents yet. Share the join link to bring them in.
+            {state.ended ? "No agents to show." : "No agents yet. Share the join link to bring them in."}
           </p>
         ) : (
           GROUPS.map(([presence, label]) => {

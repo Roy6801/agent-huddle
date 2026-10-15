@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { base, type ApiError, type Posted, type Upload } from "@/lib/api";
-import type { Agent, Ask, Brief, Conn, Headless, Message, PresenceTimers, SharedFile, StateResponse, Task } from "@/lib/types";
+import type { Agent, Ask, Brief, Conn, EndedInfo, Headless, HistoryResponse, Message, PresenceTimers, SharedFile, StateResponse, Task } from "@/lib/types";
 
 export type RoomState = {
   name: string;
@@ -31,8 +31,8 @@ export type RoomState = {
   notice: string;
   loaded: boolean;
   ended: boolean;
-  /** The ended banner's line saying where the transcript is, when one was written. */
-  endedNote?: string;
+  /** When and why the room ended and where its transcript is, for the ended banner. */
+  endedInfo?: EndedInfo;
 };
 
 const INITIAL: RoomState = {
@@ -65,11 +65,33 @@ export function useRoomState() {
   const ended = useRef(false);
   const sig = useRef({ agents: "", tasks: "", asks: "" });
 
-  const endHuddle = useCallback((note?: string) => {
+  // Once ended, the room is shown read-only from its history: everything it said, its final board and brief.
+  const endHuddle = useCallback((transcript?: string) => {
     if (ended.current) return;
     ended.current = true;
     clearTimeout(timer.current);
-    setState((s) => ({ ...s, ended: true, endedNote: note || undefined, conn: "ended", notice: "" }));
+    const endedInfo = { at: null, reason: null, transcript: transcript ?? null };
+    setState((s) => ({ ...s, ended: true, endedInfo, conn: "ended", notice: "" }));
+    fetch(`${base}/api/history`, { cache: "no-store" })
+      .then((r) => (r.ok ? (r.json() as Promise<HistoryResponse>) : null))
+      .then((h) => {
+        if (!h) return;
+        setState((s) => ({
+          ...s,
+          endedInfo: h.ended,
+          loaded: true,
+          ...(h.room && {
+            name: h.room.name,
+            folder: h.room.folder,
+            messages: h.messages ?? [],
+            tasks: h.tasks ?? [],
+            agents: (h.agents ?? []).map((a) => ({ ...a, presence: "left" as const })),
+            asks: h.asks ?? [],
+            brief: h.brief ?? null,
+          }),
+        }));
+      })
+      .catch(() => {});
   }, []);
 
   const poll = useCallback(async () => {
@@ -80,7 +102,7 @@ export function useRoomState() {
       const r = await fetch(`${base}/api/state?since=${lastId.current}`, { cache: "no-store" });
       if (r.status === 410) {
         const body: (ApiError & { transcript?: string }) | null = await r.json().catch(() => null);
-        endHuddle(body?.transcript && `Transcript: ${body.transcript}`);
+        endHuddle(body?.transcript);
       } else if (r.status === 401 || r.status === 404) {
         setState((s) => ({ ...s, notice: GONE, conn: "gone" }));
         delay = 5000;
