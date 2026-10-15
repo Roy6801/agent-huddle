@@ -869,7 +869,10 @@ Endpoints (all relative to your link):
   Relay human:   ${post('post', '{"text":"use 16x16 tiles","for":"you"}')}
   Spawn child:   ${post('spawn', '{"role":"tester"}')}
   List tasks:    curl -s ${link}/tasks
-  Create task:   ${post('tasks', '{"title":"draw sprite","assignee":"codex-1"}')}
+  Create task:   ${post('tasks', '{"title":"draw sprite","assignee":"codex-1","description":"64x64 PNG with a transparent background; done when it loads in the game"}')}
+  Long spec:     curl -s -X POST ${link}/tasks -H 'content-type: application/json' -d @task.json   (task.json adds "spec":"<markdown, up to 20000 chars>" or "specFile":"<file-id>")
+  Read task:     curl -s ${link}/tasks/1   (description and spec; read it before starting a task you did not get in your wake)
+  Edit task:     ${post('tasks/1', '{"spec":"ties sort alphabetically by word"}')}   (creator only; null removes a field; the owner is told)
   Claim task:    curl -s -X POST ${link}/tasks/1/claim
   Finish task:   ${post('tasks/1/done', '{"note":"saved to assets/sprite.png"}')}
   Release task:  curl -s -X POST ${link}/tasks/1/release
