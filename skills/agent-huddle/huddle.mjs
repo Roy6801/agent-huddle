@@ -189,7 +189,7 @@ const historyLines = (file) =>
   });
 
 // The readable end-of-room transcript: the room's final state, and every message from history, even those the room dropped.
-function transcriptMarkdown(s, lines, endedAt) {
+function transcriptMarkdown(s, lines, endedAt, reason) {
   const agents = [...s.agents.values()].map((a) => `- ${a.handle} (${a.harness}${a.role ? `, ${a.role}` : ''})`);
   const tasks = s.tasks.map((t) =>
     `- #${t.id} ${t.title} (${t.status}${t.owner ? ` by ${t.owner}` : ''})${t.note ? `: ${t.note.replace(/\s*\n\s*/g, ' ')}` : ''}`);
@@ -199,7 +199,7 @@ function transcriptMarkdown(s, lines, endedAt) {
   });
   return [
     `# ${s.name}`, '',
-    `Folder: ${s.folder ?? 'none'} · Started ${stamp(s.createdAt)} · Ended ${stamp(endedAt)}`, '',
+    `Folder: ${s.folder ?? 'none'} · Started ${stamp(s.createdAt)} · Ended ${stamp(endedAt)}${reason ? ` (${reason})` : ''}`, '',
     '## Agents', '', ...agents, '',
     '## Tasks', '', ...tasks, '',
     '## Messages', '', ...messages, '',
@@ -383,7 +383,7 @@ export function createHuddle(opts = {}) {
     historyDir,
   } = opts;
   const rooms = new Map();
-  let lastRequest = Date.now();
+  let lastActivity = Date.now();
   let idleFired = false;
 
   const server = http.createServer((req, res) => {
@@ -517,25 +517,25 @@ export function createHuddle(opts = {}) {
     historyLine(s, { type: 'agent', handle: a.handle, harness: a.harness, role: a.role, status: a.status, folder: a.folder });
   const historyAsk = (s, ask) => historyLine(s, { type: 'ask', ask });
 
-  function writeTranscript(s) {
+  function writeTranscript(s, reason) {
     if (!s.history) return;
     const at = new Date().toISOString();
     const file = s.history.file.replace(/\.jsonl$/, '.md');
     try {
-      fs.writeFileSync(file, transcriptMarkdown(s, historyLines(s.history.file), at), { mode: 0o600 });
+      fs.writeFileSync(file, transcriptMarkdown(s, historyLines(s.history.file), at, reason), { mode: 0o600 });
       s.transcript = file;
     } catch (err) {
       s.historyError = err.code ?? err.message;
     }
-    historyLine(s, { type: 'end', at, transcript: s.transcript });
+    historyLine(s, { type: 'end', at, transcript: s.transcript, ...(reason && { reason }) });
   }
 
-  function endRoom(s) {
+  function endRoom(s, reason = null) {
     s.ended = true;
     for (const a of s.asks) {
       if (a.status === 'open') historyAsk(s, Object.assign(a, { status: 'cancelled' }));
     }
-    writeTranscript(s);
+    writeTranscript(s, reason);
     const gone = roomEnded(s);
     for (const agent of s.agents.values()) {
       for (const w of agent.waiters) {
@@ -1397,6 +1397,7 @@ How the room works:
 
   function adminRoute(req, res, method, parts, base) {
     if (!isAdmin(req)) throw new HttpError('unauthorized');
+    if (method === 'POST') lastActivity = Date.now();
     if (method === 'GET' && parts.length === 2 && parts[1] === 'rooms') {
       const list = liveRooms().reverse().map((s) => adminView(s, base));
       return sendJson(res, 200, { rooms: list });
@@ -1419,7 +1420,6 @@ How the room works:
   // ---- routing ----
 
   async function handle(req, res) {
-    lastRequest = Date.now();
     const port = server.address().port;
     const host = req.headers.host;
     if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) {
@@ -1446,6 +1446,7 @@ How the room works:
       if (body.name !== undefined && body.name !== null) name = cleanText(body.name, MAX_NAME, 'name');
       const cap = body.roundCap === undefined ? roundCap : parseRoundCap(body.roundCap);
       const s = createRoom(name, cap, parseFolder(body.folder));
+      lastActivity = Date.now();
       return sendJson(res, 200, {
         id: s.id,
         name: s.name,
@@ -1472,6 +1473,7 @@ How the room works:
       if (method !== 'POST') return notFound();
       if (s.ended) throw roomEnded(s);
       const body = await readBody(req);
+      lastActivity = Date.now();
       return sendJson(res, 200, joinAgent(s, body, base));
     }
     if (rest[0] === 'as' && rest.length >= 2) {
@@ -1558,7 +1560,7 @@ How the room works:
     const waiting = method === 'GET' && key === 'wait';
     agent.restingAt = resting ? agent.lastSeen : 0;
     if (!waiting) agent.offShift = false;
-    if (!resting && !waiting) agent.lastCallAt = agent.lastSeen;
+    if (!resting && !waiting) agent.lastCallAt = lastActivity = agent.lastSeen;
     const leaving = method === 'POST' && key === 'leave';
     if (agent.status === 'left' && !leaving) {
       agent.status = 'active';
@@ -1662,6 +1664,7 @@ How the room works:
     const upload = method === 'POST' && key === 'api/files';
     const body = method === 'POST' && !upload ? await readBody(req, /^api\/(tasks(\/\d+)?|brief)$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
     s.humanSeen = Date.now();
+    if (method === 'POST') lastActivity = s.humanSeen;
     const fileMatch = /^api\/files\/([\w-]+)$/.exec(key);
     const askMatch = /^api\/asks\/(\d+)$/.exec(key);
 
@@ -1771,9 +1774,7 @@ How the room works:
 
   function sweep() {
     const now = Date.now();
-    let waiting = false;
     for (const s of liveRooms()) {
-      if (s.askWaiters.size) waiting = true;
       for (const ask of s.asks) {
         if (ask.status === 'open' && now - Date.parse(ask.at) > askMs) {
           settleAsk(s, ask, 'timeout');
@@ -1781,15 +1782,15 @@ How the room works:
         }
       }
       for (const agent of s.agents.values()) {
-        if (agent.waiters.size) waiting = true;
-        else if (agent.status !== 'left' && now - Math.max(agent.lastSeen, agent.lastCallAt + s.timers.workingMs, agent.workingUntil) > s.timers.leaveMs) {
+        if (!agent.waiters.size && agent.status !== 'left' && now - Math.max(agent.lastSeen, agent.lastCallAt + s.timers.workingMs, agent.workingUntil) > s.timers.leaveMs) {
           leaveAgent(s, agent, 'idle');
         }
       }
       checkStall(s, now);
     }
-    if (!waiting && !idleFired && now - lastRequest > serverIdleMs) {
+    if (!idleFired && now - lastActivity > serverIdleMs) {
       idleFired = true;
+      for (const s of liveRooms()) endRoom(s, `server stopped after ${Math.round(serverIdleMs / 60000)} idle minutes`);
       if (onIdle) onIdle();
     }
   }
@@ -1810,21 +1811,8 @@ How the room works:
 
   function close() {
     clearInterval(timer);
-    for (const s of rooms.values()) {
-      clearTimeout(s.tombstone);
-      for (const w of s.askWaiters) {
-        clearTimeout(w.timer);
-        w.res.writeHead(204).end();
-      }
-      s.askWaiters.clear();
-      for (const agent of s.agents.values()) {
-        for (const w of agent.waiters) {
-          clearTimeout(w.timer);
-          w.res.writeHead(204).end();
-        }
-        agent.waiters.clear();
-      }
-    }
+    for (const s of liveRooms()) endRoom(s, 'server stopped');
+    for (const s of rooms.values()) clearTimeout(s.tombstone);
     return new Promise((resolve) => {
       if (!server.listening) return resolve();
       server.close(() => resolve());
@@ -3162,7 +3150,7 @@ function listHistory() {
     String(room.name),
     String(room.id),
     stamp(room.createdAt),
-    end ? `ended ${day(end.at) === day(room.createdAt) ? clock(end.at) : stamp(end.at)}` : 'not ended',
+    end ? `ended ${day(end.at) === day(room.createdAt) ? clock(end.at) : stamp(end.at)}${end.reason ? ` (${end.reason})` : ''}` : 'not ended',
     tilde(file),
   ]);
   console.log(columns(rows).map((l) => `  ${l}`).join('\n'));
