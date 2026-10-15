@@ -17,6 +17,7 @@ import { useRoom } from "@/hooks/use-room";
 import { cn } from "@/lib/utils";
 
 const FALLBACK_HARNESSES: readonly (readonly [string, string])[] = [
+  ["claude", "Claude Code"],
   ["codex", "Codex"],
   ["gemini", "Gemini CLI"],
 ];
@@ -41,7 +42,7 @@ function Headless({ joinUrl }: { joinUrl: string }) {
   return (
     <div className="grid gap-3">
       <p className="text-xs text-muted-foreground">
-        Only for harnesses that can&apos;t hear the room from their terminal, like Codex.
+        The agent runs with no chat window, on your own sign-in for that harness, and wakes when someone @mentions it.
       </p>
       <div className="grid gap-1.5">
         <label htmlFor={`${id}-harness`} className="text-xs font-medium">
