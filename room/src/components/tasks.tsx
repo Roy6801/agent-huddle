@@ -11,7 +11,7 @@ import {
   UndoIcon,
   UserRoundIcon,
 } from "lucide-react";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { CopyButton } from "@/components/copy-button";
 import { ErrorBox, type ErrorInfo } from "@/components/error-box";
@@ -62,8 +62,32 @@ function Person({ handle }: { handle: string }) {
   );
 }
 
-/** Roughly more than the six lines a clamped block shows in the narrow board. */
-const longText = (text: string) => text.length > 240 || text.split("\n").length > 6;
+/** A done note clamped to six lines, and a dialog to read it all whenever the clamp cuts it at the board's width. */
+function DoneNote({ task, note }: { task: Task; note: string }) {
+  const text = useRef<HTMLSpanElement>(null);
+  const [cut, setCut] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = text.current;
+    if (!el) return;
+    const measure = () => setCut(el.scrollHeight > el.clientHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [note]);
+
+  return (
+    <>
+      <code className="block rounded-md bg-muted px-2 py-1.5 font-mono text-[11px] leading-4 text-foreground/85">
+        <span ref={text} className="line-clamp-6 break-words whitespace-pre-wrap">
+          {note}
+        </span>
+      </code>
+      {cut && <TextDialog task={task} kind="note" text={note} />}
+    </>
+  );
+}
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -780,10 +804,7 @@ function TaskCard({ task }: { task: Task }) {
             )}
             {task.note && (
               <Row label={task.status === "done" || !task.reopened ? "Done note" : "Last done note"}>
-                <code className="block rounded-md bg-muted px-2 py-1.5 font-mono text-[11px] leading-4 text-foreground/85">
-                  <span className="line-clamp-6 break-words whitespace-pre-wrap">{task.note}</span>
-                </code>
-                {longText(task.note) && <TextDialog task={task} kind="note" text={task.note} />}
+                <DoneNote task={task} note={task.note} />
               </Row>
             )}
             {task.cancelled && (
