@@ -17,7 +17,7 @@ const spriteMeta = () => sprite().meta;
 
 // With reduced motion the demo opens on the finished room and only plays on request.
 let next = reduced ? SCRIPT.length : INITIAL_STEPS;
-let room: RoomState = roomAt(next, Date.now(), spriteMeta);
+let room: RoomState = withBlocked(roomAt(next, Date.now(), spriteMeta));
 let status = { playing: false };
 let timer: ReturnType<typeof setTimeout> | undefined;
 const uploads = new Map<string, { meta: FileMeta; url: string }>();
@@ -28,8 +28,14 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
+/** Fills each task's `after` and `blocked` the way the server reports them. */
+function withBlocked(r: RoomState): RoomState {
+  const doneIds = new Set(r.tasks.filter((t) => t.status === "done").map((t) => t.id));
+  return { ...r, tasks: r.tasks.map((t) => ({ ...t, after: t.after ?? [], blocked: (t.after ?? []).filter((n) => !doneIds.has(n)) })) };
+}
+
 function setRoom(r: RoomState) {
-  room = r;
+  room = withBlocked(r);
   listeners.forEach((l) => l());
 }
 
@@ -104,7 +110,7 @@ function useRoomState() {
   return { state, pollNow: noop, endHuddle: noop };
 }
 
-type Body = Partial<Headless> & Partial<PresenceTimers> & { text?: string; files?: string[]; title?: string; assignee?: string; description?: string | null; spec?: string | null; roundCap?: number | null; folder?: string };
+type Body = Partial<Headless> & Partial<PresenceTimers> & { text?: string; files?: string[]; title?: string; assignee?: string; after?: number[]; description?: string | null; spec?: string | null; roundCap?: number | null; folder?: string };
 
 const LIMITS = { description: 2000, spec: 20000, brief: 20000 } as const;
 
@@ -132,8 +138,11 @@ async function post<T = ApiError>(path: string, body: unknown): Promise<Posted<T
   } else if (path === "/api/tasks") {
     const tooLong = overLimit(b);
     if (tooLong) return rejected("invalid_text", tooLong);
+    const after = [...new Set(b.after ?? [])].sort((x, y) => x - y);
+    const missing = after.find((n) => !room.tasks.some((t) => t.id === n));
+    if (missing !== undefined) return rejected("invalid_after", `There is no task #${missing}; a task can only come after tasks that already exist.`);
     const task = createTask({ ...room, streak: 0 }, now, "you", b.title ?? "", b.assignee ?? null, b);
-    setRoom(task.room);
+    setRoom({ ...task.room, tasks: task.room.tasks.map((t) => (t.id === task.id ? { ...t, after } : t)) });
     data = { id: task.id };
   } else if (path.startsWith("/api/tasks/")) {
     const id = Number(path.slice("/api/tasks/".length));

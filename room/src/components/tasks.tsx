@@ -1,4 +1,4 @@
-import { CircleCheckIcon, CircleDashedIcon, CircleDotIcon, CopyIcon, DownloadIcon, PlusIcon } from "lucide-react";
+import { CircleCheckIcon, CircleDashedIcon, CircleDotIcon, CopyIcon, DownloadIcon, LockIcon, PlusIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { CopyButton } from "@/components/copy-button";
@@ -18,13 +18,17 @@ import { fmtSize } from "@/lib/format";
 import type { Task, TaskSpecFile, TaskStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const STATUS: Record<TaskStatus, { icon: typeof CircleDotIcon; label: string; iconClass: string; badge: string }> = {
+type View = TaskStatus | "blocked";
+
+const STATUS: Record<View, { icon: typeof CircleDotIcon; label: string; iconClass: string; badge: string }> = {
   open: { icon: CircleDashedIcon, label: "Open", iconClass: "text-muted-foreground", badge: "border-border text-muted-foreground" },
+  blocked: { icon: LockIcon, label: "Blocked", iconClass: "text-muted-foreground", badge: "border-dashed border-border text-muted-foreground" },
   claimed: { icon: CircleDotIcon, label: "Claimed", iconClass: "text-foreground", badge: "bg-secondary text-secondary-foreground" },
   done: { icon: CircleCheckIcon, label: "Done", iconClass: "text-presence", badge: "bg-presence/12 text-presence" },
 };
 
-const ORDER: Record<TaskStatus, number> = { open: 0, claimed: 1, done: 2 };
+const ORDER: Record<View, number> = { open: 0, blocked: 1, claimed: 2, done: 3 };
+const viewOf = (t: Task): View => (t.status === "open" && t.blocked?.length ? "blocked" : t.status);
 const who = (h: string) => (h === "you" ? "You" : h);
 
 function Person({ handle }: { handle: string }) {
@@ -257,7 +261,7 @@ function SpecDialog({ task, spec }: { task: Task; spec: string }) {
 
 function TaskCard({ task }: { task: Task }) {
   const [open, setOpen] = useState(false);
-  const status = STATUS[task.status] ?? STATUS.open;
+  const status = STATUS[viewOf(task)] ?? STATUS.open;
   const Icon = status.icon;
   const done = task.status === "done";
   const { ended } = useRoom().state;
@@ -336,6 +340,11 @@ function TaskCard({ task }: { task: Task }) {
                 <SpecFile file={task.specFile} />
               </Row>
             )}
+            {!!task.after?.length && (
+              <Row label="After">
+                {task.after.map((n) => `#${n}${task.blocked?.includes(n) ? " (not done)" : ""}`).join(", ")}
+              </Row>
+            )}
             <Row label="Owner">{task.owner ? <Person handle={task.owner} /> : "Unclaimed"}</Row>
             {task.assignee && (
               <Row label="Assigned to">
@@ -386,6 +395,7 @@ function NewTask() {
   const [assignee, setAssignee] = useState("");
   const [description, setDescription] = useState("");
   const [spec, setSpec] = useState("");
+  const [after, setAfter] = useState("");
   const [error, setError] = useState<ErrorInfo | null>(null);
   const [ok, setOk] = useState("");
   const titleRef = useRef<HTMLInputElement>(null);
@@ -412,7 +422,9 @@ function NewTask() {
     const t = title.trim();
     if (state.ended) return;
     if (!t) return titleRef.current?.focus();
-    const body: { title: string; assignee?: string; description?: string; spec?: string } = { title: t };
+    const body: { title: string; assignee?: string; description?: string; spec?: string; after?: number[] } = { title: t };
+    const ids = after.match(/\d+/g)?.map(Number);
+    if (ids?.length) body.after = ids;
     if (current) body.assignee = current;
     if (description.trim()) body.description = description.trim();
     if (spec.trim()) body.spec = spec.trim();
@@ -424,6 +436,7 @@ function NewTask() {
         setTitle("");
         setDescription("");
         setSpec("");
+        setAfter("");
         setError(null);
         setOk(data?.id ? `Added task #${data.id}` : "Task added");
         clearTimeout(okTimer.current);
@@ -525,6 +538,23 @@ function NewTask() {
             onDescription={setDescription}
             onSpec={setSpec}
           />
+          <div className="grid gap-1.5">
+            <label htmlFor={`${id}-after`} className="text-xs font-medium text-muted-foreground">
+              After tasks
+            </label>
+            <Input
+              id={`${id}-after`}
+              aria-describedby={[`${id}-after-help`, describedBy].filter(Boolean).join(" ")}
+              value={after}
+              placeholder="e.g. 1, 2, 3"
+              disabled={state.ended}
+              onChange={(e) => setAfter(e.target.value)}
+              className="font-normal text-foreground"
+            />
+            <p id={`${id}-after-help`} className="text-[11px] text-muted-foreground">
+              This task stays blocked until those are done.
+            </p>
+          </div>
           {error && <ErrorBox id={`${id}-error`} error={error} />}
           <div role="status" className="text-xs text-presence empty:hidden">
             {ok}
@@ -547,7 +577,7 @@ export function Tasks() {
   const { state } = useRoom();
   const { tasks } = state;
   const done = tasks.filter((t) => t.status === "done").length;
-  const sorted = tasks.slice().sort((a, b) => (ORDER[a.status] ?? 3) - (ORDER[b.status] ?? 3) || a.id - b.id);
+  const sorted = tasks.slice().sort((a, b) => (ORDER[viewOf(a)] ?? 4) - (ORDER[viewOf(b)] ?? 4) || a.id - b.id);
   const roving = useRovingFocus<HTMLUListElement>();
 
   return (

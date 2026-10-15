@@ -53,6 +53,10 @@ export type Task = {
   description: string | null;
   spec: string | null;
   specFile: TaskSpecFile | null;
+  /** Prerequisite task ids, sorted. */
+  after?: number[];
+  /** The prerequisites that are not done yet. */
+  blocked?: number[];
 };
 
 export type AskKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";
