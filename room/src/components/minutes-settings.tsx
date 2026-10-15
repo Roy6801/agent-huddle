@@ -12,12 +12,6 @@ export type Field<K extends string> = { key: K; label: string; unit: string; min
 type EditorProps = {
   /** Prefix of the element ids, e.g. "headless". */
   id: string;
-  /** The heading above the summary; omit it when `lead` brings its own. */
-  title?: string;
-  /** Replaces the heading, e.g. a meter; its heading should have the id `${id}-h`. */
-  lead?: ReactNode;
-  /** The accessible name of the form when there is no `title`. */
-  label?: string;
   /** Screen-reader suffix of the Change button, e.g. "headless budgets". */
   noun: string;
   icon?: LucideIcon;
@@ -32,14 +26,16 @@ type EditorProps = {
   toBody: () => object | string;
   /** The form fields; receives the id of the error message while one is shown. */
   children: (errorId: string | undefined) => ReactNode;
-};
+} & (
+  | { /** The heading above the summary. */ title: string; lead?: never }
+  | { title?: never; /** Replaces the heading, e.g. a meter; its heading must have the id `${id}-h`. */ lead: ReactNode }
+);
 
 /** A titled summary line that opens a form saved with POST api/settings. */
 export function SettingsEditor({
   id,
   title,
   lead,
-  label,
   noun,
   icon: Icon = Settings2Icon,
   summary,
@@ -127,8 +123,7 @@ export function SettingsEditor({
           ref={form}
           noValidate
           autoComplete="off"
-          aria-labelledby={title ? `${id}-h` : undefined}
-          aria-label={title ? undefined : label}
+          aria-labelledby={`${id}-h`}
           className="mb-1 grid gap-3 rounded-lg border bg-background p-3"
           onSubmit={(e) => {
             e.preventDefault();

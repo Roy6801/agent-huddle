@@ -57,7 +57,7 @@ export type Task = {
   after: number[];
   /** The prerequisites that are not done yet. */
   blocked: number[];
-  reopened?: { by: string; reason: string; at: string } | null;
+  reopened: { by: string; reason: string; at: string } | null;
 };
 
 export type AskKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";

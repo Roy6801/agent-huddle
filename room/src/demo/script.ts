@@ -106,7 +106,7 @@ export function createTask(s: RoomState, at: number, by: string, title: string, 
   const order = after.length ? `, after ${after.map((n) => `#${n}`).join(", ")}${waiting.length ? ` (blocked by ${waiting.map((n) => `#${n}`).join(", ")})` : ""}` : "";
   const next = {
     ...s,
-    tasks: [...s.tasks, { id, title, status: "open" as const, owner: null, assignee, createdBy: by, note: null, description: text.description ?? null, spec: text.spec ?? null, specFile: null, after, blocked: waiting }],
+    tasks: [...s.tasks, { id, title, status: "open" as const, owner: null, assignee, createdBy: by, note: null, description: text.description ?? null, spec: text.spec ?? null, specFile: null, after, blocked: waiting, reopened: null }],
   };
   return { id, room: system(next, at, `${by} created task #${id} "${title}"${assignee ? ` for @${assignee}` : ""}${order}`) };
 }
