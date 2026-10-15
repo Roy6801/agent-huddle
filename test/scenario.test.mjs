@@ -219,6 +219,14 @@ test('cumulative run', async (t) => {
       );
     }
     const s = await state();
+    const offer = s.messages.find((m) => m.task === 5);
+    chk(
+      offer?.text.endsWith('; it is ready and unassigned: claim it if you can take it') && [...offer.to].sort().join() === listeners.map((a) => a.handle).sort().join(),
+      'codex-1',
+      'the unassigned #5 offered to every free agent',
+      offer && { text: offer.text, to: offer.to },
+    );
+    for (const a of listeners) await a.read();
     chk(s.tasks.length === 5, 'codex-1', '5 tasks', s.tasks.length);
     chk(s.tasks.filter((x) => x.assignee).length === 4, 'codex-1', '4 assigned tasks', s.tasks.map((x) => x.assignee));
     chk(s.agentStreak === 0, 'you', 'streak 0 after the brief', s.agentStreak);

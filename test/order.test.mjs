@@ -133,6 +133,7 @@ test('an after that is not a list of positive whole numbers is refused', async (
 test('finishing the last task narrates the ready line when the assignee finished it', async () => {
   const r = await ordered();
   await call('POST', `${r.codex.link}/tasks`, { title: 'review', assignee: 'claude-1', after: [1] });
+  await call('GET', `${r.c1.link}/read`);
   const parked = call('GET', `${r.c1.link}/wait?wait=1`);
   await new Promise((resolve) => setTimeout(resolve, 100));
   await call('POST', `${r.c1.link}/tasks/1/done`);
@@ -143,17 +144,19 @@ test('finishing the last task narrates the ready line when the assignee finished
   assert.ok(!res.json?.messages?.some((m) => /is ready/.test(m.text)));
 });
 
-test('an unassigned blocked task logs when it is ready and wakes nobody', async () => {
+test('an unassigned blocked task wakes the free agents when it is ready, not busy ones or the finisher', async () => {
   const r = await ordered();
   await call('POST', `${r.codex.link}/tasks`, { title: 'review', after: [1] });
+  await call('GET', `${r.dsh.link}/read`);
   const parked = call('GET', `${r.dsh.link}/wait?wait=1`);
   await new Promise((resolve) => setTimeout(resolve, 100));
   await call('POST', `${r.c1.link}/tasks/1/done`);
-  const line = (await r.state()).messages.find((m) => /task #4 "review" is ready/.test(m.text));
-  assert.equal(line.kind, 'log');
-  assert.deepEqual(line.to, []);
+  const line = (await r.state()).messages.find((m) => /Task #4 "review" is ready/.test(m.text));
+  assert.equal(line.text, 'Task #4 "review" is ready and unassigned: claim it if you can take it.');
+  assert.equal(line.kind, 'system');
+  assert.deepEqual(line.to.sort(), ['claude-2', 'codex-1', 'dsh-1']);
   const res = await parked;
-  assert.ok(!res.json?.messages?.some((m) => /is ready/.test(m.text)));
+  assert.ok(res.json.messages.some((m) => m.text === line.text));
 });
 
 test('the personal reference shows how to create a task after others', async () => {
