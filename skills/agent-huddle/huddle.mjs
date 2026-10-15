@@ -176,6 +176,12 @@ export const ERRORS = {
     'Send {"assignment":"regular"} (a free agent may take any ready, unclaimed task) or {"assignment":"strict"} (only the assignee may claim an assigned task).'],
   unknown_agent: [404, (p) => `@${p.handle} is not a live agent in this room.`, 'Pick a live agent from the roster.'],
   not_headless: [409, (p) => `@${p.handle} is not a headless agent.`, 'Ask it in the room to stop, or stop it in its own terminal.'],
+  unknown_worker_harness: [400, (p) => `harness must be one of ${p.valid.join(', ')}.`,
+    'Pick a harness from the Headless list; DeepSeek Harness joins from its own terminal.'],
+  worker_unavailable: [424, (p) => `${p.label} cannot start here: ${p.why}.`, 'Fix that on this machine, then press Start again.'],
+  worker_failed: [502, (p) => `${p.label} stopped while starting: ${p.why.replace(/\.?$/, '.')}`, (p) => `Fix the cause, then press Start again; its full output is in ${p.log}.`],
+  worker_folder_not_found: [400, (p) => `${p.folder} does not exist or is not a folder.`, 'Pick an existing folder for the agent to work in, then press Start again.'],
+  unknown_worker: [404, (p) => `There is no started worker ${p.id} in this room.`, 'Pick one from the list under Add agent → Headless.'],
   file_too_large: [413, (p) => `The file is ${p.size ? `${megabytes(p.size)}, ` : ''}over the ${megabytes(p.limit)} limit per file.`,
     'Compress or split it, or share it by its path on disk instead.'],
   room_storage_full: [413, (p) => `The room's file storage is full at ${megabytes(p.limit)}.`,
@@ -489,6 +495,8 @@ export function createHuddle(opts = {}) {
     maxFileBytes = MAX_FILE_BYTES,
     maxRoomBytes = MAX_ROOM_BYTES,
     historyDir,
+    workerDir,
+    workerStartMs = 20000,
   } = opts;
   const rooms = new Map();
   const summaries = new Map();
@@ -574,6 +582,7 @@ export function createHuddle(opts = {}) {
       roundCap: cap,
       assignment: 'regular',
       headless: { wakesPerHour: 20, runMinutes: 10, idleMinutes: 60 },
+      workers: [],
       timers: { workingMs: activeMs, asleepMs, leaveMs: idleMs, stallMs },
       stall: null,
       folder,
@@ -646,6 +655,7 @@ export function createHuddle(opts = {}) {
       if (a.status === 'open') historyAsk(s, Object.assign(a, { status: 'cancelled' }));
     }
     writeTranscript(s, reason);
+    for (const w of s.workers) stopProcess(w);
     const gone = roomEnded(s);
     for (const agent of s.agents.values()) {
       for (const w of agent.waiters) {
@@ -1514,6 +1524,79 @@ export function createHuddle(opts = {}) {
     return agentView(s, agent);
   }
 
+  // ---- headless workers started from the page ----
+
+  // Each runs `huddle.mjs worker` as the user who runs this server, in its folder, on the harness's own sign-in.
+  function workerView(w) {
+    const { id, harness, label, folder, log, handle, error, startedAt } = w;
+    return { id, harness, label, folder, log, status: w.child && w.stopping ? 'stopping' : w.status, handle, error, startedAt };
+  }
+
+  function stopProcess(w) {
+    if (!w.child || w.stopping) return;
+    w.stopping = true;
+    w.child.kill('SIGTERM');
+  }
+
+  async function startWorker(s, body, join) {
+    const harness = typeof body.harness === 'string' ? body.harness : '';
+    if (!Object.hasOwn(WORKER_HARNESSES, harness)) throw new HttpError('unknown_worker_harness', { valid: Object.keys(WORKER_HARNESSES) });
+    const { label } = WORKER_HARNESSES[harness];
+    const folder = parseFolder(body.folder || undefined) ?? s.folder;
+    if (!folder) throw new HttpError('invalid_folder');
+    if (!isFolder(folder)) throw new HttpError('worker_folder_not_found', { folder });
+    const why = workerProblem(harness);
+    if (why) throw new HttpError('worker_unavailable', { label, why });
+
+    const dir = workerDir ?? path.join(resolveHome(), 'workers');
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const id = s.workers.length + 1;
+    const log = path.join(dir, `${id8(s)}-${id}.log`);
+    const fd = fs.openSync(log, 'w', 0o600);
+    fs.fchmodSync(fd, 0o600);
+    const child = spawn(process.execPath, [THIS_FILE, 'worker', harness, join, '--dir', folder], { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'] });
+    const w = { id, harness, label, folder, log, status: 'starting', handle: null, error: null, startedAt: new Date().toISOString(), child, stopping: false };
+    s.workers.push(w);
+    let settle;
+    const settled = new Promise((resolve) => (settle = resolve));
+    w.closed = new Promise((resolve) => child.on('close', resolve));
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (d) => {
+      fs.writeSync(fd, d);
+      out = (out + d).slice(-4096);
+      const listening = /^(\S+) is listening in /m.exec(out);
+      if (listening && w.status === 'starting') {
+        w.handle = listening[1];
+        w.status = 'running';
+        settle();
+      }
+    });
+    child.stderr.on('data', (d) => {
+      fs.writeSync(fd, d);
+      err = (err + d).slice(-4096);
+    });
+    child.on('error', (e) => (err += `\n${e.message}`));
+    child.on('close', (code, signal) => {
+      fs.closeSync(fd);
+      const failed = code !== 0 && !w.stopping;
+      w.status = failed ? 'failed' : 'stopped';
+      if (failed) w.error = err.trim().split('\n').slice(-3).join(' | ').slice(0, 500) || `exited (${signal ?? code})`;
+      w.child = null;
+      settle();
+    });
+    await Promise.race([settled, sleep(workerStartMs)]);
+    if (w.status === 'failed') throw new HttpError('worker_failed', { label, why: w.error, log });
+    return { started: w.status === 'running', view: workerView(w) };
+  }
+
+  function stopWorker(s, id) {
+    const w = s.workers.find((x) => String(x.id) === id);
+    if (!w) throw new HttpError('unknown_worker', { id });
+    stopProcess(w);
+    return workerView(w);
+  }
+
   function postFromHuman(s, body) {
     const files = attachments(s, body.files);
     const text = postText(body, files);
@@ -2118,6 +2201,7 @@ How the room works:
         folder: s.folder,
         worker: THIS_FILE,
         harnesses: Object.entries(WORKER_HARNESSES).map(([id, h]) => [id, h.label]),
+        workers: s.workers.map(workerView),
       });
     }
     const acted = (status, value) => {
@@ -2135,6 +2219,12 @@ How the room works:
       if (!agent || agent.status === 'left') throw new HttpError('unknown_agent', { handle: roleMatch[1] });
       return acted(200, setRole(s, agent, body, 'you'));
     }
+    if (method === 'POST' && key === 'api/workers') {
+      const { started, view } = await startWorker(s, body, `${base}/s/${s.id}`);
+      return acted(started ? 201 : 202, view);
+    }
+    const workerStopMatch = method === 'POST' && /^api\/workers\/(\d+)\/stop$/.exec(key);
+    if (workerStopMatch) return acted(200, stopWorker(s, workerStopMatch[1]));
     if (method === 'POST' && key === 'api/brief') return acted(200, setBrief(s, 'you', body.text));
     if (method === 'POST' && key === 'api/tasks') return acted(200, taskView(s, createTask(s, 'you', body)));
     const taskReopenMatch = method === 'POST' && /^api\/tasks\/(\d+)\/reopen$/.exec(key);
@@ -2249,15 +2339,20 @@ How the room works:
     });
   }
 
-  function close() {
+  async function close() {
     clearInterval(timer);
     for (const s of liveRooms()) endRoom(s, 'server stopped');
     for (const s of rooms.values()) clearTimeout(s.tombstone);
-    return new Promise((resolve) => {
+    const closed = new Promise((resolve) => {
       if (!server.listening) return resolve();
       server.close(() => resolve());
       server.closeAllConnections();
     });
+    // Started workers reap their agent before the server process goes; one that hangs is killed.
+    const started = [...rooms.values()].flatMap((s) => s.workers).filter((w) => w.child);
+    await Promise.race([Promise.all(started.map((w) => w.closed)), sleep(5000)]);
+    for (const w of started) w.child?.kill('SIGKILL');
+    return closed;
   }
 
   return { server, listen, close, sweep };
@@ -2371,6 +2466,8 @@ async function serve() {
     roundCap: num('AGENT_HUDDLE_ROUND_CAP', ROUND_CAP_DEFAULT),
     maxFileBytes: num('AGENT_HUDDLE_MAX_FILE', MAX_FILE_BYTES),
     historyDir: path.join(resolveHome(), 'history'),
+    workerDir: path.join(resolveHome(), 'workers'),
+    workerStartMs: num('AGENT_HUDDLE_WORKER_START_MS', 20000),
     adminToken,
     homeKey: readHomeKey(resolveHome()),
     onIdle: shutdown,
@@ -2822,6 +2919,21 @@ export const WORKER_HARNESSES = {
   },
 };
 
+// What would stop a headless worker from starting, found the way doctor finds harnesses; null when nothing would.
+export function workerProblem(harness) {
+  const spec = WORKER_HARNESSES[harness];
+  let argv;
+  try {
+    argv = acpCommand(spec);
+  } catch (err) {
+    return err.message;
+  }
+  const [cmd] = argv;
+  if (path.isAbsolute(cmd) ? isExecutable(cmd) : which(cmd)) return null;
+  if (cmd === 'bunx') return `bunx is not on your PATH, and headless ${spec.label} starts its ACP adapter with it (install Bun)`;
+  return `${cmd} is not installed or not on your PATH (install ${spec.label} and sign in)`;
+}
+
 function acpCommand(spec) {
   if (!process.env.AGENT_HUDDLE_ACP_CMD) return spec.argv();
   let argv;
@@ -2976,6 +3088,8 @@ async function runWorker(args) {
     },
   });
   for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => (signal.aborted ? process.exit(1) : abort(0, 'worker stopped')));
+  // Started from the page, its output is a pipe to the server; if the server goes, keep running until the room is unreachable.
+  for (const stream of [process.stdout, process.stderr]) stream.on('error', () => {});
 
   const jsonHeaders = { 'content-type': 'application/json' };
   const budgets = { wakesPerHour: 20, runMinutes: 10, idleMinutes: 60 };
