@@ -295,6 +295,7 @@ export function createHuddle(opts = {}) {
     serverIdleMs = 1800000,
     askMs = 600000,
     stallMs = 5 * 60000,
+    stallBackoffMs = [10 * 60000, 30 * 60000],
     roundCap = ROUND_CAP_DEFAULT,
     onIdle,
     onStop,
@@ -1427,15 +1428,19 @@ How the room works:
   }
 
   // Tasks are pending and no agent is Working: after the hold, nudge the Listening holders, else you.
+  // Repeat after each backoff, then stay quiet until something changes.
   function checkStall(s, now) {
     const pending = s.tasks.filter((t) => t.status !== 'done');
     if (!pending.length || [...s.agents.values()].some((a) => presence(s, a) === 'working')) {
       s.stall = null;
       return;
     }
-    s.stall ??= { since: now, nudged: false };
-    if (s.stall.nudged || now < Math.max(s.stall.since, s.lastActivity) + s.timers.stallMs) return;
-    s.stall.nudged = true;
+    s.stall ??= { since: now, nudges: 0, last: 0 };
+    const { nudges, last } = s.stall;
+    if (nudges > stallBackoffMs.length) return;
+    if (now < (nudges ? last + stallBackoffMs[nudges - 1] : Math.max(s.stall.since, s.lastActivity) + s.timers.stallMs)) return;
+    s.stall.nudges++;
+    s.stall.last = now;
     const paused = s.roundCap !== null && s.agentStreak >= s.roundCap;
     const holder = (t) => t.owner ?? t.assignee;
     const listening = paused ? [] : [...new Set(pending.map(holder))].filter((h) => h && s.agents.has(h) && presence(s, s.agents.get(h)) === 'listening');
