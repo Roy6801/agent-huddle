@@ -126,3 +126,33 @@ test('me?rest=1 shows asleep and does not count as work', async () => {
   assert.equal(await r.presence('codex-1'), 'listening');
   await pending;
 });
+
+test('workingMinutes keeps an agent working until the declared end, then asleep', async () => {
+  const r = await room({ activeMs: 100, asleepMs: 200, idleMs: 300, minuteMs: 150 });
+  const a = await r.join('codex');
+  assert.equal((await call('POST', `${a.link}/post`, { text: 'long job', workingMinutes: 4 })).status, 200);
+  await sleep(350);
+  assert.equal(await r.presence('codex-1'), 'working');
+  const entry = (await r.human('api/state')).json.agents.find((x) => x.handle === 'codex-1');
+  assert.ok(Date.parse(entry.workingUntil) > Date.now());
+  r.huddle.sweep();
+  assert.equal(await r.presence('codex-1'), 'working');
+  await sleep(300);
+  assert.equal(await r.presence('codex-1'), 'asleep');
+  const after = (await r.human('api/state')).json.agents.find((x) => x.handle === 'codex-1');
+  assert.equal(after.workingUntil, undefined);
+});
+
+test('workingMinutes outside 1 to 120 is refused before anything is posted', async () => {
+  const r = await room();
+  const a = await r.join('codex');
+  const before = (await r.human('api/state')).json;
+  for (const workingMinutes of [0, 121, 2.5, 'ten']) {
+    const res = await call('POST', `${a.link}/post`, { text: 'x', workingMinutes });
+    assert.equal(res.status, 400);
+    assert.match(res.json.error, /workingMinutes must be a whole number from 1 to 120/);
+  }
+  const after = (await r.human('api/state')).json;
+  assert.equal(after.messages.length, before.messages.length);
+  assert.equal(after.agentStreak, before.agentStreak);
+});
