@@ -1275,7 +1275,7 @@ export function createHuddle(opts = {}) {
       to: notified,
       task: task.id,
     });
-    if (fields.assignee === null) offerReady(s, task, { skip: [editor, ...notified] });
+    if (fields.after || fields.assignee !== undefined) offerReady(s, task, { skip: [editor, ...notified] });
     return task;
   }
 
