@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { useRoom } from "@/hooks/use-room";
+import { validRole } from "@/lib/join-lines";
 import { cn } from "@/lib/utils";
 
 const FALLBACK_HARNESSES: readonly (readonly [string, string])[] = [
@@ -27,12 +28,40 @@ type Mode = "terminal" | "headless";
 
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 
-export function workerCommand(worker: string, harness: string, joinUrl: string, folder: string) {
+export function workerCommand(worker: string, harness: string, joinUrl: string, folder: string, role: string | null = null) {
   const dir = folder.trim();
-  return `node ${quote(worker)} worker ${harness} ${quote(joinUrl)}${dir ? ` --dir ${quote(dir)}` : ""}`;
+  return `node ${quote(worker)} worker ${harness} ${quote(joinUrl)}${dir ? ` --dir ${quote(dir)}` : ""}${role ? ` --role ${role}` : ""}`;
 }
 
-function Headless({ joinUrl }: { joinUrl: string }) {
+function RoleField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const id = useId();
+  const invalid = value !== "" && !validRole(value);
+  return (
+    <div className="grid gap-1.5">
+      <label htmlFor={id} className="text-xs font-medium">
+        Role <span className="font-normal text-muted-foreground">(optional)</span>
+      </label>
+      <Input
+        id={id}
+        className="font-mono max-md:h-11"
+        value={value}
+        placeholder="builder"
+        spellCheck={false}
+        autoComplete="off"
+        aria-invalid={invalid}
+        aria-describedby={`${id}-hint`}
+        onChange={(e) => onChange(e.target.value.trim().toLowerCase())}
+      />
+      <p id={`${id}-hint`} className={cn("text-xs text-muted-foreground", invalid && "text-destructive")}>
+        {invalid
+          ? "Use up to 20 lowercase letters, digits or dashes; not all, you, system or headless."
+          : "The agent joins with it, so @role reaches it."}
+      </p>
+    </div>
+  );
+}
+
+function Headless({ joinUrl, role }: { joinUrl: string; role: string | null }) {
   const { state } = useRoom();
   const harnesses = state.harnesses ?? FALLBACK_HARNESSES;
   const [harness, setHarness] = useState<string>(harnesses[0][0]);
@@ -70,7 +99,7 @@ function Headless({ joinUrl }: { joinUrl: string }) {
           onChange={(e) => setEdited(e.target.value)}
         />
       </div>
-      <CommandLine text={workerCommand(state.worker ?? "huddle.mjs", harness, joinUrl, folder)} label="Copy" />
+      <CommandLine text={workerCommand(state.worker ?? "huddle.mjs", harness, joinUrl, folder, role)} label="Copy" />
       <p className="text-xs text-muted-foreground">
         Run this in a terminal. The agent works in that folder and asks you here before risky actions. Ctrl-C stops it.
       </p>
@@ -82,6 +111,8 @@ export function AddAgent() {
   const { state } = useRoom();
   const { joinUrl, ended } = state;
   const [mode, setMode] = useState<Mode>("terminal");
+  const [roleText, setRoleText] = useState("");
+  const role = validRole(roleText) ? roleText : null;
   const name = useId();
 
   return (
@@ -131,7 +162,8 @@ export function AddAgent() {
             </label>
           ))}
         </fieldset>
-        {mode === "terminal" ? <JoinLines joinUrl={joinUrl} /> : <Headless joinUrl={joinUrl} />}
+        <RoleField value={roleText} onChange={setRoleText} />
+        {mode === "terminal" ? <JoinLines joinUrl={joinUrl} role={role} /> : <Headless joinUrl={joinUrl} role={role} />}
       </DialogContent>
     </Dialog>
   );

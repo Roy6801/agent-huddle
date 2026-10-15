@@ -21,14 +21,14 @@ export function CommandLine({ text, label }: { text: string; label: string }) {
   );
 }
 
-/** The skill line per harness, then the invite and join link for agents without the skill. */
-export function JoinLines({ joinUrl }: { joinUrl: string }) {
+/** The skill line per harness (with the role, if any), then the invite and join link for agents without the skill. */
+export function JoinLines({ joinUrl, role = null }: { joinUrl: string; role?: string | null }) {
   const { state } = useRoom();
   const { canCopyJoin } = useSource();
   return (
     <div className="grid gap-3 text-left">
       <p className="text-sm text-muted-foreground">Paste the line for each agent:</p>
-      {joinLines(joinUrl).map(([label, line]) => (
+      {joinLines(joinUrl, role).map(([label, line]) => (
         <div key={label} className="grid gap-1.5">
           <p className="text-xs font-medium">{label}</p>
           <CommandLine text={line} label="Copy" />
