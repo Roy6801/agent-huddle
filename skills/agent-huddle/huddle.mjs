@@ -41,6 +41,8 @@ const ASLEEP_WINDOW_MS = 10 * 60 * 1000;
 const REST_WINDOW_MS = 15000;
 const HUMAN_ONLINE_MS = 30 * 1000;
 const RESERVED_ROLES = new Set(['all', 'you', 'system']);
+// These harnesses end their turn and cannot be woken from the room.
+const UNWAKEABLE = new Set(['codex', 'gemini', 'agy']);
 const ROLE_RE = /^[a-z0-9-]{1,20}$/;
 // The lookahead capture is atomic, so a token like @types/node never backs off to @types.
 const MENTION_RE = /(?<![A-Za-z0-9_.@])@(?=([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*(?:\.\*)?))\1(?![A-Za-z0-9_/@*-])/gi;
@@ -273,6 +275,7 @@ export function createHuddle(opts = {}) {
   const {
     idleMs = 900000,
     quietMs = 30000,
+    nudgeRepeatMs = ASLEEP_WINDOW_MS,
     activeMs = ACTIVE_WINDOW_MS,
     asleepMs = ASLEEP_WINDOW_MS,
     minuteMs = 60000,
@@ -412,6 +415,7 @@ export function createHuddle(opts = {}) {
       lastWaitAt: 0,
       workingUntil: 0,
       restingAt: 0,
+      nudgedAt: 0,
       waiters: new Set(),
     };
     s.agents.set(handle, agent);
@@ -455,24 +459,26 @@ export function createHuddle(opts = {}) {
     const quiet = [];
     for (const handle of m.to) {
       const agent = s.agents.get(handle);
-      if (!agent || handle === m.from || agent.nudged || agent.waiters.size || agent.role === 'headless') continue;
+      if (!agent || handle === m.from || now - agent.nudgedAt < nudgeRepeatMs || agent.waiters.size || agent.role === 'headless') continue;
       if (agent.status !== 'left' && now - agent.lastSeen <= quietMs) continue;
-      agent.nudged = true;
+      agent.nudgedAt = now;
       quiet.push(agent);
     }
     if (!quiet.length) return;
     const age = (a) => formatAge(now - a.lastSeen);
-    const state = (a) => presence(s, a);
-    const label = { working: 'working', listening: 'between waits' };
+    const state = (a) => (UNWAKEABLE.has(a.harness) ? 'unwakeable' : presence(s, a));
+    const label = { working: 'working', listening: 'between waits', unwakeable: 'cannot be woken' };
     const [one] = quiet;
     const text =
       quiet.length === 1
-        ? state(one) === 'working'
+        ? state(one) === 'unwakeable'
+          ? `${one.handle} cannot be woken from the room once its turn ends (last seen ${age(one)} ago); nudge it in its own terminal.`
+          : state(one) === 'working'
           ? `${one.handle} is working (last seen ${age(one)} ago); it will read this when it next waits.`
           : state(one) === 'listening'
             ? `${one.handle} is not waiting right now (last seen ${age(one)} ago); it will read this when it next waits. If its turn ended, nudge it in its own terminal.`
             : `${one.handle} is asleep (last seen ${age(one)} ago). If its turn ended, nudge it in its own terminal.`
-        : `Not listening: ${quiet.map((a) => `${a.handle} (${label[state(a)] ?? 'asleep'}, ${age(a)})`).join(', ')}. Working agents read this when they next wait; nudge asleep ones in their own terminals.`;
+        : `Not listening: ${quiet.map((a) => `${a.handle} (${label[state(a)] ?? 'asleep'}, ${age(a)})`).join(', ')}. Working agents read this when they next wait; nudge the others in their own terminals.`;
     system(s, text, { toYou: true });
   }
 
@@ -1220,7 +1226,7 @@ How the room works:
     const upload = method === 'POST' && key === 'files';
     const body = method === 'POST' && !upload ? await readBody(req, /^tasks(\/\d+)?$/.test(key) ? TASK_BODY_LIMIT : BODY_LIMIT) : {};
     agent.lastSeen = Date.now();
-    agent.nudged = false;
+    agent.nudgedAt = 0;
     const resting = method === 'GET' && key === 'me' && url.searchParams.get('rest') === '1';
     agent.restingAt = resting ? agent.lastSeen : 0;
     if (!resting && !(method === 'GET' && key === 'wait')) agent.lastCallAt = agent.lastSeen;

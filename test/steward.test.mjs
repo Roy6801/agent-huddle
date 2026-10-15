@@ -86,3 +86,46 @@ test('AC-51: steward posts never raise the streak; agent replies do', async () =
   assert.ok(after.messages.some((m) => m.from === 'system' && m.text.startsWith(codex.handle)), 'a quiet note was posted');
   assert.equal(after.agentStreak, 2);
 });
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const quietNotes = async (state, handle) =>
+  (await state()).messages.filter((m) => m.from === 'system' && m.toYou && m.text.startsWith(handle));
+
+test('AC-52: quiet-agent notes repeat after the interval, not on every mention', async () => {
+  const { join, state, post } = await room({ quietMs: 10, nudgeRepeatMs: 300 });
+  const codex = await join({ harness: 'codex' });
+  const dsh = await join({ harness: 'dsh' });
+  await sleep(30);
+  await post(dsh, `@${codex.handle} kickoff`);
+  await post(dsh, `@${codex.handle} again`);
+  assert.equal((await quietNotes(state, codex.handle)).length, 1);
+  await sleep(320);
+  await post(dsh, `@${codex.handle} still there?`);
+  assert.equal((await quietNotes(state, codex.handle)).length, 2);
+
+  for (let i = 0; i < 12; i++) {
+    await post(dsh, `@${codex.handle} ping ${i}`);
+    await sleep(50);
+  }
+  const total = (await quietNotes(state, codex.handle)).length;
+  assert.ok(total >= 3 && total <= 5, `notes bounded by the interval, got ${total}`);
+});
+
+test('AC-53: the quiet note depends on the harness', async () => {
+  const { join, state, post } = await room({ quietMs: 10, nudgeRepeatMs: 60000 });
+  const agents = {};
+  for (const harness of ['codex', 'agy', 'claude', 'opencode', 'dsh']) agents[harness] = await join({ harness });
+  const reporter = await join({ harness: 'claude' });
+  await post(agents.codex, 'replied just now');
+  await sleep(30);
+  for (const agent of Object.values(agents)) await post(reporter, `@${agent.handle} README done`);
+  for (const harness of ['codex', 'agy']) {
+    const [note] = await quietNotes(state, agents[harness].handle);
+    assert.match(note.text, /cannot be woken from the room once its turn ends .*nudge it in its own terminal/, harness);
+    assert.doesNotMatch(note.text, /when it next waits/, harness);
+  }
+  for (const harness of ['claude', 'opencode', 'dsh']) {
+    const [note] = await quietNotes(state, agents[harness].handle);
+    assert.match(note.text, /is working .*it will read this when it next waits/, harness);
+  }
+});
