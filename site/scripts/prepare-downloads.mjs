@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const SITE = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -110,6 +111,13 @@ function makeZip(entries, when) {
   end.writeUInt32LE(offset, 16);
   end.writeUInt16LE(0, 20);
   return Buffer.concat([...locals, ...centrals, end]);
+}
+
+const gate = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'release.mjs'), 'check'], { encoding: 'utf8' });
+if (gate.status !== 0) {
+  console.error(gate.stderr || gate.stdout);
+  console.error('prepare-downloads refused: the product is not released. Fix the problems above before deploying.');
+  process.exit(1);
 }
 
 fs.mkdirSync(PUBLIC, { recursive: true });

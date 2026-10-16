@@ -39,5 +39,3 @@ export const DOWNLOADS = [
   { href: "/LICENSE", name: "LICENSE", description: "MIT" },
   { href: "/agent-huddle.zip", name: "agent-huddle.zip", description: "Everything", download: true },
 ] as const;
-
-export const LAST_MODIFIED = "2026-10-15";
