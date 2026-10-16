@@ -869,5 +869,7 @@ test('install.mjs is fresh: rebuilding from src/install gives the same bytes', (
     cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${dirname(esbuild)}:${process.env.PATH}` },
   });
   assert.equal(r.status, 0, r.stderr);
-  assert.ok(readFileSync(out).equals(readFileSync(join(root, 'install.mjs'))), 'install.mjs is stale; run nr build:installer');
+  // Module paths differ by package manager layout (pnpm's node_modules/.pnpm/<pkg>@<v>/node_modules/), not by code.
+  const code = (file) => readFileSync(file, 'utf8').replace(/node_modules\/\.pnpm\/[^/]+\/node_modules\//g, 'node_modules/');
+  assert.equal(code(out), code(join(root, 'install.mjs')), 'install.mjs is stale; run nr build:installer');
 });
