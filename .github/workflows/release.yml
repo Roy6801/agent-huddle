@@ -1,0 +1,25 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish the GitHub Release for a new version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if git ls-remote --exit-code --tags origin "refs/tags/v$V" >/dev/null 2>&1; then
+            echo "v$V already released"
+            exit 0
+          fi
+          node scripts/release.mjs notes > notes.md
+          gh release create "v$V" --title "v$V" --notes-file notes.md --target "$GITHUB_SHA"
