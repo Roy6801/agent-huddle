@@ -260,4 +260,6 @@ pnpm --dir site dev       # http://localhost:3000
 pnpm --dir site build     # needs Node 22+
 ```
 
+Releasing: every change to the shipped product (`install.sh`, `install.mjs`, `skills/`) needs a release, and the site build refuses to deploy without one. Write a curated entry file (a one-line headline ending with a full stop, then `### New`, `### Improved` and `### Fixed` groups of `- ` bullets) and run `pnpm release <entry-file>`. It bumps the patch version in all four places, files your entry in `CHANGELOG.md` and refreshes `release.lock.json`; use `--minor` or `--major` only with the owner's approval. CI runs `pnpm release:check` on every PR, and a merge to main tags `v<version>` and publishes a GitHub Release with that same entry.
+
 MIT licensed.
