@@ -4,10 +4,8 @@
   "private": true,
   "scripts": {
     "prepare-downloads": "node scripts/prepare-downloads.mjs",
-    "predev": "node scripts/prepare-downloads.mjs",
-    "dev": "next dev",
-    "prebuild": "node scripts/prepare-downloads.mjs",
-    "build": "next build",
+    "dev": "node scripts/prepare-downloads.mjs && next dev",
+    "build": "node scripts/prepare-downloads.mjs && next build",
     "start": "next start",
     "lint": "eslint"
   },
@@ -35,7 +33,7 @@
     "tailwindcss": "^4",
     "typescript": "^5"
   },
-  "packageManager": "pnpm@10.5.2",
+  "packageManager": "bun@1.4.0",
   "engines": {
     "node": ">=22"
   }

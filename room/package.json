@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build && vite build --mode demo",
     "typecheck": "tsc --noEmit"
   },
-  "packageManager": "pnpm@10.5.2",
+  "packageManager": "bun@1.4.0",
   "engines": {
     "node": ">=20"
   },

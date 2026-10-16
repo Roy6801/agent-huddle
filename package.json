@@ -4,14 +4,14 @@
   "type": "module",
   "private": true,
   "license": "MIT",
-  "packageManager": "pnpm@10.5.2",
+  "packageManager": "bun@1.4.0",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "test": "node --test",
-    "site": "pnpm --dir site build",
-    "build:room": "pnpm --dir room build",
+    "site": "bun run --cwd site build",
+    "build:room": "bun run --cwd room build",
     "build:installer": "esbuild src/install/cli.mjs --bundle --platform=node --format=esm --target=node20 --outfile=install.mjs \"--banner:js=// generated from src/install; do not edit\nimport { createRequire } from 'node:module';\nconst require = createRequire(import.meta.url);\" && chmod 755 install.mjs",
     "release": "node scripts/release.mjs",
     "release:check": "node scripts/release.mjs check"
@@ -21,9 +21,7 @@
     "@vercel/detect-agent": "^1.2.7",
     "esbuild": "^0.28.2"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ]
-  }
+  "trustedDependencies": [
+    "esbuild"
+  ]
 }
