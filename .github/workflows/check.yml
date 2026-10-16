@@ -1,0 +1,39 @@
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            room/pnpm-lock.yaml
+            site/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir room install --frozen-lockfile
+      - run: pnpm --dir site install --frozen-lockfile
+      - run: node --test
+      - run: pnpm --dir room typecheck
+      - run: pnpm release:check
+      - run: pnpm --dir site lint
+      - run: pnpm --dir site build
