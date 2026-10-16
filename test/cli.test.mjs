@@ -31,9 +31,21 @@ function run(childEnv, ...args) {
 const cli = (...args) => run(env, ...args);
 
 function serverPids(dir) {
+  const isServer = (command, environ) => command.includes('huddle.mjs serve') && environ.includes(`AGENT_HUDDLE_HOME=${dir}`);
+  if (process.platform === 'linux') {
+    return fs.readdirSync('/proc').filter((pid) => {
+      if (!/^\d+$/.test(pid)) return false;
+      try {
+        const read = (f) => fs.readFileSync(`/proc/${pid}/${f}`, 'utf8').replaceAll('\0', ' ');
+        return isServer(read('cmdline'), read('environ'));
+      } catch {
+        return false;
+      }
+    });
+  }
   return execFileSync('ps', ['eww', '-ax', '-o', 'pid=,command='], { encoding: 'utf8' })
     .split('\n')
-    .filter((line) => line.includes('huddle.mjs serve') && line.includes(`AGENT_HUDDLE_HOME=${dir}`));
+    .filter((line) => isServer(line, line));
 }
 
 const serverJson = () => JSON.parse(fs.readFileSync(path.join(home, 'server.json'), 'utf8'));
