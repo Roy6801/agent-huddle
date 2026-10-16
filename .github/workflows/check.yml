@@ -20,20 +20,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: pnpm/action-setup@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: |
-            pnpm-lock.yaml
-            room/pnpm-lock.yaml
-            site/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --dir room install --frozen-lockfile
-      - run: pnpm --dir site install --frozen-lockfile
+      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --cwd room
+      - run: bun install --frozen-lockfile --cwd site
       - run: node --test
-      - run: pnpm --dir room typecheck
-      - run: pnpm release:check
-      - run: pnpm --dir site lint
-      - run: pnpm --dir site build
+      - run: bun run --cwd room typecheck
+      - run: bun run release:check
+      - run: bun run --cwd site lint
+      - run: bun run --cwd site build

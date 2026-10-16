@@ -119,23 +119,23 @@ export function check(root = rootDir()) {
   const versions = readVersions(root);
   const pkg = versions['package.json'];
   if (new Set(Object.values(versions)).size > 1) {
-    problems.push(`Versions disagree (${Object.entries(versions).map(([k, v]) => `${k} ${v}`).join(', ')}): set them all to the same value, or run \`pnpm release <entry-file>\`.`);
+    problems.push(`Versions disagree (${Object.entries(versions).map(([k, v]) => `${k} ${v}`).join(', ')}): set them all to the same value, or run \`bun run release <entry-file>\`.`);
   }
   let lock = null;
   try {
     lock = readJson(root, 'release.lock.json');
   } catch {
-    problems.push('release.lock.json is missing or unreadable: run `pnpm release <entry-file>` to write it.');
+    problems.push('release.lock.json is missing or unreadable: run `bun run release <entry-file>` to write it.');
   }
-  if (lock && lock.version !== pkg) problems.push(`release.lock.json says ${lock.version} but package.json says ${pkg}: run \`pnpm release <entry-file>\`.`);
+  if (lock && lock.version !== pkg) problems.push(`release.lock.json says ${lock.version} but package.json says ${pkg}: run \`bun run release <entry-file>\`.`);
   const top = newest(read(root, 'CHANGELOG.md'));
   if (!top || top.version !== pkg) {
-    problems.push(`The newest CHANGELOG.md heading must be "## ${pkg} (<YYYY-MM-DD>)": run \`pnpm release <entry-file>\` instead of editing the version by hand.`);
+    problems.push(`The newest CHANGELOG.md heading must be "## ${pkg} (<YYYY-MM-DD>)": run \`bun run release <entry-file>\` instead of editing the version by hand.`);
   } else {
     for (const p of validateEntry(top.entry)) problems.push(`CHANGELOG.md ${pkg} entry: ${p}`);
   }
   if (lock && lock.fingerprint !== fingerprint(root)) {
-    problems.push('The download changed but the version did not: write a curated entry and run `pnpm release <entry-file>`.');
+    problems.push('The download changed but the version did not: write a curated entry and run `bun run release <entry-file>`.');
   }
   return { problems, version: pkg };
 }
@@ -158,8 +158,8 @@ function release(root, args) {
 
   const diff = spawnSync('git', ['diff', '--name-only', 'origin/main...HEAD'], { cwd: root, encoding: 'utf8' });
   if (diff.status === 0 && diff.stdout.split('\n').some((f) => f.startsWith('room/src/'))) {
-    const build = spawnSync('pnpm', ['build:room'], { cwd: root, stdio: 'inherit' });
-    if (build.status !== 0) throw new Error('pnpm build:room failed, nothing changed: fix the build and run release again.');
+    const build = spawnSync('bun', ['run', 'build:room'], { cwd: root, stdio: 'inherit' });
+    if (build.status !== 0) throw new Error('bun run build:room failed, nothing changed: fix the build and run release again.');
   }
 
   const setJsonVersion = (rel) => {

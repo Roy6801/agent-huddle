@@ -93,7 +93,7 @@ test('changing a skills file without a release fails the check', () => {
   writeFileSync(f, `${readFileSync(f, 'utf8')}\nExtra line.\n`);
   const r = run(['check'], tmp);
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /The download changed but the version did not: write a curated entry and run `pnpm release <entry-file>`\./);
+  assert.match(r.stderr, /The download changed but the version did not: write a curated entry and run `bun run release <entry-file>`\./);
 });
 
 test('editing README.md does not require a release', () => {
